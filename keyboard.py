@@ -11,7 +11,7 @@ import numpy as np
 # ------------------------
 # Y vai de 0.0 (Topo) a 1.0 (Fundo/Baixo)
 # Altura que o dedo precisa subir ACIMA da linha para ARMAR (ex: 0.1 = 10% da tela)
-LIFT_THRESHOLD = 0.025  
+LIFT_THRESHOLD = 0.007
 
 # Tolerância para validar o toque na linha (ajuste fino)
 TOUCH_TOLERANCE = 0.003
@@ -24,6 +24,7 @@ ACTIVE_FINGERS = [4, 8, 12, 16, 20]
 
 # Cores (BGR)
 COLOR_TABLE_LINE = (0, 255, 0)     # Verde
+COLOR_TABLE_FRONT = (30, 30, 30) 
 COLOR_KEY_DIVIDER = (60, 60, 60)   # Cinza escuro
 COLOR_HIT = (0, 255, 255)          # Amarelo
 COLOR_ARMED = (0, 165, 255)        # Laranja
@@ -39,7 +40,7 @@ for i in range(NUM_KEYS):
     octave = i // 7
     note_idx = i % 7
     note_val = BASE_NOTE + (octave * 12) + SCALE_INTERVALS[note_idx]
-    PIANO_KEYS.append({"note": note_val, "last_hit": 0})
+    PIANO_KEYS.append({"note": note_val, "last_hit": 0, "is_active": False})
 
 # ------------------------
 # SETUP DE ÁUDIO
@@ -47,7 +48,7 @@ for i in range(NUM_KEYS):
 try:
     fs = fluidsynth.Synth()
     fs.start(driver="dsound") 
-    sfid = fs.sfload("Retro_Synth_PC.sf2") 
+    sfid = fs.sfload("sounds\keyboard\Retro_Synth_PC.sf2") 
     fs.program_select(0, sfid, 0, 0)
 except Exception as e:
     print(f"ERRO AUDIO: {e}")
@@ -150,28 +151,34 @@ def draw_ui(frame, table_y):
     h, w, _ = frame.shape
     overlay = frame.copy()
     
-    # 1. Desenhar Teclas (Fundo)
     key_width = w / NUM_KEYS
     table_px = int(table_y * h)
     
+    # 1. Fundo do Painel Frontal (Da linha da mesa para baixo)
+    cv2.rectangle(overlay, (0, table_px), (w, h), COLOR_TABLE_FRONT, -1)
+
+    # 2. Desenhar Teclas (Apenas na parte de baixo)
     for i, key in enumerate(PIANO_KEYS):
         x1 = int(i * key_width)
         x2 = int((i + 1) * key_width)
         
-        # Se tecla tocada recentemente
-        if (time.time() - key["last_hit"]) < 0.2:
-            # Pinta a coluna inteira ou só a parte de baixo? Vamos pintar tudo levemente
-            cv2.rectangle(overlay, (x1, 0), (x2, h), COLOR_HIT, -1)
+        # Cor da tecla ativa ou rastro
+        if key["is_active"]:
+            cv2.rectangle(overlay, (x1, table_px), (x2, h), COLOR_HIT, -1)
+        elif (time.time() - key["last_hit"]) < 0.3:
+            cv2.rectangle(overlay, (x1, table_px), (x2, h), COLOR_HIT, -1)
         
-        # Divisórias das teclas (apenas visuais)
-        cv2.line(overlay, (x1, 0), (x1, h), COLOR_KEY_DIVIDER, 1)
+        # Divisórias mais grossas
+        cv2.line(overlay, (x1, table_px), (x1, h), COLOR_KEY_DIVIDER, 2)
 
-    # 2. Desenhar a LINHA DA MESA (Fundamental)
-    cv2.line(overlay, (0, table_px), (w, table_px), COLOR_TABLE_LINE, 3)
-    cv2.putText(overlay, "LINHA DA MESA (Espaco para ajustar)", (10, table_px - 10), 
+    # 3. Linha da Mesa (Brilhante)
+    cv2.line(overlay, (0, table_px), (w, table_px), COLOR_TABLE_LINE, 2)
+    
+    cv2.addWeighted(overlay, 0.6, frame, 0.4, 0, frame)
+    
+    # Texto instrutivo
+    cv2.putText(frame, "Teclado", (10, table_px - 10), 
                 cv2.FONT_HERSHEY_SIMPLEX, 0.5, COLOR_TABLE_LINE, 1)
-
-    cv2.addWeighted(overlay, 0.4, frame, 0.6, 0, frame)
 
 # ------------------------
 # MAIN LOOP
@@ -199,9 +206,6 @@ def main_thread():
     is_calibrating = False
     calib_start_time = 0
     CALIB_DURATION = 3.0
-
-    print(">>> PIANO FRONTAL (MODO ROBUSTO)")
-    print(">>> DICA: Incline a câmera levemente para ver os nós dos dedos.")
 
     while True:
         ret, frame = cap.read()
@@ -265,7 +269,7 @@ def main_thread():
                     
                     processar_dedo(lbl, fid, finger.y, finger.x, global_state["table_y"], cx, cy, frame)
 
-        cv2.imshow("Frontal Piano", frame)
+        cv2.imshow("Keyboard", frame)
         
         k = cv2.waitKey(1)
         if k == 32: # Espaço inicia calibração
