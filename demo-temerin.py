@@ -26,7 +26,7 @@ try:
     fs.start(driver="dsound")  # Windows
     # Tente usar um SoundFont GM (General MIDI) aqui para ter o som de Theremin (Prog 91)
     # Se usar o "Retro_Synth_PC.sf2", verifique se ele tem presets variados.
-    sfid = fs.sfload("Retro_Synth_PC.sf2") 
+    sfid = fs.sfload("sounds/keyboard/Retro_Synth_PC.sf2") 
     
     # --- SELEÇÃO DO SOM ---
     # Canal 0, SoundFont ID, Banco 0, Preset 91 (Space Voice/Theremin no GM)

@@ -56,7 +56,7 @@ DRUM_ZONES = [
 try:
     fs = fluidsynth.Synth()
     fs.start(driver="dsound")  # Windows
-    sfid = fs.sfload("HS R8 drums.sf2") 
+    sfid = fs.sfload("sounds/drums/HS R8 Drums.sf2") 
     fs.program_select(0, sfid, 0, 0)
 except Exception as e:
     print(f"ERRO DE AUDIO: {e}")

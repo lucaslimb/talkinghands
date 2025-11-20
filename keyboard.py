@@ -7,30 +7,37 @@ import time
 import numpy as np
 
 # ------------------------
-# CONFIGURAÇÕES (VISÃO FRONTAL)
+# CONFIGURAÇÕES (HIGH PERFORMANCE & ESTABILIDADE)
 # ------------------------
-# Y vai de 0.0 (Topo) a 1.0 (Fundo/Baixo)
-# Altura que o dedo precisa subir ACIMA da linha para ARMAR (ex: 0.1 = 10% da tela)
-LIFT_THRESHOLD = 0.007
+# O quanto precisa subir para ficar "ARMADO" (Pronto para tocar)
+LIFT_THRESHOLD = 0.02   
 
-# Tolerância para validar o toque na linha (ajuste fino)
-TOUCH_TOLERANCE = 0.003
+# O quão perto da linha da mesa para ativar o "TOQUE"
+TOUCH_TOLERANCE = 0.005 
 
-# Tempo limite
+# O quanto precisa subir para considerar que "SOLTOU" a tecla (Histerese)
+# Isso deve ser maior que o TOUCH_TOLERANCE para evitar que o som corte com tremores
+RELEASE_THRESHOLD = 0.015 
+
+# Tempo mínimo que uma nota fica tocando (evita sons "engasgados" em toques rápidos)
+MIN_NOTE_DURATION = 0.15 
+
+# Tempo limite para cancelar o movimento se não bater
 ARMED_TIMEOUT = 2.5    
 
 NUM_KEYS = 30
 ACTIVE_FINGERS = [4, 8, 12, 16, 20] 
 
-# Cores (BGR)
-COLOR_TABLE_LINE = (0, 255, 0)     # Verde
+# Cores (BGR) - Simples para desenhar rápido
+COLOR_TABLE_LINE = (0, 255, 0)     
 COLOR_TABLE_FRONT = (30, 30, 30) 
-COLOR_KEY_DIVIDER = (60, 60, 60)   # Cinza escuro
-COLOR_HIT = (0, 255, 255)          # Amarelo
-COLOR_ARMED = (0, 165, 255)        # Laranja
+COLOR_KEY_DIVIDER = (100, 100, 100)
+COLOR_HIT = (0, 255, 255)          
+COLOR_ARMED = (0, 165, 255)        
+COLOR_HOLD = (0, 200, 0)           
 
 # ------------------------
-# GERAR TECLAS (Dó Maior)
+# GERAR TECLAS
 # ------------------------
 SCALE_INTERVALS = [0, 2, 4, 5, 7, 9, 11] 
 BASE_NOTE = 48 # C3
@@ -48,7 +55,8 @@ for i in range(NUM_KEYS):
 try:
     fs = fluidsynth.Synth()
     fs.start(driver="dsound") 
-    sfid = fs.sfload("sounds\keyboard\Retro_Synth_PC.sf2") 
+    # Verifique se o caminho está correto
+    sfid = fs.sfload(r"sounds\keyboard\Retro_Synth_PC.sf2") 
     fs.program_select(0, sfid, 0, 0)
 except Exception as e:
     print(f"ERRO AUDIO: {e}")
@@ -59,8 +67,13 @@ def audio_thread():
     while True:
         item = audio_queue.get()
         if item is None: break
-        note = item
-        fs.noteon(0, note, 127) # Velocity máxima para impacto
+        
+        action, note = item
+        if action == "on":
+            # Toca nota (Velocity 127 = Forte)
+            fs.noteon(0, note, 127)
+        elif action == "off":
+            fs.noteoff(0, note)
 
 threading.Thread(target=audio_thread, daemon=True).start()
 
@@ -68,217 +81,212 @@ threading.Thread(target=audio_thread, daemon=True).start()
 # ESTADO GLOBAL
 # ------------------------
 global_state = {
-    "table_y": 0.85, # Altura padrão da mesa (85% da tela, lá embaixo)
+    "table_y": 0.80, 
     "calibrated": False
 }
 
 hands_state = {
-    "Left":  {"finger_status": {}, "finger_timers": {}},
-    "Right": {"finger_status": {}, "finger_timers": {}}
+    "Left":  {"finger_status": {}, "finger_timers": {}, "active_notes": {}},
+    "Right": {"finger_status": {}, "finger_timers": {}, "active_notes": {}}
 }
 
-# Inicializa
 for hand in ["Left", "Right"]:
     for fid in ACTIVE_FINGERS:
         hands_state[hand]["finger_status"][fid] = "IDLE"
         hands_state[hand]["finger_timers"][fid] = 0.0
+        hands_state[hand]["active_notes"][fid] = None
 
 # ------------------------
-# LÓGICA GEOMÉTRICA (EIXO Y)
+# LÓGICA GEOMÉTRICA OTIMIZADA
 # ------------------------
-def processar_dedo(label, fid, y_current, x_current, table_y, cx, cy, frame):
+def processar_dedo(label, fid, y_current, x_current, table_y, cx, cy, frame, h_frame):
     state = hands_state[label]
     status = state["finger_status"][fid]
+    
     last_action_time = state["finger_timers"][fid]
     current_time = time.time()
     
-    h, w, _ = frame.shape
-    
-    # Distância do dedo em relação à linha da mesa
-    # table_y é maior (mais baixo). y_current é menor (mais alto).
+    # Distância: Positivo = Dedo acima da mesa. Negativo = Dedo cruzou a mesa (fundo).
     dist_above_table = table_y - y_current
-
-    cor_dedo = (100, 100, 100) # Cinza IDLE
 
     # --- MÁQUINA DE ESTADOS ---
 
     if status == "IDLE":
-        # Se subiu o suficiente acima da linha
+        # Só arma se subir acima do LIFT (mais alto)
         if dist_above_table > LIFT_THRESHOLD:
             state["finger_status"][fid] = "ARMED"
             state["finger_timers"][fid] = current_time
 
     elif status == "ARMED":
-        cor_dedo = COLOR_ARMED
-        
-        # Visual: Linha elástica ligando dedo à mesa
-        table_px = int(table_y * h)
-        cv2.line(frame, (cx, cy), (cx, table_px), COLOR_ARMED, 1)
-
-        # 1. Timeout: Se demorou demais lá em cima
+        # Timeout: Se ficou muito tempo parado no ar
         if (current_time - last_action_time) > ARMED_TIMEOUT:
             state["finger_status"][fid] = "IDLE"
-            # Feedback visual de cancelamento
-            cv2.circle(frame, (cx, cy), 8, (255, 0, 255), 2)
-
-        # 2. TOQUE: Cruzou a linha da mesa para baixo
+            
+        # TOQUE: Chegou perto da linha (TOUCH_TOLERANCE é pequeno)
         elif y_current >= (table_y - TOUCH_TOLERANCE):
-            # Determinar qual tecla (baseado no X)
             key_idx = int(x_current * NUM_KEYS)
             key_idx = max(0, min(key_idx, NUM_KEYS - 1))
             
-            # Tocar nota
             key_data = PIANO_KEYS[key_idx]
-            audio_queue.put(key_data["note"])
+            note = key_data["note"]
+            
+            audio_queue.put(("on", note))
+            state["active_notes"][fid] = note
+            state["finger_status"][fid] = "TOUCHING"
+            state["finger_timers"][fid] = current_time # Guarda hora do toque para calcular duração
+            
             key_data["last_hit"] = current_time
+            key_data["is_active"] = True
             
-            # Resetar
-            state["finger_status"][fid] = "IDLE"
-            
-            # Visual de Impacto na linha da mesa
-            hit_x = cx
-            hit_y = int(table_y * h)
-            cv2.circle(frame, (hit_x, hit_y), 20, COLOR_HIT, -1)
+            # Feedback visual de impacto
+            cv2.circle(frame, (cx, int(table_y * h_frame)), 15, COLOR_HIT, -1)
 
-    # Desenha a ponta do dedo com um contorno para destacar se a imagem estiver ruim
-    cv2.circle(frame, (cx, cy), 6, cor_dedo, -1)
-    cv2.circle(frame, (cx, cy), 8, (0,0,0), 1) # Contorno preto
+    elif status == "TOUCHING":
+        active_note = state["active_notes"][fid]
+        hit_time = state["finger_timers"][fid] # Hora que começou a tocar
+        
+        # --- 1. GLISSANDO (Mudança de tecla) ---
+        current_key_idx = int(x_current * NUM_KEYS)
+        current_key_idx = max(0, min(current_key_idx, NUM_KEYS - 1))
+        new_note = PIANO_KEYS[current_key_idx]["note"]
+        
+        if active_note is not None and new_note != active_note:
+            # Desliga nota anterior
+            audio_queue.put(("off", active_note))
+            for k in PIANO_KEYS:
+                if k["note"] == active_note: k["is_active"] = False; break
+
+            # Liga nova nota
+            audio_queue.put(("on", new_note))
+            state["active_notes"][fid] = new_note
+            # Atualiza timer para a nova nota (para garantir duração mínima dela também)
+            state["finger_timers"][fid] = current_time 
+            
+            PIANO_KEYS[current_key_idx]["last_hit"] = current_time
+            PIANO_KEYS[current_key_idx]["is_active"] = True
+
+        # --- 2. RELEASE (Levantar o dedo) ---
+        # Só solta se:
+        # a) O dedo subiu acima do RELEASE_THRESHOLD (que é mais alto que o ponto de toque)
+        # b) E JÁ PASSOU o tempo mínimo de duração da nota (evita cortes abruptos)
+        
+        time_held = current_time - hit_time
+
+        if dist_above_table > RELEASE_THRESHOLD and time_held > MIN_NOTE_DURATION:
+            if active_note is not None:
+                audio_queue.put(("off", active_note))
+                for k in PIANO_KEYS:
+                    if k["note"] == active_note: k["is_active"] = False; break
+            
+            state["active_notes"][fid] = None
+            
+            # IMPORTANTE: Voltamos para ARMED.
+            # Como RELEASE_THRESHOLD > LIFT_THRESHOLD, o dedo já está alto o suficiente
+            # para ser considerado "Armado" novamente. Isso permite bater de novo rápido.
+            state["finger_status"][fid] = "ARMED"
+            state["finger_timers"][fid] = current_time
+
+    # Desenho do dedo
+    color = COLOR_ARMED if status == "ARMED" else (100,100,100)
+    if status == "TOUCHING": color = COLOR_HOLD
+    cv2.circle(frame, (cx, cy), 5, color, -1)
 
 # ------------------------
-# DESENHO DA INTERFACE (TECLAS + MESA)
+# UI OTIMIZADA (DESENHO DIRETO)
 # ------------------------
-def draw_ui(frame, table_y):
-    h, w, _ = frame.shape
-    overlay = frame.copy()
-    
-    key_width = w / NUM_KEYS
+def draw_ui_fast(frame, table_y, w, h):
     table_px = int(table_y * h)
+    key_width = w / NUM_KEYS
     
-    # 1. Fundo do Painel Frontal (Da linha da mesa para baixo)
-    cv2.rectangle(overlay, (0, table_px), (w, h), COLOR_TABLE_FRONT, -1)
-
-    # 2. Desenhar Teclas (Apenas na parte de baixo)
+    # Linha da mesa
+    cv2.line(frame, (0, table_px), (w, table_px), COLOR_TABLE_LINE, 2)
+    
     for i, key in enumerate(PIANO_KEYS):
         x1 = int(i * key_width)
-        x2 = int((i + 1) * key_width)
+        cv2.line(frame, (x1, table_px), (x1, h), COLOR_KEY_DIVIDER, 1)
         
-        # Cor da tecla ativa ou rastro
-        if key["is_active"]:
-            cv2.rectangle(overlay, (x1, table_px), (x2, h), COLOR_HIT, -1)
-        elif (time.time() - key["last_hit"]) < 0.3:
-            cv2.rectangle(overlay, (x1, table_px), (x2, h), COLOR_HIT, -1)
-        
-        # Divisórias mais grossas
-        cv2.line(overlay, (x1, table_px), (x1, h), COLOR_KEY_DIVIDER, 2)
-
-    # 3. Linha da Mesa (Brilhante)
-    cv2.line(overlay, (0, table_px), (w, table_px), COLOR_TABLE_LINE, 2)
-    
-    cv2.addWeighted(overlay, 0.6, frame, 0.4, 0, frame)
-    
-    # Texto instrutivo
-    cv2.putText(frame, "Teclado", (10, table_px - 10), 
-                cv2.FONT_HERSHEY_SIMPLEX, 0.5, COLOR_TABLE_LINE, 1)
+        if key["is_active"] or (time.time() - key["last_hit"]) < 0.15:
+            x2 = int((i + 1) * key_width)
+            cv2.rectangle(frame, (x1, table_px), (x2, h), COLOR_HIT, -1)
 
 # ------------------------
 # MAIN LOOP
 # ------------------------
 def main_thread():
-    mp_hands = mp.solutions.hands
-    
-    # --- AJUSTE CRÍTICO PARA VISÃO FRONTAL ---
-    # model_complexity=1: Usa o modelo mais pesado e preciso (melhor para oclusão)
-    # min_detection_confidence=0.3: Aceita mãos mesmo que a IA esteja "na dúvida" (ajuda em ângulos ruins)
-    # min_tracking_confidence=0.4: Tenta manter o rastreio mesmo se falhar um pouco
-    hands = mp_hands.Hands(
+    hands = mp.solutions.hands.Hands(
         max_num_hands=2, 
         model_complexity=1, 
-        min_detection_confidence=0.3, 
-        min_tracking_confidence=0.4
+        min_detection_confidence=0.7, 
+        min_tracking_confidence=0.6
     )
     
-    mp_draw = mp.solutions.drawing_utils
-    
-    # Tenta backend rápido
+    # Camera Config
     cap = cv2.VideoCapture(0, cv2.CAP_DSHOW)
     if not cap.isOpened(): cap = cv2.VideoCapture(0)
+    
+    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+    cap.set(cv2.CAP_PROP_FPS, 60)
+    cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
 
     is_calibrating = False
     calib_start_time = 0
-    CALIB_DURATION = 3.0
+    
+    print(">>> PIANO ESTÁVEL (COM SUSTAIN)")
+    print(">>> Resolução: 640x480 | FPS Alvo: 60")
 
     while True:
         ret, frame = cap.read()
         if not ret: break
 
         frame = cv2.flip(frame, 1)
-        h, w, _ = frame.shape
+        h, w, _ = frame.shape 
         
-        draw_ui(frame, global_state["table_y"])
+        draw_ui_fast(frame, global_state["table_y"], w, h)
 
         rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         results = hands.process(rgb)
 
-        # Feedback visual se perdeu as mãos
-        if not results.multi_hand_landmarks:
-             cv2.putText(frame, "PROCURANDO MAOS...", (w//2 - 150, h//2), 
-                        cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
-
-        # --- CALIBRAÇÃO ---
+        # Calibração
         if is_calibrating:
-            remaining = CALIB_DURATION - (time.time() - calib_start_time)
-            if remaining > 0:
-                cv2.putText(frame, f"CALIBRANDO... MANTENHA NA MESA: {remaining:.1f}", (50, h//2), 
-                           cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 255, 255), 3)
-            else:
+            cv2.putText(frame, "CALIBRANDO...", (50, h//2), cv2.FONT_HERSHEY_SIMPLEX, 1, (0,255,255), 2)
+            if (time.time() - calib_start_time) > 3.0:
                 is_calibrating = False
                 if results.multi_hand_landmarks:
                     total_y = 0
                     count = 0
-                    # Pega a média Y de todas as pontas dos dedos
                     for lm in results.multi_hand_landmarks:
                         for fid in ACTIVE_FINGERS:
                             total_y += lm.landmark[fid].y
                             count += 1
-                    
                     if count > 0:
-                        # Define a linha da mesa baseada na posição dos dedos
-                        new_table_y = total_y / count
-                        # Adiciona um offset minúsculo (0.02) para a linha ficar logo abaixo da ponta do dedo
-                        global_state["table_y"] = min(new_table_y + 0.01, 0.95) 
+                        global_state["table_y"] = min((total_y / count), 0.95)
                         global_state["calibrated"] = True
-                        print(f"Mesa calibrada em Y={global_state['table_y']:.2f}")
-                else:
-                    print("Nenhuma mão detectada durante calibração.")
+                        print(f"Calibrado Y={global_state['table_y']:.2f}")
 
-        # --- PROCESSAMENTO ---
+        # Processamento
         if results.multi_hand_landmarks:
             for idx, lm in enumerate(results.multi_hand_landmarks):
                 lbl = results.multi_handedness[idx].classification[0].label
                 
-                # Desenha o esqueleto (ajuda a ver se a IA pegou certo)
-                mp_draw.draw_landmarks(frame, lm, mp_hands.HAND_CONNECTIONS)
-                
                 if not global_state["calibrated"]:
-                    cv2.putText(frame, "PRECISA CALIBRAR (TECLA ESPACO)", (w//2 - 200, 50), 
-                                cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0,0,255), 2)
+                    cv2.putText(frame, "[ESPACO] CALIBRAR", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,0,255), 2)
 
                 for fid in ACTIVE_FINGERS:
                     finger = lm.landmark[fid]
                     cx, cy = int(finger.x * w), int(finger.y * h)
-                    
-                    processar_dedo(lbl, fid, finger.y, finger.x, global_state["table_y"], cx, cy, frame)
+                    processar_dedo(lbl, fid, finger.y, finger.x, global_state["table_y"], cx, cy, frame, h)
 
-        cv2.imshow("Keyboard", frame)
+        cv2.imshow("FastPiano", frame)
         
         k = cv2.waitKey(1)
-        if k == 32: # Espaço inicia calibração
+        if k == 32: 
             is_calibrating = True
             calib_start_time = time.time()
             for key in hands_state:
                 for fid in ACTIVE_FINGERS:
                     hands_state[key]["finger_status"][fid] = "IDLE"
-        
+                    hands_state[key]["active_notes"][fid] = None
         if k == 27: break
 
     cap.release()
