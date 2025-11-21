@@ -6,6 +6,9 @@ import fluidsynth
 import time
 import numpy as np
 
+import menu_selector
+import settings
+
 # ------------------------
 # CONFIGURAÇÕES (HIGH PERFORMANCE & ESTABILIDADE)
 # ------------------------
@@ -18,6 +21,8 @@ ARMED_TIMEOUT = 2.5
 # Tempo máximo que um dedo pode ficar "sumido" antes de cortarmos o som (Watchdog)
 MAX_MISSING_TIME = 0.1 
 
+SUSTAIN_DECAY = 0.8
+
 NUM_KEYS = 30
 ACTIVE_FINGERS = [4, 8, 12, 16, 20] 
 
@@ -27,8 +32,67 @@ COLOR_TABLE_FRONT = (30, 30, 30)
 COLOR_KEY_DIVIDER = (100, 100, 100)
 COLOR_HIT = (0, 255, 255)          
 COLOR_ARMED = (0, 165, 255)        
-COLOR_HOLD = (0, 200, 0)           
-SUSTAIN_DECAY = 0.8
+COLOR_HOLD = (0, 200, 0)    
+# ------------------------
+# AUDIO SETUP (MULTIPLE SF2)
+# ------------------------
+audio_queue = queue.Queue()
+loaded_sfids = {} # Dicionário para guardar os IDs gerados pelo FluidSynth
+
+try:
+    fs = fluidsynth.Synth()
+    fs.start(driver="dsound") 
+    
+    # Loop para carregar TODOS os arquivos definidos no settings
+    print(">>> Carregando bancos de som...")
+    for nickname, path in settings.SF2_PATHS.items():
+        sfid = fs.sfload(path)
+        if sfid == -1:
+            print(f"ERRO: Não foi possível carregar {path}")
+        else:
+            loaded_sfids[nickname] = sfid
+            print(f"Carregado: {nickname} (ID: {sfid})")
+            
+except Exception as e:
+    print(f"ERRO CRÍTICO DE AUDIO: {e}")
+    exit()
+
+def select_instrument_by_name(name, channel=0):
+    """
+    Seleciona o instrumento buscando o arquivo correto e o preset
+    """
+    if name not in settings.INSTRUMENTS:
+        print(f"Instrumento '{name}' não encontrado.")
+        return
+
+    # Desempacota a tupla de 3 valores
+    sf_nickname, bank, preset = settings.INSTRUMENTS[name]
+    
+    # Busca o ID real do arquivo carregado
+    target_sfid = loaded_sfids.get(sf_nickname)
+    
+    if target_sfid is None:
+        print(f"ERRO: O arquivo '{sf_nickname}' para este som não foi carregado corretamente.")
+        return
+    
+    print(f">>> SOM: {name} | ARQUIVO: {sf_nickname} | ID: {target_sfid} | B: {bank} P: {preset}")
+    
+    # O segredo é passar o target_sfid correto aqui
+    fs.program_select(channel, target_sfid, bank, preset)
+
+# ... resto do código (threads, piano keys, main loop, etc) igual .
+
+def audio_thread():
+    while True:
+        item = audio_queue.get()
+        if item is None: break
+        action, note = item
+        if action == "on": fs.noteon(0, note, 127)
+        elif action == "off": fs.noteoff(0, note)
+
+threading.Thread(target=audio_thread, daemon=True).start()
+
+
 # ------------------------
 # GERAR TECLAS
 # ------------------------
@@ -48,49 +112,6 @@ try:
     sfid = fs.sfload(r"sounds\universal\module_master.sf2")
 except Exception as e:
     print(f"ERRO AUDIO: {e}")
-
-# ------------------------
-audio_queue = queue.Queue()
-
-def audio_thread():
-    while True:
-        item = audio_queue.get()
-        if item is None: 
-            break
-        
-        action, note = item
-        if action == "on":
-            fs.noteon(0, note, 127)
-        elif action == "off":
-            fs.noteoff(0, note)
-
-threading.Thread(target=audio_thread, daemon=True).start()
-
-    # Dicionário de instrumentos do seu SF2 (exemplo parcial)
-instruments = {
-    "SynthPiano": (0, 6),
-    "Honky-Tonk": (0, 2),
-    "Square": (0, 106),
-    "Crystal": (1, 41),
-    "EP1": (0, 4),
-    "WarmPad": (1, 6),
-    "Oohs2": (0, 87)
-}
-
-def select_instrument_by_name(name, channel=0):
-    """
-    Seleciona o instrumento pelo nome, usando o banco e programa do dicionário
-    """
-    if name not in instruments:
-        print(f"Instrumento '{name}' não encontrado. Usando padrão (0,0).")
-        bank, preset = 0, 0
-    else:
-        bank, preset = instruments[name]
-    fs.program_select(channel, sfid, bank, preset)
-
-# ------------------------
-# Exemplo de uso:
-select_instrument_by_name("Honky-Tonk")
 
 # ------------------------
 # ESTADO GLOBAL
@@ -313,13 +334,15 @@ def draw_ui_fast(frame, table_y, w, h):
 # MAIN LOOP
 # ------------------------
 def main_thread():
-    hands = mp.solutions.hands.Hands(
-        max_num_hands=2, 
-        model_complexity=0, 
-        min_detection_confidence=0.3, 
-        min_tracking_confidence=0.3
-    )
+    # --- PASSO 1: ABRIR MENU DE SELEÇÃO ---
+    print("Aguardando seleção de instrumento...")
+    chosen_instrument = menu_selector.show_menu(settings.INSTRUMENTS)
     
+    # --- PASSO 2: CONFIGURAR SYNTH ---
+    select_instrument_by_name(chosen_instrument)
+
+    # --- PASSO 3: INICIAR PIANO ---
+    hands = mp.solutions.hands.Hands(max_num_hands=2, model_complexity=1, min_detection_confidence=0.3, min_tracking_confidence=0.3)
     cap = cv2.VideoCapture(0, cv2.CAP_DSHOW)
     if not cap.isOpened(): cap = cv2.VideoCapture(0)
     
