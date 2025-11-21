@@ -9,26 +9,19 @@ import numpy as np
 # ------------------------
 # CONFIGURAÇÕES (HIGH PERFORMANCE & ESTABILIDADE)
 # ------------------------
-# O quanto precisa subir para ficar "ARMADO" (Pronto para tocar)
 LIFT_THRESHOLD = 0.02   
-
-# O quão perto da linha da mesa para ativar o "TOQUE"
 TOUCH_TOLERANCE = 0.005 
-
-# O quanto precisa subir para considerar que "SOLTOU" a tecla (Histerese)
-# Isso deve ser maior que o TOUCH_TOLERANCE para evitar que o som corte com tremores
 RELEASE_THRESHOLD = 0.015 
-
-# Tempo mínimo que uma nota fica tocando (evita sons "engasgados" em toques rápidos)
-MIN_NOTE_DURATION = 0.15 
-
-# Tempo limite para cancelar o movimento se não bater
+MIN_NOTE_DURATION = 0.1  # Reduzi levemente para evitar travamentos
 ARMED_TIMEOUT = 2.5    
+
+# Tempo máximo que um dedo pode ficar "sumido" antes de cortarmos o som (Watchdog)
+MAX_MISSING_TIME = 0.1 
 
 NUM_KEYS = 30
 ACTIVE_FINGERS = [4, 8, 12, 16, 20] 
 
-# Cores (BGR) - Simples para desenhar rápido
+# Cores
 COLOR_TABLE_LINE = (0, 255, 0)     
 COLOR_TABLE_FRONT = (30, 30, 30) 
 COLOR_KEY_DIVIDER = (100, 100, 100)
@@ -49,33 +42,55 @@ for i in range(NUM_KEYS):
     note_val = BASE_NOTE + (octave * 12) + SCALE_INTERVALS[note_idx]
     PIANO_KEYS.append({"note": note_val, "last_hit": 0, "is_active": False})
 
-# ------------------------
-# SETUP DE ÁUDIO
-# ------------------------
 try:
     fs = fluidsynth.Synth()
     fs.start(driver="dsound") 
-    # Verifique se o caminho está correto
-    sfid = fs.sfload(r"sounds\keyboard\Retro_Synth_PC.sf2") 
-    fs.program_select(0, sfid, 0, 0)
+    sfid = fs.sfload(r"sounds\universal\module_master.sf2")
 except Exception as e:
     print(f"ERRO AUDIO: {e}")
 
+# Dicionário de instrumentos do seu SF2 (exemplo parcial)
+instruments = {
+    "SynthPiano": (0, 6),
+    "Square": (0, 106),
+    "Crystal": (1, 41),
+    "EP1": (0, 4),
+    "WarmPad": (1, 6),
+    "Oohs2": (0, 87)
+    # adicione outros nomes conforme lista do seu SF2
+}
+
+def select_instrument_by_name(name, channel=0):
+    """
+    Seleciona o instrumento pelo nome, usando o banco e programa do dicionário
+    """
+    if name not in instruments:
+        print(f"Instrumento '{name}' não encontrado. Usando padrão (0,0).")
+        bank, preset = 0, 0
+    else:
+        bank, preset = instruments[name]
+    fs.program_select(channel, sfid, bank, preset)
+
+# ------------------------
 audio_queue = queue.Queue()
 
 def audio_thread():
     while True:
         item = audio_queue.get()
-        if item is None: break
+        if item is None: 
+            break
         
         action, note = item
         if action == "on":
-            # Toca nota (Velocity 127 = Forte)
             fs.noteon(0, note, 127)
         elif action == "off":
             fs.noteoff(0, note)
 
 threading.Thread(target=audio_thread, daemon=True).start()
+
+# ------------------------
+# Exemplo de uso:
+select_instrument_by_name("Oohs2")
 
 # ------------------------
 # ESTADO GLOBAL
@@ -86,8 +101,8 @@ global_state = {
 }
 
 hands_state = {
-    "Left":  {"finger_status": {}, "finger_timers": {}, "active_notes": {}},
-    "Right": {"finger_status": {}, "finger_timers": {}, "active_notes": {}}
+    "Left":  {"finger_status": {}, "finger_timers": {}, "active_notes": {}, "last_seen": {}},
+    "Right": {"finger_status": {}, "finger_timers": {}, "active_notes": {}, "last_seen": {}}
 }
 
 for hand in ["Left", "Right"]:
@@ -95,10 +110,41 @@ for hand in ["Left", "Right"]:
         hands_state[hand]["finger_status"][fid] = "IDLE"
         hands_state[hand]["finger_timers"][fid] = 0.0
         hands_state[hand]["active_notes"][fid] = None
+        hands_state[hand]["last_seen"][fid] = 0.0
 
 # ------------------------
-# LÓGICA GEOMÉTRICA OTIMIZADA
+# LÓGICA GEOMÉTRICA (ADAPTADA DO SEU CÓDIGO)
 # ------------------------
+# ------------------------
+# VERIFICAÇÃO DE INTEGRIDADE (ANTI-GHOST NOTES)
+# ------------------------
+def check_active_keys_integrity():
+    """
+    Verifica se há teclas ativas que NÃO possuem nenhum dedo no estado TOUCHING reivindicando elas.
+    Se houver, desliga o som imediatamente.
+    """
+    # 1. Coletar todas as notas que os dedos juram que estão tocando agora
+    notes_currently_touched = set()
+
+    for hand in ["Left", "Right"]:
+        state = hands_state[hand]
+        for fid in ACTIVE_FINGERS:
+            # Só nos importamos se o dedo diz explicitamente que está TOUCHING
+            if state["finger_status"][fid] == "TOUCHING":
+                note = state["active_notes"][fid]
+                if note is not None:
+                    notes_currently_touched.add(note)
+
+    # 2. Comparar com as teclas físicas do piano
+    for key in PIANO_KEYS:
+        if key["is_active"]:
+            # Se a tecla está ligada, MAS a nota dela não está na lista de notas tocadas...
+            if key["note"] not in notes_currently_touched:
+                # ...significa que é uma nota fantasma. Matar.
+                audio_queue.put(("off", key["note"]))
+                key["is_active"] = False
+                # print(f"Integridade: Nota {key['note']} limpa forçadamente.")
+
 def processar_dedo(label, fid, y_current, x_current, table_y, cx, cy, frame, h_frame):
     state = hands_state[label]
     status = state["finger_status"][fid]
@@ -106,23 +152,33 @@ def processar_dedo(label, fid, y_current, x_current, table_y, cx, cy, frame, h_f
     last_action_time = state["finger_timers"][fid]
     current_time = time.time()
     
-    # Distância: Positivo = Dedo acima da mesa. Negativo = Dedo cruzou a mesa (fundo).
+    # ATUALIZAÇÃO CRÍTICA: Marca que o dedo foi visto agora
+    state["last_seen"][fid] = current_time
+    
     dist_above_table = table_y - y_current
+
+    # --- SANITY CHECK (Correção de Loop) ---
+    # Se o sistema diz que NÃO está tocando, mas tem nota registrada: MATA A NOTA.
+    if status != "TOUCHING" and state["active_notes"][fid] is not None:
+        note_to_kill = state["active_notes"][fid]
+        audio_queue.put(("off", note_to_kill))
+        for k in PIANO_KEYS:
+            if k["note"] == note_to_kill: 
+                k["is_active"] = False
+                break
+        state["active_notes"][fid] = None
 
     # --- MÁQUINA DE ESTADOS ---
 
     if status == "IDLE":
-        # Só arma se subir acima do LIFT (mais alto)
         if dist_above_table > LIFT_THRESHOLD:
             state["finger_status"][fid] = "ARMED"
             state["finger_timers"][fid] = current_time
 
     elif status == "ARMED":
-        # Timeout: Se ficou muito tempo parado no ar
         if (current_time - last_action_time) > ARMED_TIMEOUT:
             state["finger_status"][fid] = "IDLE"
             
-        # TOQUE: Chegou perto da linha (TOUCH_TOLERANCE é pequeno)
         elif y_current >= (table_y - TOUCH_TOLERANCE):
             key_idx = int(x_current * NUM_KEYS)
             key_idx = max(0, min(key_idx, NUM_KEYS - 1))
@@ -133,24 +189,29 @@ def processar_dedo(label, fid, y_current, x_current, table_y, cx, cy, frame, h_f
             audio_queue.put(("on", note))
             state["active_notes"][fid] = note
             state["finger_status"][fid] = "TOUCHING"
-            state["finger_timers"][fid] = current_time # Guarda hora do toque para calcular duração
+            state["finger_timers"][fid] = current_time 
             
             key_data["last_hit"] = current_time
             key_data["is_active"] = True
             
-            # Feedback visual de impacto
             cv2.circle(frame, (cx, int(table_y * h_frame)), 15, COLOR_HIT, -1)
 
     elif status == "TOUCHING":
         active_note = state["active_notes"][fid]
-        hit_time = state["finger_timers"][fid] # Hora que começou a tocar
+        hit_time = state["finger_timers"][fid]
         
-        # --- 1. GLISSANDO (Mudança de tecla) ---
+        # Se por algum milagre active_note for None mas estamos em TOUCHING, reseta
+        if active_note is None:
+            state["finger_status"][fid] = "ARMED"
+            state["finger_timers"][fid] = current_time
+            return
+
+        # --- 1. GLISSANDO ---
         current_key_idx = int(x_current * NUM_KEYS)
         current_key_idx = max(0, min(current_key_idx, NUM_KEYS - 1))
         new_note = PIANO_KEYS[current_key_idx]["note"]
         
-        if active_note is not None and new_note != active_note:
+        if new_note != active_note:
             # Desliga nota anterior
             audio_queue.put(("off", active_note))
             for k in PIANO_KEYS:
@@ -159,46 +220,64 @@ def processar_dedo(label, fid, y_current, x_current, table_y, cx, cy, frame, h_f
             # Liga nova nota
             audio_queue.put(("on", new_note))
             state["active_notes"][fid] = new_note
-            # Atualiza timer para a nova nota (para garantir duração mínima dela também)
-            state["finger_timers"][fid] = current_time 
+            state["finger_timers"][fid] = current_time # Reseta timer para nova nota
             
             PIANO_KEYS[current_key_idx]["last_hit"] = current_time
             PIANO_KEYS[current_key_idx]["is_active"] = True
 
-        # --- 2. RELEASE (Levantar o dedo) ---
-        # Só solta se:
-        # a) O dedo subiu acima do RELEASE_THRESHOLD (que é mais alto que o ponto de toque)
-        # b) E JÁ PASSOU o tempo mínimo de duração da nota (evita cortes abruptos)
-        
+        # --- 2. RELEASE ---
         time_held = current_time - hit_time
 
-        if dist_above_table > RELEASE_THRESHOLD and time_held > MIN_NOTE_DURATION:
-            if active_note is not None:
-                audio_queue.put(("off", active_note))
-                for k in PIANO_KEYS:
-                    if k["note"] == active_note: k["is_active"] = False; break
+        # Condição de soltura: subiu o suficiente E passou o tempo mínimo
+        # ADIÇÃO: Se subiu MUITO (2x threshold), solta imediatamente ignorando tempo mínimo (segurança)
+        force_release = dist_above_table > (RELEASE_THRESHOLD * 2.0)
+        normal_release = (dist_above_table > RELEASE_THRESHOLD) and (time_held > MIN_NOTE_DURATION)
+
+        if force_release or normal_release:
+            audio_queue.put(("off", active_note))
+            for k in PIANO_KEYS:
+                if k["note"] == active_note: k["is_active"] = False; break
             
             state["active_notes"][fid] = None
-            
-            # IMPORTANTE: Voltamos para ARMED.
-            # Como RELEASE_THRESHOLD > LIFT_THRESHOLD, o dedo já está alto o suficiente
-            # para ser considerado "Armado" novamente. Isso permite bater de novo rápido.
             state["finger_status"][fid] = "ARMED"
             state["finger_timers"][fid] = current_time
 
-    # Desenho do dedo
+    # Desenho
     color = COLOR_ARMED if status == "ARMED" else (100,100,100)
     if status == "TOUCHING": color = COLOR_HOLD
     cv2.circle(frame, (cx, cy), 5, color, -1)
 
 # ------------------------
-# UI OTIMIZADA (DESENHO DIRETO)
+# FUNÇÃO DE SEGURANÇA (WATCHDOG)
+# ------------------------
+def check_lost_fingers():
+    """Verifica se algum dedo sumiu enquanto tocava"""
+    current_time = time.time()
+    
+    for hand in ["Left", "Right"]:
+        state = hands_state[hand]
+        for fid in ACTIVE_FINGERS:
+            # Se a nota está ativa mas o dedo não é visto há muito tempo
+            if state["active_notes"][fid] is not None:
+                if (current_time - state["last_seen"][fid]) > MAX_MISSING_TIME:
+                    
+                    note = state["active_notes"][fid]
+                    audio_queue.put(("off", note))
+                    
+                    for k in PIANO_KEYS:
+                        if k["note"] == note: k["is_active"] = False; break
+                    
+                    state["active_notes"][fid] = None
+                    state["finger_status"][fid] = "IDLE"
+                    # print(f"Watchdog limpou dedo {fid}")
+
+# ------------------------
+# UI
 # ------------------------
 def draw_ui_fast(frame, table_y, w, h):
     table_px = int(table_y * h)
     key_width = w / NUM_KEYS
     
-    # Linha da mesa
     cv2.line(frame, (0, table_px), (w, table_px), COLOR_TABLE_LINE, 2)
     
     for i, key in enumerate(PIANO_KEYS):
@@ -215,12 +294,11 @@ def draw_ui_fast(frame, table_y, w, h):
 def main_thread():
     hands = mp.solutions.hands.Hands(
         max_num_hands=2, 
-        model_complexity=1, 
-        min_detection_confidence=0.7, 
-        min_tracking_confidence=0.6
+        model_complexity=0, 
+        min_detection_confidence=0.3, 
+        min_tracking_confidence=0.3
     )
     
-    # Camera Config
     cap = cv2.VideoCapture(0, cv2.CAP_DSHOW)
     if not cap.isOpened(): cap = cv2.VideoCapture(0)
     
@@ -232,8 +310,7 @@ def main_thread():
     is_calibrating = False
     calib_start_time = 0
     
-    print(">>> PIANO ESTÁVEL (COM SUSTAIN)")
-    print(">>> Resolução: 640x480 | FPS Alvo: 60")
+    print(">>> PIANO PROTEGIDO (ANTI-LOOP)")
 
     while True:
         ret, frame = cap.read()
@@ -247,7 +324,6 @@ def main_thread():
         rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         results = hands.process(rgb)
 
-        # Calibração
         if is_calibrating:
             cv2.putText(frame, "CALIBRANDO...", (50, h//2), cv2.FONT_HERSHEY_SIMPLEX, 1, (0,255,255), 2)
             if (time.time() - calib_start_time) > 3.0:
@@ -264,7 +340,6 @@ def main_thread():
                         global_state["calibrated"] = True
                         print(f"Calibrado Y={global_state['table_y']:.2f}")
 
-        # Processamento
         if results.multi_hand_landmarks:
             for idx, lm in enumerate(results.multi_hand_landmarks):
                 lbl = results.multi_handedness[idx].classification[0].label
@@ -276,6 +351,12 @@ def main_thread():
                     finger = lm.landmark[fid]
                     cx, cy = int(finger.x * w), int(finger.y * h)
                     processar_dedo(lbl, fid, finger.y, finger.x, global_state["table_y"], cx, cy, frame, h)
+
+        # --- SEGURANÇA 1: Dedos que sumiram da câmera ---
+        check_lost_fingers()
+
+        # --- SEGURANÇA 2: Teclas ativas sem dono (NOVA FUNÇÃO) ---
+        check_active_keys_integrity()   # <--- ADICIONE AQUI
 
         cv2.imshow("FastPiano", frame)
         
