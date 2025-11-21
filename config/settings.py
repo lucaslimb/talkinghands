@@ -1,7 +1,6 @@
 SF2_PATHS = {
     "master": r"sounds\universal\module_master.sf2",
-    "nines":  r"sounds\synths\module90.sf2",
-    "retro":  r"sounds\keyboard\Retro_Synth_PC.sf2",
+    "drums":  r"sounds\drums\Drums.sf2"
 }
 
 INSTRUMENTS = {
@@ -15,16 +14,12 @@ INSTRUMENTS = {
     "LiteOrgan":    ("master", 0, 12),
     "Oohs2":      ("master", 0, 87),
     "FluteBell":      ("master", 0, 97),
-    
-    "Vibes":   ("nines", 0, 39), 
-    "Phantasy": ("nines", 0, 48),
-    "SuperPipes":  ("nines", 0, 89),
 
-    "Harp": ("retro", 0, 46),
-    "SynthDrum": ("retro", 0, 118),
-    "SciFi":  ("retro", 0, 103),
-    "Goblins":  ("retro", 0, 101),
-    "TronViolin":  ("retro", 0, 40)
+    "Perfect Drums 1":  ("drums", 128, 0),
+    "Perfect Drums 2":  ("drums", 128, 1),
+    "Perfect Drums 3":  ("drums", 128, 2),
 }
 
 SUSTAIN_DECAY = 0.8
+LIFT_THRESHOLD = 0.02
+TOUCH_TOLERANCE = 0.005

@@ -11,13 +11,13 @@ import config.settings as settings
 # ------------------------
 # CONFIGURAÇÕES
 # ------------------------
-LIFT_THRESHOLD = 0.02
-TOUCH_TOLERANCE = 0.005
 RELEASE_THRESHOLD = 0.015
 MIN_NOTE_DURATION = 0.1
 ARMED_TIMEOUT = 2.5
 
 SUSTAIN_DECAY = getattr(settings, 'SUSTAIN_DECAY', 0.8)
+TOUCH_TOLERANCE = getattr(settings, 'TOUCH_TOLERANCE', 0.005)
+LIFT_THRESHOLD = getattr(settings, 'LIFT_THRESHOLD', 0.02)
 
 MAX_MISSING_TIME = 0.1
 
@@ -260,7 +260,7 @@ def draw_ui_fast(frame, table_y, w, h):
 # ------------------------
 # FUNÇÃO PÚBLICA (START)
 # ------------------------
-def start_piano(chosen_instrument, user_sustain=None):
+def start_piano(chosen_instrument, user_sustain=None, lift_threshold=None, touch_tolerance=None):
     """
     Inicializa o loop do piano. Ao sair (ESC), limpa recursos e retorna ao caller.
     """
@@ -269,6 +269,16 @@ def start_piano(chosen_instrument, user_sustain=None):
         global SUSTAIN_DECAY
         SUSTAIN_DECAY = user_sustain
         print(f">>> Sustain configurado: {SUSTAIN_DECAY}s")
+
+    if lift_threshold is not None and lift_threshold > 0:
+        global LIFT_THRESHOLD
+        LIFT_THRESHOLD = lift_threshold
+        print(f">>> Lift configurado: {LIFT_THRESHOLD}")
+
+    if touch_tolerance is not None and touch_tolerance > 0:
+        global TOUCH_TOLERANCE
+        TOUCH_TOLERANCE = touch_tolerance
+        print(f">>> Tolerância de Toque configurada: {TOUCH_TOLERANCE}")
 
     # 2. Seleciona Som
     select_instrument_by_name(chosen_instrument)
