@@ -6,7 +6,7 @@ import fluidsynth
 import time
 import numpy as np
 
-import settings
+import config.settings as settings
 
 # ------------------------
 # CONFIGURAÇÕES
@@ -343,6 +343,8 @@ def start_piano(chosen_instrument, user_sustain=None):
 
             check_lost_fingers()
             check_active_keys_integrity()
+            width, height = 1920, 1080
+            frame = cv2.resize(frame, (width, height))
 
             cv2.imshow("FastPiano", frame)
 
@@ -355,7 +357,18 @@ def start_piano(chosen_instrument, user_sustain=None):
             if k == 27: # ESC
                 break # Sai do loop, caindo no finally
     finally:
-        # Limpeza
+        # --- CORREÇÃO DE BUG DE ÁUDIO INFINITO ---
+        # Garante que todas as notas ativas sejam desligadas antes de encerrar
+        print(">>> Encerrando notas ativas...")
+        for key in PIANO_KEYS:
+            if key["is_active"]:
+                try:
+                    fs.noteoff(0, key["note"])
+                except:
+                    pass
+                key["is_active"] = False
+
+        # Limpeza normal
         cap.release()
         cv2.destroyAllWindows()
         # Envia sinal para matar a thread de áudio desta sessão

@@ -1,7 +1,7 @@
 import customtkinter as ctk
 from importlib import import_module
 import sys
-import settings  # Importa configurações
+import config.settings as settings  
 
 # Configuração inicial do tema
 ctk.set_appearance_mode("Dark")
@@ -206,7 +206,7 @@ def show_menu_and_start():
         print(f"\n>>> Iniciando Piano: {chosen} | Sustain: {sustain_val}s <<<\n")
 
         try:
-            keyboard = import_module("keyboard")
+            keyboard = import_module("instruments.keyboard")
             keyboard.start_piano(chosen, sustain_val)
             print(">>> Retornando ao Menu Principal...")
         except Exception as e:
