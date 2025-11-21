@@ -49,9 +49,9 @@ DRUM_KIT = [
     {"id": 3, "pos": (0.62, 0.60), "axes": (0.09, 0.06), "note": 45, "name": "LO-TOM", "shape": "ellipse"},
     
     # --- LINHA INFERIOR (TAMBORES PRINCIPAIS) ---
-    {"id": 4, "pos": (0.20, 0.80), "axes": (0.11, 0.09), "note": 42, "name": "HI-HAT", "shape": "ellipse"},
+    {"id": 4, "pos": (0.20, 0.85), "axes": (0.11, 0.09), "note": 42, "name": "HI-HAT", "shape": "ellipse"},
     {"id": 5, "pos": (0.50, 0.80), "axes": (0.13, 0.10), "note": 38, "name": "SNARE",  "shape": "ellipse"},
-    {"id": 6, "pos": (0.80, 0.80), "axes": (0.11, 0.09), "note": 41, "name": "FLOOR",  "shape": "ellipse"},
+    {"id": 6, "pos": (0.80, 0.85), "axes": (0.11, 0.09), "note": 41, "name": "FLOOR",  "shape": "ellipse"},
     
     # --- BUMBO (KICK) ---
     {"id": 7, "pos": (0.50, 0.96), "axes": (0.15, 0.03), "note": 36, "name": "KICK",   "shape": "rect"},
@@ -67,6 +67,7 @@ for drum in DRUM_KIT:
 audio_queue = queue.Queue()
 fs = None
 drum_sfid = -1 
+POLYPHONY_CHANNELS = 16 # Canais para rodízio (evita corte de som)
 
 FIXED_SF2_PATH = r"sounds\drums\Drums.sf2"
 
@@ -85,7 +86,9 @@ try:
         drum_sfid = fs.sfload(abs_path)
         if drum_sfid != -1:
             print(f"Sucesso! ID do SF2: {drum_sfid}")
-            fs.program_select(0, drum_sfid, 128, 0)
+            # Inicializa o preset em todos os canais de polifonia
+            for i in range(POLYPHONY_CHANNELS):
+                fs.program_select(i, drum_sfid, 128, 0)
         else:
             print(f"ERRO CRÍTICO: Falha ao carregar o arquivo {abs_path}")
     else:
@@ -99,14 +102,21 @@ def select_kit_by_name(name):
     if name not in settings.INSTRUMENTS: return False
     _, bank, preset = settings.INSTRUMENTS[name]
     print(f">>> SELECIONANDO KIT: {name} | B: {bank} P: {preset}")
-    fs.program_select(0, drum_sfid, bank, preset)
+    
+    # Aplica o kit em todos os canais para manter consistência no rodízio
+    for i in range(POLYPHONY_CHANNELS):
+        fs.program_select(i, drum_sfid, bank, preset)
     return True
 
 def audio_thread_target():
+    channel = 0
     while True:
         note = audio_queue.get()
         if note is None: break
-        fs.noteon(0, note, 127)
+        
+        # Toca a nota no canal atual e avança para o próximo
+        fs.noteon(channel, note, 127)
+        channel = (channel + 1) % POLYPHONY_CHANNELS
 
 # REMOVIDO: A inicialização global da thread foi removida daqui.
 # audio_t = threading.Thread(target=audio_thread_target, daemon=True)
@@ -241,7 +251,7 @@ def draw_drums(frame, w, h):
 # ------------------------
 # LOOP PRINCIPAL
 # ------------------------
-def start_drums(chosen_instrument=None, user_sustain=None, user_lift=None, user_tolerance=None):
+def start_drums(chosen_instrument=None, user_tolerance=None):
     print(">>> INICIANDO BATERIA (Ponta do Dedão)")
     
     if user_tolerance:
