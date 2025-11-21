@@ -28,7 +28,7 @@ COLOR_KEY_DIVIDER = (100, 100, 100)
 COLOR_HIT = (0, 255, 255)          
 COLOR_ARMED = (0, 165, 255)        
 COLOR_HOLD = (0, 200, 0)           
-
+SUSTAIN_DECAY = 0.8
 # ------------------------
 # GERAR TECLAS
 # ------------------------
@@ -40,7 +40,7 @@ for i in range(NUM_KEYS):
     octave = i // 7
     note_idx = i % 7
     note_val = BASE_NOTE + (octave * 12) + SCALE_INTERVALS[note_idx]
-    PIANO_KEYS.append({"note": note_val, "last_hit": 0, "is_active": False})
+    PIANO_KEYS.append({"note": note_val, "last_hit": 0, "is_active": False, "off_timer": 0})
 
 try:
     fs = fluidsynth.Synth()
@@ -48,28 +48,6 @@ try:
     sfid = fs.sfload(r"sounds\universal\module_master.sf2")
 except Exception as e:
     print(f"ERRO AUDIO: {e}")
-
-# Dicionário de instrumentos do seu SF2 (exemplo parcial)
-instruments = {
-    "SynthPiano": (0, 6),
-    "Square": (0, 106),
-    "Crystal": (1, 41),
-    "EP1": (0, 4),
-    "WarmPad": (1, 6),
-    "Oohs2": (0, 87)
-    # adicione outros nomes conforme lista do seu SF2
-}
-
-def select_instrument_by_name(name, channel=0):
-    """
-    Seleciona o instrumento pelo nome, usando o banco e programa do dicionário
-    """
-    if name not in instruments:
-        print(f"Instrumento '{name}' não encontrado. Usando padrão (0,0).")
-        bank, preset = 0, 0
-    else:
-        bank, preset = instruments[name]
-    fs.program_select(channel, sfid, bank, preset)
 
 # ------------------------
 audio_queue = queue.Queue()
@@ -88,9 +66,31 @@ def audio_thread():
 
 threading.Thread(target=audio_thread, daemon=True).start()
 
+    # Dicionário de instrumentos do seu SF2 (exemplo parcial)
+instruments = {
+    "SynthPiano": (0, 6),
+    "Honky-Tonk": (0, 2),
+    "Square": (0, 106),
+    "Crystal": (1, 41),
+    "EP1": (0, 4),
+    "WarmPad": (1, 6),
+    "Oohs2": (0, 87)
+}
+
+def select_instrument_by_name(name, channel=0):
+    """
+    Seleciona o instrumento pelo nome, usando o banco e programa do dicionário
+    """
+    if name not in instruments:
+        print(f"Instrumento '{name}' não encontrado. Usando padrão (0,0).")
+        bank, preset = 0, 0
+    else:
+        bank, preset = instruments[name]
+    fs.program_select(channel, sfid, bank, preset)
+
 # ------------------------
 # Exemplo de uso:
-select_instrument_by_name("Oohs2")
+select_instrument_by_name("Honky-Tonk")
 
 # ------------------------
 # ESTADO GLOBAL
@@ -123,6 +123,7 @@ def check_active_keys_integrity():
     Verifica se há teclas ativas que NÃO possuem nenhum dedo no estado TOUCHING reivindicando elas.
     Se houver, desliga o som imediatamente.
     """
+    current_time = time.time()
     # 1. Coletar todas as notas que os dedos juram que estão tocando agora
     notes_currently_touched = set()
 
@@ -138,12 +139,22 @@ def check_active_keys_integrity():
     # 2. Comparar com as teclas físicas do piano
     for key in PIANO_KEYS:
         if key["is_active"]:
-            # Se a tecla está ligada, MAS a nota dela não está na lista de notas tocadas...
-            if key["note"] not in notes_currently_touched:
-                # ...significa que é uma nota fantasma. Matar.
-                audio_queue.put(("off", key["note"]))
-                key["is_active"] = False
-                # print(f"Integridade: Nota {key['note']} limpa forçadamente.")
+            # CASO A: O dedo ainda está na tecla (ou voltou rápido)
+            if key["note"] in notes_currently_touched:
+                key["off_timer"] = 0  # Reseta o timer, a tecla está viva
+            
+            # CASO B: O dedo saiu (ou a câmera perdeu o dedo)
+            else:
+                # Se é a primeira vez que notamos que o dedo sumiu, inicia o timer
+                if key["off_timer"] == 0:
+                    key["off_timer"] = current_time
+                
+                # Se já passou o tempo de tolerância (Sustain), desliga
+                elif (current_time - key["off_timer"]) > SUSTAIN_DECAY:
+                    audio_queue.put(("off", key["note"]))
+                    key["is_active"] = False
+                    key["off_timer"] = 0 # Reseta para o futuro
+                    # O noteoff do FluidSynth já faz um fade-out natural do instrumento
 
 def processar_dedo(label, fid, y_current, x_current, table_y, cx, cy, frame, h_frame):
     state = hands_state[label]
@@ -278,15 +289,25 @@ def draw_ui_fast(frame, table_y, w, h):
     table_px = int(table_y * h)
     key_width = w / NUM_KEYS
     
+    # Cria uma cópia para fazer o efeito transparente (overlay)
+    overlay = frame.copy()
+    
+    # Desenha a linha da mesa (sólida)
     cv2.line(frame, (0, table_px), (w, table_px), COLOR_TABLE_LINE, 2)
     
     for i, key in enumerate(PIANO_KEYS):
         x1 = int(i * key_width)
         cv2.line(frame, (x1, table_px), (x1, h), COLOR_KEY_DIVIDER, 1)
         
+        # Se a tecla estiver ativa, desenha no OVERLAY, não no frame direto
         if key["is_active"] or (time.time() - key["last_hit"]) < 0.15:
             x2 = int((i + 1) * key_width)
-            cv2.rectangle(frame, (x1, table_px), (x2, h), COLOR_HIT, -1)
+            # Desenha retângulo no overlay
+            cv2.rectangle(overlay, (x1, table_px), (x2, h), COLOR_HIT, -1)
+            
+    # Mistura o overlay com o frame original
+    # 0.7 = 70% imagem original, 0.3 = 30% do retângulo amarelo
+    cv2.addWeighted(overlay, 0.3, frame, 0.7, 0, frame)
 
 # ------------------------
 # MAIN LOOP
