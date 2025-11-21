@@ -27,3 +27,4 @@ INSTRUMENTS = {
     "TronViolin":  ("retro", 0, 40)
 }
 
+SUSTAIN_DECAY = 0.8
