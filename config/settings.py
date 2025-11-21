@@ -5,19 +5,31 @@ SF2_PATHS = {
 
 INSTRUMENTS = {
     # Sound name - file path, banco, preset
+    "Piano 1":     ("master", 0, 0),
+    "Piano 2":     ("master", 0, 1),
+    "Accordion":     ("master", 0, 7),
     "Square":     ("master", 0, 106),
     "Crystal":    ("master", 1, 41),
     "Atmosphere":    ("master", 1, 49),
     "EP1":        ("master", 0, 4),
-    "WarmPad":    ("master", 1, 6),
+    "Warm Pad":    ("master", 1, 6),
     "Rain":    ("master", 1, 29),
-    "LiteOrgan":    ("master", 0, 12),
-    "Oohs2":      ("master", 0, 87),
-    "FluteBell":      ("master", 0, 97),
+    "Lite Organ":    ("master", 0, 12),
+    "Oohs":      ("master", 0, 87),
+    "Flute Bell":      ("master", 0, 97),
 
-    "Perfect Drums 1":  ("drums", 128, 0),
-    "Perfect Drums 2":  ("drums", 128, 1),
-    "Perfect Drums 3":  ("drums", 128, 2),
+    "Drum 1":  ("drums", 128, 0),
+    "Drum 2":  ("drums", 128, 1),
+    "Drum 3":  ("drums", 128, 2),
+    "Drum 4":  ("drums", 128, 3),
+    "Drum 5":  ("drums", 128, 4),
+    "Drum 6":  ("drums", 128, 5),
+    "Drum 7":  ("drums", 128, 6),
+    "Drum 8":  ("drums", 128, 7),
+    "Drum 9":  ("drums", 128, 8),
+    "Drum 10":  ("drums", 128, 9),
+    "Drum 11":  ("drums", 128, 10),
+    "Drum 12":  ("drums", 128, 11),
 }
 
 SUSTAIN_DECAY = 0.8
