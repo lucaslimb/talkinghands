@@ -12,20 +12,20 @@ class InstrumentSelector(ctk.CTk):
         super().__init__()
         
         # --- ORGANIZAÇÃO DO CATÁLOGO ---
-        self.catalog = {"Keyboard": [], "Drums": []}
+        self.catalog = {"Teclado": [], "Bateria": []}
         
         # Separa os instrumentos com base na configuração do settings.py
         for name, data in settings.INSTRUMENTS.items():
             sf_key = data[0] 
             if sf_key == "drums":
-                self.catalog["Drums"].append(name)
+                self.catalog["Bateria"].append(name)
             else:
-                self.catalog["Keyboard"].append(name)
+                self.catalog["Teclado"].append(name)
         
         # Define tipo inicial
-        self.current_type = "Keyboard"
-        if not self.catalog["Keyboard"] and self.catalog["Drums"]:
-            self.current_type = "Drums"
+        self.current_type = "Teclado"
+        if not self.catalog["Teclado"] and self.catalog["Bateria"]:
+            self.current_type = "Bateria"
             
         self.instruments = self.catalog[self.current_type]
         self.current_index = 0
@@ -34,9 +34,20 @@ class InstrumentSelector(ctk.CTk):
         
         self._load_defaults_from_settings()
 
+        def_mid = getattr(settings, 'RECORD_SAVE_MID', True)
+        def_mp3 = getattr(settings, 'RECORD_SAVE_MP3', False)
+        def_wav = getattr(settings, 'RECORD_SAVE_WAV', False)
+        def_pb_folder = getattr(settings, 'RECORD_SEPARATE_PLAYBACK_FOLDER', False)
+
+        # Inicializa as variáveis da GUI com os valores do settings
+        self.var_mid = ctk.BooleanVar(value=def_mid)
+        self.var_mp3 = ctk.BooleanVar(value=def_mp3)
+        self.var_wav = ctk.BooleanVar(value=def_wav)
+        self.var_separate_pb = ctk.BooleanVar(value=def_pb_folder)
+
         self.is_advanced_open = False
 
-        self.base_height = 300
+        self.base_height = 500
         self.expanded_height = 700
 
         
@@ -57,7 +68,7 @@ class InstrumentSelector(ctk.CTk):
         # --- SELETOR DE TIPO ---
         self.seg_type = ctk.CTkSegmentedButton(
             self.main_frame,
-            values=["Keyboard", "Drums"],
+            values=["Teclado", "Bateria"],
             command=self.change_instrument_type,
             font=("Segoe UI", 14, "bold"),
             height=35
@@ -98,6 +109,31 @@ class InstrumentSelector(ctk.CTk):
         )
         self.btn_next.grid(row=2, column=2, padx=(20, 0))
 
+        # --- OPÇÕES DE GRAVAÇÃO (NOVO) ---
+        self.frm_rec = ctk.CTkFrame(self.main_frame, fg_color="transparent")
+        self.frm_rec.grid(row=3, column=0, columnspan=3, sticky="ew", pady=(10, 10))
+        
+        # Label
+        ctk.CTkLabel(self.frm_rec, text="Gravação e arquivos:", font=("Segoe UI", 12, "bold"), text_color="#888888").pack(anchor="center")
+        
+        # Checkboxes Container
+        self.frm_checks = ctk.CTkFrame(self.frm_rec, fg_color="transparent")
+        self.frm_checks.pack(pady=5)
+        
+        self.chk_mid = ctk.CTkCheckBox(self.frm_checks, text=".MID", variable=self.var_mid, font=("Segoe UI", 12), width=60, fg_color="#00b050", hover_color="#009040")
+        self.chk_mid.pack(side="left", padx=10)
+        
+        self.chk_mp3 = ctk.CTkCheckBox(self.frm_checks, text=".MP3", variable=self.var_mp3, font=("Segoe UI", 12), width=60, fg_color="#00b050", hover_color="#009040")
+        self.chk_mp3.pack(side="left", padx=10)
+        
+        self.chk_wav = ctk.CTkCheckBox(self.frm_checks, text=".WAV", variable=self.var_wav, font=("Segoe UI", 12), width=60, fg_color="#00b050", hover_color="#009040")
+        self.chk_wav.pack(side="left", padx=10)
+        
+        # Opção Folder Separada
+        self.chk_folder = ctk.CTkSwitch(self.frm_rec, text="Manter separação de pastas para playbacks e gravações", variable=self.var_separate_pb, font=("Segoe UI", 11), progress_color="#00b050")
+        self.chk_folder.pack(pady=5)
+
+
         # --- Botão Toggle Avançado ---
         self.btn_advanced = ctk.CTkButton(
             self.main_frame, text="Configurações Avançadas ▼", font=("Consolas", 12),
@@ -105,14 +141,14 @@ class InstrumentSelector(ctk.CTk):
             text_color="#888888", hover_color="#333333", height=28, width=160,
             command=self.toggle_advanced
         )
-        self.btn_advanced.grid(row=3, column=0, columnspan=3, sticky="n", pady=(30, 10))
+        self.btn_advanced.grid(row=3, column=0, columnspan=3, sticky="n", pady=(150, 10))
 
         # --- Painel Avançado ---
         self.advanced_frame = ctk.CTkScrollableFrame(
             self.main_frame, 
             fg_color="#1a1a1a", 
             corner_radius=10,
-            height=250
+            height=250,
         )
 
         # Bindings
@@ -151,13 +187,13 @@ class InstrumentSelector(ctk.CTk):
     def toggle_advanced(self):
         if self.is_advanced_open:
             self.advanced_frame.grid_forget()
-            self.btn_advanced.configure(text="Configurações Avançadas ▼")
+            self.btn_advanced.configure(text="=Avançado ▼")
             self.geometry(f"600x{self.base_height}")
             self.is_advanced_open = False
         else:
             self._rebuild_advanced_panel()
             self.advanced_frame.grid(row=4, column=0, columnspan=3, sticky="ew", pady=0)
-            self.btn_advanced.configure(text="Ocultar Opções ▲")
+            self.btn_advanced.configure(text="Ocultar ▲")
             self.geometry(f"600x{self.expanded_height}")
             self.is_advanced_open = True
 
@@ -168,14 +204,14 @@ class InstrumentSelector(ctk.CTk):
     def _rebuild_advanced_panel(self):
         self._clear_frame(self.advanced_frame)
         
-        if self.current_type == "Keyboard":
+        if self.current_type == "Teclado":
             self._build_keyboard_options()
         else:
             self._build_drums_options()
             
         ctk.CTkFrame(self.advanced_frame, height=1, fg_color="#333333").pack(fill="x", padx=40, pady=(15, 5))
         self.btn_reset = ctk.CTkButton(
-            self.advanced_frame, text="Restaurar Padrões", font=("Segoe UI", 11),
+            self.advanced_frame, text="Restaurar", font=("Segoe UI", 11),
             fg_color="transparent", border_width=1, border_color="#555555", 
             hover_color="#333333", text_color="#888888", 
             height=24, width=120,
@@ -189,7 +225,7 @@ class InstrumentSelector(ctk.CTk):
         frm_audio.pack(fill="x", padx=10, pady=5)
         
         ctk.CTkLabel(frm_audio, 
-                     text="MOTOR DE ÁUDIO", 
+                     text="ÁUDIO", 
                      font=("Segoe UI", 12, "bold"), 
                      text_color="#00b050", 
                      anchor="center").pack(fill="x")
@@ -206,7 +242,7 @@ class InstrumentSelector(ctk.CTk):
         frm_input = ctk.CTkFrame(self.advanced_frame, fg_color="transparent")
         frm_input.pack(fill="x", padx=10, pady=5)
 
-        ctk.CTkLabel(frm_input, text="CALIBRAÇÃO DE TOQUE", font=("Segoe UI", 12, "bold"), text_color="#00b050", anchor="center").pack(fill="x")
+        ctk.CTkLabel(frm_input, text="PRECISÃO", font=("Segoe UI", 12, "bold"), text_color="#00b050", anchor="center").pack(fill="x")
         
         ctk.CTkLabel(frm_input,  text="Sensibilidade da Mesa (Touch Tolerance). Quanto maior o valor, mais sensível fica a linha do teclado ao considerar um toque.", 
                      font=("Segoe UI", 11), 
@@ -226,7 +262,7 @@ class InstrumentSelector(ctk.CTk):
         frm_drum = ctk.CTkFrame(self.advanced_frame, fg_color="transparent")
         frm_drum.pack(fill="x", padx=10, pady=10)
         
-        ctk.CTkLabel(frm_drum, text="PRECISÃO DA BATERIA",  font=("Segoe UI", 12, "bold"), text_color="#00b050", anchor="center").pack(fill="x")
+        ctk.CTkLabel(frm_drum, text="PRECISÃO",  font=("Segoe UI", 12, "bold"), text_color="#00b050", anchor="center").pack(fill="x")
         
         ctk.CTkLabel(frm_drum, 
                       text="Tamanho da Área de Toque (Touch Tolerance). Quanto maior a porcentagem, maior será a área de contato com os tambores, pratos, bumbo.", 
@@ -295,14 +331,22 @@ def show_menu_and_start():
             print("Aplicação encerrada.")
             sys.exit()
 
+        rec_opts = {
+            "save_mid": app.var_mid.get(),
+            "save_mp3": app.var_mp3.get(),
+            "save_wav": app.var_wav.get(),
+            "separate_playback": app.var_separate_pb.get()
+        }
+
         print(f"\n>>> INICIANDO {instr_type.upper()}: {chosen}")
         
         try:
-            if instr_type == "Drums":
+            if instr_type == "Bateria":
                 drums = import_module("instruments.drums")
                 drums.start_drums(
                     chosen_instrument=chosen,
-                    user_tolerance=app.custom_tolerance
+                    user_tolerance=app.custom_tolerance,
+                    rec_options=rec_opts
                 )
             else:
                 keyboard = import_module("instruments.keyboard")
@@ -310,7 +354,8 @@ def show_menu_and_start():
                     chosen_instrument=chosen, 
                     user_sustain=app.custom_sustain,
                     lift_threshold=app.custom_lift,
-                    touch_tolerance=app.custom_tolerance
+                    touch_tolerance=app.custom_tolerance,
+                    rec_options=rec_opts
                 )
             print(">>> Retornando ao Menu...")
             

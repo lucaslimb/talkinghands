@@ -7,6 +7,7 @@ import time
 import numpy as np
 
 import config.settings as settings
+from instruments.recorder import MidiRecorder
 
 # ------------------------
 # CONFIGURAÇÕES
@@ -23,6 +24,7 @@ MAX_MISSING_TIME = 0.1
 
 NUM_KEYS = 30
 ACTIVE_FINGERS = [4, 8, 12, 16, 20]
+show_menu = True
 
 # Cores
 COLOR_TABLE_LINE = (0, 255, 0)
@@ -38,6 +40,7 @@ COLOR_HOLD = (0, 200, 0)
 # Mantemos o Synth global para não recarregar SF2s pesados a cada reinício
 audio_queue = queue.Queue()
 loaded_sfids = {}
+recorder = MidiRecorder()
 
 try:
     fs = fluidsynth.Synth()
@@ -63,12 +66,17 @@ def select_instrument_by_name(name, channel=0):
 
     sf_nickname, bank, preset = settings.INSTRUMENTS[name]
     target_sfid = loaded_sfids.get(sf_nickname)
-    if target_sfid is None:
-        print(f"ERRO: O arquivo '{sf_nickname}' para este som não foi carregado corretamente.")
-        return
-
-    print(f">>> SOM: {name} | ARQUIVO: {sf_nickname} | ID: {target_sfid} | B: {bank} P: {preset}")
-    fs.program_select(channel, target_sfid, bank, preset)
+    if target_sfid is not None:
+        print(f">>> SOM: {name} (B:{bank} P:{preset})")
+        fs.program_select(channel, target_sfid, bank, preset)
+        
+        # Pega o caminho real do arquivo SF2 para o gravador
+        sf_path = settings.SF2_PATHS.get(sf_nickname)
+            
+        # Configura o gravador
+        recorder.set_instrument(sf_path, bank, preset, is_drum=False)
+        return True
+    return False
 
 # ------------------------
 # Thread de áudio (Lógica)
@@ -83,8 +91,10 @@ def audio_thread_target():
         try:
             if action == "on":
                 fs.noteon(0, note, 127)
+                recorder.record_note_on(note) 
             elif action == "off":
                 fs.noteoff(0, note)
+                recorder.record_note_off(note)
         except Exception:
             pass
 
@@ -257,10 +267,42 @@ def draw_ui_fast(frame, table_y, w, h):
             cv2.rectangle(overlay, (x1, table_px), (x2, h), COLOR_HIT, -1)
     cv2.addWeighted(overlay, 0.3, frame, 0.7, 0, frame)
 
+    # -------------------------
+    # REC no canto superior direito
+    # -------------------------
+    if recorder.is_recording:
+        cv2.circle(frame, (w - 90, 30), 10, (0, 0, 255), -1)
+        cv2.putText(frame, "REC", (w - 75, 40),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2)
+        
+    if recorder.is_playing:
+        cv2.putText(frame, "PLAYBACK", (w - 200, 50),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2)
+
+    # -------------------------
+    # MENU DE INSTRUÇÕES (canto superior esquerdo)
+    # respeita a flag show_menu
+    # -------------------------
+    if show_menu:
+        instructions = [
+            "ESC  -> sair",
+            "ESPACO -> calibrar",
+            "1 -> iniciar gravacao",
+            "2 -> encerrar gravacao",
+            "3 -> iniciar playback",
+            "4 -> interromper playback",
+            "0 -> ocultar/mostrar menu"
+        ]
+
+        y0 = 30
+        for i, txt in enumerate(instructions):
+            cv2.putText(frame, txt, (20, y0 + i * 25),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+
 # ------------------------
 # FUNÇÃO PÚBLICA (START)
 # ------------------------
-def start_piano(chosen_instrument, user_sustain=None, lift_threshold=None, touch_tolerance=None):
+def start_piano(chosen_instrument, user_sustain=None, lift_threshold=None, touch_tolerance=None, rec_options=None):
     """
     Inicializa o loop do piano. Ao sair (ESC), limpa recursos e retorna ao caller.
     """
@@ -279,6 +321,11 @@ def start_piano(chosen_instrument, user_sustain=None, lift_threshold=None, touch
         global TOUCH_TOLERANCE
         TOUCH_TOLERANCE = touch_tolerance
         print(f">>> Tolerância de Toque configurada: {TOUCH_TOLERANCE}")
+
+    global show_menu
+
+    if rec_options:
+        recorder.set_options(rec_options)
 
     # 2. Seleciona Som
     select_instrument_by_name(chosen_instrument)
@@ -342,10 +389,6 @@ def start_piano(chosen_instrument, user_sustain=None, lift_threshold=None, touch
                 for idx, lm in enumerate(results.multi_hand_landmarks):
                     lbl = results.multi_handedness[idx].classification[0].label
 
-                    if not global_state["calibrated"]:
-                        cv2.putText(frame, "[ESPACO] CALIBRAR", (10, 30),
-                                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,0,255), 2)
-
                     for fid in ACTIVE_FINGERS:
                         finger = lm.landmark[fid]
                         cx, cy = int(finger.x * w), int(finger.y * h)
@@ -363,8 +406,20 @@ def start_piano(chosen_instrument, user_sustain=None, lift_threshold=None, touch
                 is_calibrating = True
                 calib_start_time = time.time()
                 reset_hands_state()
-            
-            if k == 27: # ESC
+            elif k == 49: # Tecla '1'
+                recorder.start()
+            elif k == 50: # Tecla '2'
+                timestamp = int(time.time())
+                filename = f"keyboard_{chosen_instrument.replace(' ', '_')}_{timestamp}.mid"
+                recorder.stop(filename)
+            elif k == 51: # Tecla 3 - PLAYBACK
+                recorder.toggle_playback(fs)
+            elif k == 52: # 4
+                recorder.stop_playback()
+            elif k == 48:
+                show_menu = not show_menu
+            elif k == 27: # ESC
+                recorder.stop_playback()
                 break # Sai do loop, caindo no finally
     finally:
         # --- CORREÇÃO DE BUG DE ÁUDIO INFINITO ---

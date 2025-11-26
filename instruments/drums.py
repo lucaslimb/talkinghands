@@ -7,7 +7,7 @@ import time
 import numpy as np
 import sys
 import os
-# Math removido pois is_fist foi removido
+from instruments.recorder import MidiRecorder
 
 # --- SETUP DE CAMINHOS ---
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -35,6 +35,8 @@ COLOR_HIT_FILL = (0, 0, 255)   # Vermelho preenchido
 COLOR_READY = (0, 255, 255)    # Amarelo (Pronto para bater)
 COLOR_IDLE = (100, 100, 100)   # Cinza
 COLOR_TEXT = (255, 255, 255)
+
+show_menu = True
 
 # ------------------------
 # MAPEAMENTO DA BATERIA
@@ -67,7 +69,8 @@ for drum in DRUM_KIT:
 audio_queue = queue.Queue()
 fs = None
 drum_sfid = -1 
-POLYPHONY_CHANNELS = 16 # Canais para rodízio (evita corte de som)
+POLYPHONY_CHANNELS = 16
+recorder = MidiRecorder()
 
 FIXED_SF2_PATH = r"sounds\drums\Drums.sf2"
 
@@ -106,6 +109,9 @@ def select_kit_by_name(name):
     # Aplica o kit em todos os canais para manter consistência no rodízio
     for i in range(POLYPHONY_CHANNELS):
         fs.program_select(i, drum_sfid, bank, preset)
+    abs_sf2_path = os.path.join(root_dir, FIXED_SF2_PATH) if not os.path.isabs(FIXED_SF2_PATH) else FIXED_SF2_PATH
+    recorder.set_instrument(abs_sf2_path, bank, preset, is_drum=True)
+
     return True
 
 def audio_thread_target():
@@ -116,6 +122,7 @@ def audio_thread_target():
         
         # Toca a nota no canal atual e avança para o próximo
         fs.noteon(channel, note, 127)
+        recorder.record_note_on(note)
         channel = (channel + 1) % POLYPHONY_CHANNELS
 
 # REMOVIDO: A inicialização global da thread foi removida daqui.
@@ -238,20 +245,46 @@ def draw_drums(frame, w, h):
             cv2.rectangle(overlay, pt1, pt2, color, fill)
         else:
             cv2.ellipse(overlay, (cx_px, cy_px), (ax_px, ay_px), 0, 0, 360, color, fill)
-        
-        text_size = cv2.getTextSize(drum["name"], cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)[0]
-        text_x = cx_px - text_size[0] // 2
-        text_y = cy_px + text_size[1] // 2
-        
-        txt_col = COLOR_TEXT
-        cv2.putText(overlay, drum["name"], (text_x, text_y), cv2.FONT_HERSHEY_SIMPLEX, 0.5, txt_col, 1)
 
     cv2.addWeighted(overlay, 0.6, frame, 0.4, 0, frame)
+
+    # -------------------------
+    # REC no canto superior direito
+    # -------------------------
+    if recorder.is_recording:
+        cv2.circle(frame, (w - 90, 30), 10, (0, 0, 255), -1)
+        cv2.putText(frame, "REC", (w - 75, 40),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2)
+        
+    if recorder.is_playing:
+        cv2.putText(frame, "PLAYBACK", (w - 200, 50),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2)
+
+    # -------------------------
+    # MENU DE INSTRUÇÕES (canto superior esquerdo)
+    # respeita a flag show_menu
+    # -------------------------
+    if show_menu:
+        instructions = [
+            "ESC  -> sair",
+            "ESPACO -> calibrar",
+            "1 -> iniciar gravacao",
+            "2 -> encerrar gravacao",
+            "3 -> iniciar playback",
+            "4 -> interromper playback",
+            "0 -> ocultar/mostrar menu"
+        ]
+
+        y0 = 30
+        for i, txt in enumerate(instructions):
+            cv2.putText(frame, txt, (20, y0 + i * 25),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+
 
 # ------------------------
 # LOOP PRINCIPAL
 # ------------------------
-def start_drums(chosen_instrument=None, user_tolerance=None):
+def start_drums(chosen_instrument=None, user_tolerance=None, rec_options=None):
     print(">>> INICIANDO BATERIA (Ponta do Dedão)")
     
     if user_tolerance:
@@ -263,6 +296,11 @@ def start_drums(chosen_instrument=None, user_tolerance=None):
         if not success: print("Usando kit padrão.")
     else:
         print("Usando kit padrão.")
+
+    global show_menu
+
+    if rec_options:
+        recorder.set_options(rec_options)
 
     # --- CORREÇÃO: INICIAR THREAD AQUI ---
     # Inicia a thread de áudio para esta sessão específica
@@ -306,12 +344,26 @@ def start_drums(chosen_instrument=None, user_tolerance=None):
             cv2.imshow("Virtual Drums", frame)
             
             k = cv2.waitKey(1)
-            if k == 27: break
+            if k == 27:
+                recorder.stop_playback()
+                break
             if k == 32: 
                 kick_drum = next((d for d in DRUM_KIT if d["name"] == "KICK"), None)
                 if kick_drum:
                     audio_queue.put(kick_drum["note"]) 
                     kick_drum["last_hit"] = time.time()
+            elif k == 49: # Tecla 1
+                recorder.start()
+            elif k == 50: # Tecla 2
+                ts = int(time.time())
+                clean_name = chosen_instrument.replace(' ', '_') if chosen_instrument else "Drums"
+                recorder.stop(f"drums_{clean_name}_{ts}.mid")
+            elif k == 51: # Tecla 3 - PLAYBACK
+                recorder.toggle_playback(fs)
+            elif k == 52: # 4
+                recorder.stop_playback()
+            elif k == 48: # Tecla 0
+                show_menu = not show_menu
                 
     except Exception as e:
         print(f"Erro Runtime: {e}")
