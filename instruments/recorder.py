@@ -2,12 +2,10 @@ import time
 import struct
 import os
 import wave
-import array
 import shutil
 import subprocess
 import fluidsynth
 import threading
-import math 
 
 class MidiRecorder:
     def __init__(self):
@@ -25,10 +23,6 @@ class MidiRecorder:
         self.playback_thread = None
         self.cached_fs = None 
         
-        # Controle de Overdub
-        self.overdub_active = False
-        self.loop_duration = 0.0
-        
         self.options = {
             "save_mid": True, "save_mp3": False, "save_wav": False, "separate_playback": False
         }
@@ -44,60 +38,29 @@ class MidiRecorder:
         self.channel = 9 if is_drum else 0
 
     def start(self):
-        # Para qualquer playback ativo com segurança antes de gravar
-        self.stop_playback()
-            
+        # CORREÇÃO CRÍTICA: Não paramos o playback!
+        # Se já estiver tocando (Loop no CV2), continuamos tocando e gravamos por cima.
+        
         self.is_recording = True
         self.start_time = time.time()
         self.events = [] 
-        self.overdub_active = False
         self.last_filename = None
         
-        if self.last_recording:
-            print(f">>> GRAVAÇÃO (OVERDUB EM LOOP) INICIADA...")
-            self.overdub_active = True
-            
-            if self.last_recording:
-                last_time = self.last_recording[-1]["time"]
-                self.loop_duration = last_time + 1.0
-            else:
-                self.loop_duration = 4.0 # Fallback se vazio
-            
-            if self.cached_fs:
-                self.is_playing = True
-                self.playback_thread = threading.Thread(target=self._playback_loop, args=(self.cached_fs, True))
-                self.playback_thread.daemon = True
-                self.playback_thread.start()
-        else:
-            print(">>> GRAVAÇÃO INICIADA (Nova)")
+        state_msg = " (Com Playback)" if self.is_playing else ""
+        print(f">>> GRAVAÇÃO INICIADA{state_msg}")
 
     def stop(self, filename="output.mid"):
         if not self.is_recording: return
         
-        session_duration = time.time() - self.start_time
         self.is_recording = False
+        duration = time.time() - self.start_time
+        print(f">>> GRAVAÇÃO FINALIZADA ({duration:.2f}s)")
         
-        # Para o playback de monitoramento
-        self.stop_playback()
-            
-        print(f">>> GRAVAÇÃO FINALIZADA ({session_duration:.2f}s)")
+        # Para o playback ao terminar de gravar (comportamento padrão de Stop)
+        if self.is_playing:
+            self.stop_playback()
         
-        # --- PROCESSAMENTO DE OVERDUB ---
-        if self.overdub_active and self.last_recording and self.loop_duration > 0:
-            loops_count = math.ceil(session_duration / self.loop_duration)
-            print(f">>> Mesclando {loops_count} loops da base.")
-            
-            base_events = []
-            for i in range(loops_count):
-                offset = i * self.loop_duration
-                for evt in self.last_recording:
-                    new_evt = evt.copy()
-                    new_evt["time"] += offset
-                    if new_evt["time"] <= session_duration:
-                        base_events.append(new_evt)
-            
-            self.events.extend(base_events)
-
+        # A lista self.events já contém TUDO (Ao vivo + Playback injetado)
         self.last_recording = list(self.events)
         self.last_recording.sort(key=lambda x: x["time"])
         self.last_filename = filename 
@@ -142,27 +105,21 @@ class MidiRecorder:
             self.start_playback(fs_instance)
 
     def stop_playback(self):
-        """Para o playback e silencia notas imediatamente"""
+        """Para o playback e envia Panic MIDI para cortar som"""
         if not self.is_playing: return
 
         self.is_playing = False
-        
-        # Aguarda thread encerrar (timeout curto para não travar UI)
         if self.playback_thread and self.playback_thread.is_alive():
             self.playback_thread.join(timeout=0.5)
-        
-        # --- PANIC: SILENCIAR SINTETIZADOR ---
-        # Envia comandos MIDI para cortar o som imediatamente
+            
+        # Envia All Notes Off para garantir silêncio imediato
         if self.cached_fs:
             try:
-                # CC 123: All Notes Off
-                self.cached_fs.cc(self.channel, 123, 0)
-                # CC 120: All Sound Off (Mais agressivo)
-                self.cached_fs.cc(self.channel, 120, 0)
-            except Exception:
-                pass
-                
-        print(">>> Playback parado e silenciado.")
+                self.cached_fs.cc(self.channel, 123, 0) # All Notes Off
+                self.cached_fs.cc(self.channel, 120, 0) # All Sound Off
+            except: pass
+            
+        print(">>> Playback parado.")
 
     def start_playback(self, fs_instance):
         if not self.last_recording:
@@ -194,8 +151,20 @@ class MidiRecorder:
                 now = time.time() - loop_start
                 while evt_idx < num_events and self.last_recording[evt_idx]["time"] <= now:
                     evt = self.last_recording[evt_idx]
-                    if evt["type"] == "on": fs.noteon(self.channel, evt["note"], evt["vel"])
-                    elif evt["type"] == "off": fs.noteoff(self.channel, evt["note"])
+                    
+                    # Toca a nota
+                    if evt["type"] == "on": 
+                        fs.noteon(self.channel, evt["note"], evt["vel"])
+                        # INJEÇÃO: Se estiver gravando, adiciona essa nota do playback à gravação atual
+                        if self.is_recording:
+                            self.record_note_on(evt["note"], evt["vel"])
+                            
+                    elif evt["type"] == "off": 
+                        fs.noteoff(self.channel, evt["note"])
+                        # INJEÇÃO: Grava o desligamento da nota também
+                        if self.is_recording:
+                            self.record_note_off(evt["note"])
+                            
                     evt_idx += 1
                 time.sleep(0.002)
             
@@ -203,11 +172,10 @@ class MidiRecorder:
                 self.is_playing = False
                 break
                 
-            # Espera até o fim do loop para reiniciar
             while self.is_playing and (time.time() - loop_start) < total_duration:
                 time.sleep(0.05)
         
-        # Garantia final de silêncio ao sair do loop natural
+        # Garante silêncio ao sair do loop natural
         if self.cached_fs:
             self.cached_fs.cc(self.channel, 123, 0)
 
