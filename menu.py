@@ -47,8 +47,8 @@ class InstrumentSelector(ctk.CTk):
 
         self.is_advanced_open = False
 
-        self.base_height = 500
-        self.expanded_height = 700
+        self.base_height = 375
+        self.expanded_height = 625
 
         
         self.title("Talking Hands Launcher")
@@ -77,12 +77,6 @@ class InstrumentSelector(ctk.CTk):
         self.seg_type.grid(row=0, column=0, columnspan=3, sticky="ew", pady=(0, 20), padx=80)
 
         # --- Título ---
-        self.lbl_title = ctk.CTkLabel(
-            self.main_frame,
-            text="Selecione o Preset",
-            font=("Roboto Medium", 20), text_color="#808080"
-        )
-        self.lbl_title.grid(row=1, column=0, columnspan=3, sticky="s", pady=(0, 20))
 
         # --- Botões de Controle ---
         arrow_font = ("Segoe UI", 32, "bold")
@@ -111,7 +105,7 @@ class InstrumentSelector(ctk.CTk):
 
         # --- OPÇÕES DE GRAVAÇÃO (NOVO) ---
         self.frm_rec = ctk.CTkFrame(self.main_frame, fg_color="transparent")
-        self.frm_rec.grid(row=3, column=0, columnspan=3, sticky="ew", pady=(10, 10))
+        self.frm_rec.grid(row=3, column=0, columnspan=3, sticky="ew")
         
         # Label
         ctk.CTkLabel(self.frm_rec, text="Gravação e arquivos:", font=("Segoe UI", 12, "bold"), text_color="#888888").pack(anchor="center")
@@ -136,7 +130,7 @@ class InstrumentSelector(ctk.CTk):
 
         # --- Botão Toggle Avançado ---
         self.btn_advanced = ctk.CTkButton(
-            self.main_frame, text="Configurações Avançadas ▼", font=("Consolas", 12),
+            self.main_frame, text="Avançado ▼", font=("Consolas", 12),
             fg_color="transparent", border_width=1, border_color="#444444",
             text_color="#888888", hover_color="#333333", height=28, width=160,
             command=self.toggle_advanced
@@ -187,7 +181,7 @@ class InstrumentSelector(ctk.CTk):
     def toggle_advanced(self):
         if self.is_advanced_open:
             self.advanced_frame.grid_forget()
-            self.btn_advanced.configure(text="=Avançado ▼")
+            self.btn_advanced.configure(text="Avançado ▼")
             self.geometry(f"600x{self.base_height}")
             self.is_advanced_open = False
         else:
@@ -230,7 +224,7 @@ class InstrumentSelector(ctk.CTk):
                      text_color="#00b050", 
                      anchor="center").pack(fill="x")
         ctk.CTkLabel(frm_audio, 
-                     text="Tempo de sustentação da nota após soltar a tecla (Sustain Decay). O tempo minimo varia de acordo com o Preset escolhido, portanto valores pequenos podem as vezes não ter efeito.", 
+                     text="Tempo de sustentação da nota após soltar a tecla (Sustain Decay). O tempo minimo e máximo varia de acordo com o Preset escolhido, portanto valores extremos podem as vezes não ter efeito.", 
                      font=("Segoe UI", 11), 
                      text_color="#aaaaaa", 
                      wraplength=500,

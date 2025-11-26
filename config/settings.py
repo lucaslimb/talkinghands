@@ -7,6 +7,7 @@ INSTRUMENTS = {
     # Sound name - file path, banco, preset
     "Piano 1":     ("master", 0, 0),
     "Piano 2":     ("master", 0, 1),
+    "Drawbar":     ("master", 0, 8),
     "Accordion":     ("master", 0, 7),
     "Glass Trem":     ("master", 0, 23),
     "Santur":     ("master", 0, 32),
@@ -18,11 +19,14 @@ INSTRUMENTS = {
     "Metallic Pad":    ("master", 1, 23),
     "Atmosphere":    ("master", 1, 49),
     "EP1":        ("master", 0, 4),
+    "Goblin":        ("master", 1, 61),
     "Warm Pad":    ("master", 1, 6),
     "Rain":    ("master", 1, 29),
     "Lite Organ":    ("master", 0, 12),
     "Oohs":      ("master", 0, 87),
     "Flute Bell":      ("master", 0, 97),
+    "Koto LA":      ("master", 1, 89),
+    "Harp & Vox":      ("master", 1, 75),
 
     "Drum 1":  ("drums", 128, 0),
     "Drum 2":  ("drums", 128, 1),
