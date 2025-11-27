@@ -9,7 +9,6 @@ import sys
 import os
 from instruments.recorder import MidiRecorder
 
-# --- SETUP DE CAMINHOS ---
 current_dir = os.path.dirname(os.path.abspath(__file__))
 root_dir = os.path.dirname(current_dir)
 if root_dir not in sys.path:
@@ -21,19 +20,15 @@ except ImportError:
     print("ERRO: Config não encontrada.")
     sys.exit()
 
-# ------------------------
-# CONFIGURAÇÕES & SENSIBILIDADE
-# ------------------------
 VELOCITY_THRESHOLD = 0.002 
-
+TOUCH_VELOCITY = getattr(settings, 'TOUCH_VELOCITY')
 TOUCH_TOLERANCE = getattr(settings, 'TOUCH_TOLERANCE', 0.01)
 ELLIPSE_THRESHOLD = 1.0 - TOUCH_TOLERANCE 
 
-# Cores (BGR)
 COLOR_RED = (0, 0, 255)
-COLOR_HIT_FILL = (0, 0, 255)   # Vermelho preenchido
-COLOR_READY = (0, 255, 255)    # Amarelo (Pronto para bater)
-COLOR_IDLE = (100, 100, 100)   # Cinza
+COLOR_HIT_FILL = (0, 0, 255)   
+COLOR_READY = (0, 255, 255)   
+COLOR_IDLE = (100, 100, 100)  
 COLOR_TEXT = (255, 255, 255)
 
 show_menu = True
@@ -117,20 +112,17 @@ def select_kit_by_name(name):
 def audio_thread_target():
     channel = 0
     while True:
-        note = audio_queue.get()
-        if note is None: break
-        
-        # Toca a nota no canal atual e avança para o próximo
-        fs.noteon(channel, note, 127)
-        recorder.record_note_on(note)
-        channel = (channel + 1) % POLYPHONY_CHANNELS
+        item = audio_queue.get()
+        if item is None:
+            break
 
-# REMOVIDO: A inicialização global da thread foi removida daqui.
-# audio_t = threading.Thread(target=audio_thread_target, daemon=True)
-# audio_t.start()
+        note, velocity = item
+        channel = np.random.randint(0, POLYPHONY_CHANNELS)
+        fs.noteon(channel, note, velocity)
+        recorder.record_note_on(note, velocity=velocity)
 
 # ------------------------
-# ESTADO DAS MÃOS
+# MÃOS
 # ------------------------
 hands_state = {
     "Left":  {"prev_y": 0.0, "can_hit": True},
@@ -138,7 +130,6 @@ hands_state = {
 }
 
 def reset_hands_state():
-    # Reseta o estado ao reiniciar para evitar bugs de movimento
     hands_state["Left"] = {"prev_y": 0.0, "can_hit": True}
     hands_state["Right"] = {"prev_y": 0.0, "can_hit": True}
 
@@ -164,27 +155,23 @@ def process_hand(label, landmarks, w, h, frame):
     prev_y = state["prev_y"]
     can_hit = state["can_hit"]
     
-    # Calcula velocidade vertical (dy > 0 descendo)
     dy = ref_y - prev_y
     
-    # Verifica Colisão usando a Ponta do Dedão
     hit_drum_id = None
     for drum in DRUM_KIT:
         if check_collision(ref_x, ref_y, drum):
             hit_drum_id = drum["id"]
             break
     
-    # --- LÓGICA DE RESET ---
     drum_center_y = 0
     if hit_drum_id is not None:
         target_drum = next((d for d in DRUM_KIT if d["id"] == hit_drum_id), None)
         if target_drum:
             drum_center_y = target_drum["pos"][1]
     
-    if hit_drum_id is None:
-        can_hit = True # Reseta se sair do tambor
+    if hit_drum_id is None or dy < -VELOCITY_THRESHOLD:
+        can_hit = True
     else:
-        # Reseta se subir acima da metade do tambor
         is_upper_half = ref_y < drum_center_y
         is_moving_up = dy < -VELOCITY_THRESHOLD
         if is_upper_half and is_moving_up:
@@ -194,32 +181,31 @@ def process_hand(label, landmarks, w, h, frame):
     cursor_pos = (int(ref_x * w), int(ref_y * h))
     radius = 10 
     
-    # Cor padrão
     cursor_color = COLOR_IDLE 
 
     if hit_drum_id is not None:
         is_moving_down = dy > VELOCITY_THRESHOLD
         
         if can_hit:
-            cursor_color = COLOR_READY # Amarelo (Pronto para bater)
+            cursor_color = COLOR_READY
             
         if can_hit and is_moving_down:
             target_drum = next((d for d in DRUM_KIT if d["id"] == hit_drum_id), None)
             if target_drum:
-                audio_queue.put(target_drum["note"])
+                velocity = int(min(max((dy - TOUCH_VELOCITY) * 8000, 30), 127))
+                audio_queue.put((target_drum["note"], velocity))
                 target_drum["last_hit"] = time.time()
                 
                 cv2.putText(frame, "HIT!", (cursor_pos[0], cursor_pos[1] - 35), 
                             cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
             
             can_hit = False 
-            cursor_color = (0, 255, 0) # Verde ao bater
+            cursor_color = (0, 255, 0)
             radius = 15
 
     state["prev_y"] = ref_y
     state["can_hit"] = can_hit
 
-    # Desenha Cursor (Ponta do Dedão)
     cv2.circle(frame, cursor_pos, radius, cursor_color, -1)
     cv2.circle(frame, cursor_pos, radius+2, (255,255,255), 2)
 
@@ -248,9 +234,6 @@ def draw_drums(frame, w, h):
 
     cv2.addWeighted(overlay, 0.6, frame, 0.4, 0, frame)
 
-    # -------------------------
-    # REC no canto superior direito
-    # -------------------------
     if recorder.is_recording:
         cv2.circle(frame, (w - 90, 30), 10, (0, 0, 255), -1)
         cv2.putText(frame, "REC", (w - 75, 40),
@@ -259,15 +242,10 @@ def draw_drums(frame, w, h):
     if recorder.is_playing:
         cv2.putText(frame, "PLAYBACK", (w - 200, 50),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2)
-
-    # -------------------------
-    # MENU DE INSTRUÇÕES (canto superior esquerdo)
-    # respeita a flag show_menu
-    # -------------------------
+        
     if show_menu:
         instructions = [
             "ESC  -> sair",
-            "ESPACO -> calibrar",
             "1 -> iniciar gravacao",
             "2 -> encerrar gravacao",
             "3 -> iniciar playback",
@@ -284,12 +262,18 @@ def draw_drums(frame, w, h):
 # ------------------------
 # LOOP PRINCIPAL
 # ------------------------
-def start_drums(chosen_instrument=None, user_tolerance=None, rec_options=None):
+def start_drums(chosen_instrument=None, user_tolerance=None, rec_options=None, touch_velocity=None):
     print(">>> INICIANDO BATERIA (Ponta do Dedão)")
     
     if user_tolerance:
         global ELLIPSE_THRESHOLD
         ELLIPSE_THRESHOLD = 1.0 - user_tolerance
+
+        
+    if touch_velocity is not None and touch_velocity > 0:
+        global TOUCH_VELOCITY
+        TOUCH_VELOCITY = touch_velocity
+        print(f">>> Velocity configurado: {TOUCH_VELOCITY}")
     
     if chosen_instrument:
         success = select_kit_by_name(chosen_instrument)
@@ -302,12 +286,9 @@ def start_drums(chosen_instrument=None, user_tolerance=None, rec_options=None):
     if rec_options:
         recorder.set_options(rec_options)
 
-    # --- CORREÇÃO: INICIAR THREAD AQUI ---
-    # Inicia a thread de áudio para esta sessão específica
     audio_t = threading.Thread(target=audio_thread_target, daemon=True)
     audio_t.start()
     
-    # Reseta estado para evitar que a mão comece "armada" em posições erradas
     reset_hands_state()
 
     cap = cv2.VideoCapture(0, cv2.CAP_DSHOW)
@@ -341,17 +322,12 @@ def start_drums(chosen_instrument=None, user_tolerance=None, rec_options=None):
             
             width, height = 1920, 1080
             frame = cv2.resize(frame, (width, height))
-            cv2.imshow("Virtual Drums", frame)
+            cv2.imshow("Talking Hands - Bateria", frame)
             
             k = cv2.waitKey(1)
             if k == 27:
                 recorder.stop_playback()
                 break
-            if k == 32: 
-                kick_drum = next((d for d in DRUM_KIT if d["name"] == "KICK"), None)
-                if kick_drum:
-                    audio_queue.put(kick_drum["note"]) 
-                    kick_drum["last_hit"] = time.time()
             elif k == 49: # Tecla 1
                 recorder.start()
             elif k == 50: # Tecla 2
@@ -370,7 +346,6 @@ def start_drums(chosen_instrument=None, user_tolerance=None, rec_options=None):
     finally:
         cap.release()
         cv2.destroyAllWindows()
-        # Mata a thread ao sair enviando None para a fila
         audio_queue.put(None)
         print(">>> Bateria Encerrada.")
 

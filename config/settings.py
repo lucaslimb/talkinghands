@@ -42,10 +42,15 @@ INSTRUMENTS = {
     "Drum 12":  ("drums", 128, 11),
 }
 
+# Keyboard
 SUSTAIN_DECAY = 0.8
 LIFT_THRESHOLD = 0.02
-TOUCH_TOLERANCE = 0.005
 
+# Drums
+TOUCH_TOLERANCE = 0.005
+TOUCH_VELOCITY = 0.012
+
+# Gravação
 RECORD_SAVE_MID = True              
 RECORD_SAVE_MP3 = False             
 RECORD_SAVE_WAV = False             

@@ -3,7 +3,6 @@ from importlib import import_module
 import sys
 import config.settings as settings  
 
-# Configuração inicial do tema
 ctk.set_appearance_mode("Dark")
 ctk.set_default_color_theme("green")
 
@@ -22,7 +21,6 @@ class InstrumentSelector(ctk.CTk):
             else:
                 self.catalog["Teclado"].append(name)
         
-        # Define tipo inicial
         self.current_type = "Teclado"
         if not self.catalog["Teclado"] and self.catalog["Bateria"]:
             self.current_type = "Bateria"
@@ -47,8 +45,8 @@ class InstrumentSelector(ctk.CTk):
 
         self.is_advanced_open = False
 
-        self.base_height = 375
-        self.expanded_height = 625
+        self.base_height = 250
+        self.expanded_height = 550
 
         
         self.title("Talking Hands Launcher")
@@ -65,7 +63,6 @@ class InstrumentSelector(ctk.CTk):
         self.main_frame.grid_columnconfigure(1, weight=1)
         self.main_frame.grid_rowconfigure((0, 1, 2), weight=0)
 
-        # --- SELETOR DE TIPO ---
         self.seg_type = ctk.CTkSegmentedButton(
             self.main_frame,
             values=["Teclado", "Bateria"],
@@ -75,10 +72,7 @@ class InstrumentSelector(ctk.CTk):
         )
         self.seg_type.set(self.current_type)
         self.seg_type.grid(row=0, column=0, columnspan=3, sticky="ew", pady=(0, 20), padx=80)
-
-        # --- Título ---
-
-        # --- Botões de Controle ---
+        
         arrow_font = ("Segoe UI", 32, "bold")
         main_font = ("Segoe UI", 24, "bold")
 
@@ -103,31 +97,6 @@ class InstrumentSelector(ctk.CTk):
         )
         self.btn_next.grid(row=2, column=2, padx=(20, 0))
 
-        # --- OPÇÕES DE GRAVAÇÃO (NOVO) ---
-        self.frm_rec = ctk.CTkFrame(self.main_frame, fg_color="transparent")
-        self.frm_rec.grid(row=3, column=0, columnspan=3, sticky="ew")
-        
-        # Label
-        ctk.CTkLabel(self.frm_rec, text="Gravação e arquivos:", font=("Segoe UI", 12, "bold"), text_color="#888888").pack(anchor="center")
-        
-        # Checkboxes Container
-        self.frm_checks = ctk.CTkFrame(self.frm_rec, fg_color="transparent")
-        self.frm_checks.pack(pady=5)
-        
-        self.chk_mid = ctk.CTkCheckBox(self.frm_checks, text=".MID", variable=self.var_mid, font=("Segoe UI", 12), width=60, fg_color="#00b050", hover_color="#009040")
-        self.chk_mid.pack(side="left", padx=10)
-        
-        self.chk_mp3 = ctk.CTkCheckBox(self.frm_checks, text=".MP3", variable=self.var_mp3, font=("Segoe UI", 12), width=60, fg_color="#00b050", hover_color="#009040")
-        self.chk_mp3.pack(side="left", padx=10)
-        
-        self.chk_wav = ctk.CTkCheckBox(self.frm_checks, text=".WAV", variable=self.var_wav, font=("Segoe UI", 12), width=60, fg_color="#00b050", hover_color="#009040")
-        self.chk_wav.pack(side="left", padx=10)
-        
-        # Opção Folder Separada
-        self.chk_folder = ctk.CTkSwitch(self.frm_rec, text="Manter separação de pastas para playbacks e gravações", variable=self.var_separate_pb, font=("Segoe UI", 11), progress_color="#00b050")
-        self.chk_folder.pack(pady=5)
-
-
         # --- Botão Toggle Avançado ---
         self.btn_advanced = ctk.CTkButton(
             self.main_frame, text="Avançado ▼", font=("Consolas", 12),
@@ -135,17 +104,16 @@ class InstrumentSelector(ctk.CTk):
             text_color="#888888", hover_color="#333333", height=28, width=160,
             command=self.toggle_advanced
         )
-        self.btn_advanced.grid(row=3, column=0, columnspan=3, sticky="n", pady=(150, 10))
+        self.btn_advanced.grid(row=3, column=0, columnspan=3, sticky="n", pady=(15, 10))
 
         # --- Painel Avançado ---
         self.advanced_frame = ctk.CTkScrollableFrame(
             self.main_frame, 
             fg_color="#1a1a1a", 
             corner_radius=10,
-            height=250,
+            height=300,
         )
 
-        # Bindings
         self.bind("<Left>", lambda e: self.change_preset(-1))
         self.bind("<Right>", lambda e: self.change_preset(1))
         self.bind("<Return>", lambda e: self.confirm_selection())
@@ -154,6 +122,8 @@ class InstrumentSelector(ctk.CTk):
         self.custom_sustain = float(getattr(settings, 'SUSTAIN_DECAY', 0.8))
         self.custom_lift = float(getattr(settings, 'LIFT_THRESHOLD', 0.02))
         self.custom_tolerance = float(getattr(settings, 'TOUCH_TOLERANCE', 0.005))
+        self.custom_touch_velocity = float(getattr(settings, 'TOUCH_VELOCITY', 0.012))
+        
 
     def _center_window(self, width, height):
         screen_width = self.winfo_screenwidth()
@@ -214,7 +184,6 @@ class InstrumentSelector(ctk.CTk):
         self.btn_reset.pack(pady=(5, 15))
 
     def _build_keyboard_options(self):
-        # Uso de variável local 'frm_audio' (sem self.)
         frm_audio = ctk.CTkFrame(self.advanced_frame, fg_color="transparent")
         frm_audio.pack(fill="x", padx=10, pady=5)
         
@@ -252,6 +221,24 @@ class InstrumentSelector(ctk.CTk):
                      anchor="center").pack(fill="x", pady=(5,0))
         self.lbl_tolerance_val = self._create_selector(frm_input, int(self.custom_tolerance * 1000), "", 1, self.update_tolerance)
 
+        ctk.CTkFrame(self.advanced_frame, height=2, fg_color="#333333").pack(fill="x", padx=15, pady=5)
+
+        frm_rec_adv = ctk.CTkFrame(self.advanced_frame, fg_color="transparent") 
+        frm_rec_adv.pack(fill="x", padx=10, pady=10) 
+        ctk.CTkLabel(frm_rec_adv, text="GRAVAÇÃO", font=("Segoe UI", 12, "bold"), text_color="#00b050", anchor="center").pack(fill="x")
+        self.chk_mid_adv = ctk.CTkCheckBox(frm_rec_adv, text=".MID", variable=self.var_mid, font=("Segoe UI", 12), 
+                                        width=60, fg_color="#00b050", hover_color="#009040") 
+        self.chk_mid_adv.pack(side="left", padx=10) 
+        self.chk_mp3_adv = ctk.CTkCheckBox(frm_rec_adv, text=".MP3", variable=self.var_mp3, 
+                                           font=("Segoe UI", 12), width=60, fg_color="#00b050", hover_color="#009040") 
+        self.chk_mp3_adv.pack(side="left", padx=10) 
+        self.chk_wav_adv = ctk.CTkCheckBox(frm_rec_adv, text=".WAV", variable=self.var_wav, font=("Segoe UI", 12), 
+                                           width=60, fg_color="#00b050", hover_color="#009040") 
+        self.chk_wav_adv.pack(side="left", padx=10) 
+        self.chk_folder_adv = ctk.CTkSwitch(frm_rec_adv, text="Separar pastas para playback e gravação", 
+                                            variable=self.var_separate_pb, font=("Segoe UI", 11), progress_color="#00b050") 
+        self.chk_folder_adv.pack(pady=5)
+
     def _build_drums_options(self):
         frm_drum = ctk.CTkFrame(self.advanced_frame, fg_color="transparent")
         frm_drum.pack(fill="x", padx=10, pady=10)
@@ -264,6 +251,31 @@ class InstrumentSelector(ctk.CTk):
         
         pct = int((1.0 - self.custom_tolerance) * 100)
         self.lbl_drum_pct = self._create_selector(frm_drum, pct, "%", 1, self.update_drum_tolerance)
+
+        # --- TOUCH VELOCITY ---
+        drum_touch_velocity = float(getattr(settings, 'TOUCH_VELOCITY', 0.012)) 
+        self.custom_touch_velocity = drum_touch_velocity 
+        ctk.CTkLabel(frm_drum, text="Velocidade mínima para bater o tambor (Touch Velocity). Quanto maior, mais rápido você precisa mover a mão para gerar o som.", 
+                     font=("Segoe UI", 11), text_color="#aaaaaa", wraplength=400, justify="center").pack(pady=(10, 0)) 
+        self.lbl_touch_velocity = self._create_selector(frm_drum, int(self.custom_touch_velocity*1000), "", 1, self.update_touch_velocity)
+
+        ctk.CTkFrame(self.advanced_frame, height=2, fg_color="#333333").pack(fill="x", padx=15, pady=5)
+        
+        frm_rec_adv = ctk.CTkFrame(self.advanced_frame, fg_color="transparent") 
+        frm_rec_adv.pack(fill="x", padx=10, pady=10) 
+        ctk.CTkLabel(frm_rec_adv, text="GRAVAÇÃO", font=("Segoe UI", 12, "bold"), text_color="#00b050", anchor="center").pack(fill="x")
+        self.chk_mid_adv = ctk.CTkCheckBox(frm_rec_adv, text=".MID", variable=self.var_mid, font=("Segoe UI", 12), 
+                                        width=60, fg_color="#00b050", hover_color="#009040") 
+        self.chk_mid_adv.pack(side="left", padx=10) 
+        self.chk_mp3_adv = ctk.CTkCheckBox(frm_rec_adv, text=".MP3", variable=self.var_mp3, 
+                                           font=("Segoe UI", 12), width=60, fg_color="#00b050", hover_color="#009040") 
+        self.chk_mp3_adv.pack(side="left", padx=10) 
+        self.chk_wav_adv = ctk.CTkCheckBox(frm_rec_adv, text=".WAV", variable=self.var_wav, font=("Segoe UI", 12), 
+                                           width=60, fg_color="#00b050", hover_color="#009040") 
+        self.chk_wav_adv.pack(side="left", padx=10) 
+        self.chk_folder_adv = ctk.CTkSwitch(frm_rec_adv, text="Separar pastas para playback e gravação", 
+                                            variable=self.var_separate_pb, font=("Segoe UI", 11), progress_color="#00b050") 
+        self.chk_folder_adv.pack(pady=5)
 
     def _create_selector(self, parent, initial_val_display, unit_suffix, step, command_func):
         container = ctk.CTkFrame(parent, fg_color="transparent")
@@ -285,6 +297,11 @@ class InstrumentSelector(ctk.CTk):
         new_val = round(max(0.1, self.custom_sustain + amount), 1)
         self.custom_sustain = new_val
         self.lbl_sustain_val.configure(text=f"{new_val:.1f}s")
+
+    def update_touch_velocity(self, amount):
+        new_val = max(1, min(int(self.custom_touch_velocity*1000)+amount, 100))
+        self.custom_touch_velocity = new_val/1000.0
+        self.lbl_touch_velocity.configure(text=f"{new_val}")
 
     def update_lift(self, amount):
         current_int = int(self.custom_lift * 1000)
@@ -340,7 +357,8 @@ def show_menu_and_start():
                 drums.start_drums(
                     chosen_instrument=chosen,
                     user_tolerance=app.custom_tolerance,
-                    rec_options=rec_opts
+                    rec_options=rec_opts,
+                    touch_velocity=app.custom_touch_velocity,
                 )
             else:
                 keyboard = import_module("instruments.keyboard")

@@ -9,24 +9,18 @@ import numpy as np
 import config.settings as settings
 from instruments.recorder import MidiRecorder
 
-# ------------------------
-# CONFIGURAÇÕES
-# ------------------------
 RELEASE_THRESHOLD = 0.015
 MIN_NOTE_DURATION = 0.1
 ARMED_TIMEOUT = 2.5
-
 SUSTAIN_DECAY = getattr(settings, 'SUSTAIN_DECAY', 0.8)
 TOUCH_TOLERANCE = getattr(settings, 'TOUCH_TOLERANCE', 0.005)
 LIFT_THRESHOLD = getattr(settings, 'LIFT_THRESHOLD', 0.02)
-
 MAX_MISSING_TIME = 0.1
 
 NUM_KEYS = 30
 ACTIVE_FINGERS = [4, 8, 12, 16, 20]
 show_menu = True
 
-# Cores
 COLOR_TABLE_LINE = (0, 255, 0)
 COLOR_TABLE_FRONT = (30, 30, 30)
 COLOR_KEY_DIVIDER = (100, 100, 100)
@@ -35,9 +29,8 @@ COLOR_ARMED = (0, 165, 255)
 COLOR_HOLD = (0, 200, 0)
 
 # ------------------------
-# AUDIO SETUP (GLOBAL SYNTH)
+# AUDIO SETUP
 # ------------------------
-# Mantemos o Synth global para não recarregar SF2s pesados a cada reinício
 audio_queue = queue.Queue()
 loaded_sfids = {}
 recorder = MidiRecorder()
@@ -70,17 +63,12 @@ def select_instrument_by_name(name, channel=0):
         print(f">>> SOM: {name} (B:{bank} P:{preset})")
         fs.program_select(channel, target_sfid, bank, preset)
         
-        # Pega o caminho real do arquivo SF2 para o gravador
         sf_path = settings.SF2_PATHS.get(sf_nickname)
             
-        # Configura o gravador
         recorder.set_instrument(sf_path, bank, preset, is_drum=False)
         return True
     return False
 
-# ------------------------
-# Thread de áudio (Lógica)
-# ------------------------
 def audio_thread_target():
     """Consome a fila e toca notas. Encerra se receber None."""
     while True:
@@ -98,8 +86,6 @@ def audio_thread_target():
         except Exception:
             pass
 
-# NOTA: Removemos o start() global da thread aqui para iniciá-la dentro do start_piano
-
 # ------------------------
 # ESTADOS
 # ------------------------
@@ -113,7 +99,6 @@ for i in range(NUM_KEYS):
     note_val = BASE_NOTE + (octave * 12) + SCALE_INTERVALS[note_idx]
     PIANO_KEYS.append({"note": note_val, "last_hit": 0, "is_active": False, "off_timer": 0})
 
-# Mantemos global para persistir calibração entre resets
 global_state = {"table_y": 0.80, "calibrated": False}
 
 hands_state = {
@@ -130,9 +115,6 @@ def reset_hands_state():
             hands_state[hand]["active_notes"][fid] = None
             hands_state[hand]["last_seen"][fid] = 0.0
 
-# ------------------------
-# LÓGICA DE PROCESSAMENTO
-# ------------------------
 def check_active_keys_integrity():
     current_time = time.time()
     notes_currently_touched = set()
@@ -267,9 +249,6 @@ def draw_ui_fast(frame, table_y, w, h):
             cv2.rectangle(overlay, (x1, table_px), (x2, h), COLOR_HIT, -1)
     cv2.addWeighted(overlay, 0.3, frame, 0.7, 0, frame)
 
-    # -------------------------
-    # REC no canto superior direito
-    # -------------------------
     if recorder.is_recording:
         cv2.circle(frame, (w - 90, 30), 10, (0, 0, 255), -1)
         cv2.putText(frame, "REC", (w - 75, 40),
@@ -279,10 +258,6 @@ def draw_ui_fast(frame, table_y, w, h):
         cv2.putText(frame, "PLAYBACK", (w - 200, 50),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2)
 
-    # -------------------------
-    # MENU DE INSTRUÇÕES (canto superior esquerdo)
-    # respeita a flag show_menu
-    # -------------------------
     if show_menu:
         instructions = [
             "ESC  -> sair",
@@ -300,13 +275,10 @@ def draw_ui_fast(frame, table_y, w, h):
                         cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
 
 # ------------------------
-# FUNÇÃO PÚBLICA (START)
+# START
 # ------------------------
 def start_piano(chosen_instrument, user_sustain=None, lift_threshold=None, touch_tolerance=None, rec_options=None):
-    """
-    Inicializa o loop do piano. Ao sair (ESC), limpa recursos e retorna ao caller.
-    """
-    # 1. Configura Sustain
+
     if user_sustain is not None and user_sustain > 0:
         global SUSTAIN_DECAY
         SUSTAIN_DECAY = user_sustain
@@ -327,18 +299,13 @@ def start_piano(chosen_instrument, user_sustain=None, lift_threshold=None, touch
     if rec_options:
         recorder.set_options(rec_options)
 
-    # 2. Seleciona Som
     select_instrument_by_name(chosen_instrument)
 
-    # 3. Inicia Thread de Áudio para esta sessão
-    # Usamos daemon=True para garantir que morra se o main crashar
     audio_t = threading.Thread(target=audio_thread_target, daemon=True)
     audio_t.start()
     
-    # 4. Reseta estado das mãos (importante se for um re-start)
     reset_hands_state()
 
-    # 5. Setup OpenCV / MediaPipe
     hands = mp.solutions.hands.Hands(max_num_hands=2, model_complexity=1,
                                      min_detection_confidence=0.3, min_tracking_confidence=0.3)
     cap = cv2.VideoCapture(0, cv2.CAP_DSHOW)
@@ -353,7 +320,7 @@ def start_piano(chosen_instrument, user_sustain=None, lift_threshold=None, touch
     is_calibrating = False
     calib_start_time = 0
 
-    print(">>> PIANO INICIADO (Pressione ESC para voltar ao menu)")
+    print(">>> TECLADO INICIADO")
 
     try:
         while True:
@@ -399,7 +366,7 @@ def start_piano(chosen_instrument, user_sustain=None, lift_threshold=None, touch
             width, height = 1920, 1080
             frame = cv2.resize(frame, (width, height))
 
-            cv2.imshow("FastPiano", frame)
+            cv2.imshow("Talking Hands - Teclado", frame)
 
             k = cv2.waitKey(1)
             if k == 32: # ESPAÇO
@@ -422,8 +389,6 @@ def start_piano(chosen_instrument, user_sustain=None, lift_threshold=None, touch
                 recorder.stop_playback()
                 break # Sai do loop, caindo no finally
     finally:
-        # --- CORREÇÃO DE BUG DE ÁUDIO INFINITO ---
-        # Garante que todas as notas ativas sejam desligadas antes de encerrar
         print(">>> Encerrando notas ativas...")
         for key in PIANO_KEYS:
             if key["is_active"]:
@@ -433,10 +398,8 @@ def start_piano(chosen_instrument, user_sustain=None, lift_threshold=None, touch
                     pass
                 key["is_active"] = False
 
-        # Limpeza normal
         cap.release()
         cv2.destroyAllWindows()
-        # Envia sinal para matar a thread de áudio desta sessão
         audio_queue.put(None)
         print(">>> Sessão encerrada.")
 
