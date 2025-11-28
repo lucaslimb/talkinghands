@@ -38,9 +38,7 @@ class MidiRecorder:
         self.channel = 9 if is_drum else 0
 
     def start(self):
-        # CORREÇÃO CRÍTICA: Não paramos o playback!
-        # Se já estiver tocando (Loop no CV2), continuamos tocando e gravamos por cima.
-        
+        # Se já estiver tocando (Loop no CV2), continuamos tocando e gravamos por cima (Overdub).
         self.is_recording = True
         self.start_time = time.time()
         self.events = [] 
@@ -56,7 +54,7 @@ class MidiRecorder:
         duration = time.time() - self.start_time
         print(f">>> GRAVAÇÃO FINALIZADA ({duration:.2f}s)")
         
-        # Para o playback ao terminar de gravar (comportamento padrão de Stop)
+        # Para o playback ao terminar de gravar
         if self.is_playing:
             self.stop_playback()
         
@@ -152,18 +150,21 @@ class MidiRecorder:
                 while evt_idx < num_events and self.last_recording[evt_idx]["time"] <= now:
                     evt = self.last_recording[evt_idx]
                     
-                    # Toca a nota
                     if evt["type"] == "on": 
                         fs.noteon(self.channel, evt["note"], evt["vel"])
-                        # INJEÇÃO: Se estiver gravando, adiciona essa nota do playback à gravação atual
                         if self.is_recording:
                             self.record_note_on(evt["note"], evt["vel"])
                             
                     elif evt["type"] == "off": 
                         fs.noteoff(self.channel, evt["note"])
-                        # INJEÇÃO: Grava o desligamento da nota também
                         if self.is_recording:
                             self.record_note_off(evt["note"])
+
+                    # --- [NOVO] Playback de CC ---
+                    elif evt["type"] == "cc":
+                        fs.cc(self.channel, evt["controller"], evt["value"])
+                        if self.is_recording:
+                            self.record_cc(self.channel, evt["controller"], evt["value"])
                             
                     evt_idx += 1
                 time.sleep(0.002)
@@ -175,7 +176,6 @@ class MidiRecorder:
             while self.is_playing and (time.time() - loop_start) < total_duration:
                 time.sleep(0.05)
         
-        # Garante silêncio ao sair do loop natural
         if self.cached_fs:
             self.cached_fs.cc(self.channel, 123, 0)
 
@@ -207,6 +207,13 @@ class MidiRecorder:
         timestamp = time.time() - self.start_time
         self.events.append({"time": timestamp, "type": "off", "note": note, "vel": 0})
 
+    # --- [NOVO] Gravar CC ---
+    def record_cc(self, channel, controller, value):
+        if not self.is_recording: return
+        timestamp = time.time() - self.start_time
+        # O argumento 'channel' é aceito para compatibilidade, mas o gravador usa self.channel internamente
+        self.events.append({"time": timestamp, "type": "cc", "controller": controller, "value": value})
+
     def _write_midi_file(self, filename):
         self.events.sort(key=lambda x: x["time"])
         header = struct.pack('>4sLhhh', b'MThd', 6, 0, 1, 96)
@@ -222,9 +229,21 @@ class MidiRecorder:
             delta = current_tick - last_tick
             last_tick = current_tick
             track_data += self._write_var_len(delta)
-            status = (0x90 if evt["type"] == "on" else 0x80) | self.channel
-            track_data += struct.pack('BB', status, evt["note"])
-            track_data += struct.pack('B', evt["vel"])
+            
+            if evt["type"] == "on":
+                status = 0x90 | self.channel
+                track_data += struct.pack('BB', status, evt["note"])
+                track_data += struct.pack('B', evt["vel"])
+            elif evt["type"] == "off":
+                status = 0x80 | self.channel
+                track_data += struct.pack('BB', status, evt["note"])
+                track_data += struct.pack('B', 0)
+            elif evt["type"] == "cc":
+                # [NOVO] Escrever CC no MIDI
+                status = 0xB0 | self.channel
+                track_data += struct.pack('BB', status, evt["controller"])
+                track_data += struct.pack('B', evt["value"])
+
         track_data += b'\x00\xFF\x2F\x00' 
         track_header = struct.pack('>4sL', b'MTrk', len(track_data))
         with open(filename, 'wb') as f:
@@ -257,8 +276,15 @@ class MidiRecorder:
                 if duration > 0:
                     frames = int(duration * sample_rate)
                     if frames > 0: wav_file.writeframes(fs.get_samples(frames))
-                if evt["type"] == "on": fs.noteon(self.channel, evt["note"], evt["vel"])
-                else: fs.noteoff(self.channel, evt["note"])
+                
+                if evt["type"] == "on": 
+                    fs.noteon(self.channel, evt["note"], evt["vel"])
+                elif evt["type"] == "off": 
+                    fs.noteoff(self.channel, evt["note"])
+                elif evt["type"] == "cc":
+                    # [NOVO] Renderizar CC no WAV
+                    fs.cc(self.channel, evt["controller"], evt["value"])
+                    
                 current_time = evt["time"]
             wav_file.writeframes(fs.get_samples(int(sample_rate)))
             wav_file.close(); fs.delete()

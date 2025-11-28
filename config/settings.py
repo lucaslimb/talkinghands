@@ -1,11 +1,12 @@
 SF2_PATHS = {
-    "master": r"sounds\universal\module_master.sf2",
-    "drums":  r"sounds\drums\Drums.sf2"
+    "master": r"sounds\keyboard\module_master.sf2",
+    "drums":  r"sounds\drums\Drums.sf2",
+    "flute":  r"sounds\flute\Chris_Flutes_and_Harmonicas.sf2",
 }
 
 INSTRUMENTS = {
     # Sound name - file path, banco, preset
-    "Piano 1":     ("master", 0, 0),
+    "Piano":     ("master", 0, 0),
     "Piano 2":     ("master", 0, 1),
     "Drawbar":     ("master", 0, 8),
     "Accordion":     ("master", 0, 7),
@@ -26,9 +27,8 @@ INSTRUMENTS = {
     "Oohs":      ("master", 0, 87),
     "Flute Bell":      ("master", 0, 97),
     "Koto LA":      ("master", 1, 89),
-    "Harp & Vox":      ("master", 1, 75),
 
-    "Drum 1":  ("drums", 128, 0),
+    "Drum":  ("drums", 128, 0),
     "Drum 2":  ("drums", 128, 1),
     "Drum 3":  ("drums", 128, 2),
     "Drum 4":  ("drums", 128, 3),
@@ -40,6 +40,14 @@ INSTRUMENTS = {
     "Drum 10":  ("drums", 128, 9),
     "Drum 11":  ("drums", 128, 10),
     "Drum 12":  ("drums", 128, 11),
+
+    "Harmonica":  ("flute", 0, 0),
+    "Recorder":  ("flute", 0, 4),
+    "Plastic Flute Short":  ("flute", 0, 11),
+    "Plastic Flute Low":  ("flute", 0, 12),
+    "Plastic Flute High":  ("flute", 0, 14),
+    "Plastic Flute Mid":  ("flute", 0, 13),
+    "Tin Whistle":  ("flute", 0, 16),
 }
 
 # Keyboard
@@ -49,6 +57,12 @@ LIFT_THRESHOLD = 0.02
 # Drums
 TOUCH_TOLERANCE = 0.005
 TOUCH_VELOCITY = 0.012
+
+# Flute
+MOUTH_PEAK_OPEN = 0.01
+MOUTH_MAX_OPEN = 0.05
+HOLE_RADIUS = 0.019
+HOLE_SPACING = 0.068
 
 # Gravação
 RECORD_SAVE_MID = True              

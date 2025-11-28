@@ -248,8 +248,7 @@ def draw_drums(frame, w, h):
             "ESC  -> sair",
             "1 -> iniciar gravacao",
             "2 -> encerrar gravacao",
-            "3 -> iniciar playback",
-            "4 -> interromper playback",
+            "3 -> iniciar/interromper playback",
             "0 -> ocultar/mostrar menu"
         ]
 

@@ -4,7 +4,7 @@ import threading
 import queue
 import fluidsynth
 import time
-import numpy as np
+import ctypes
 
 import config.settings as settings
 from instruments.recorder import MidiRecorder
@@ -264,8 +264,7 @@ def draw_ui_fast(frame, table_y, w, h):
             "ESPACO -> calibrar",
             "1 -> iniciar gravacao",
             "2 -> encerrar gravacao",
-            "3 -> iniciar playback",
-            "4 -> interromper playback",
+            "3 -> iniciar/interromper playback",
             "0 -> ocultar/mostrar menu"
         ]
 

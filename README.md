@@ -21,15 +21,21 @@ Aplicação de _Air Instrument_ de alta performance projetada para transformar q
     -   Dispõe espacialmente os componentes da bateria (Caixa, Bumbo, Pratos, Tons).
         
     -   Modula a intensidade sonora baseando-se na velocidade vetorial do movimento de impacto.
-    
+
+-   **Flauta:**
+
+    -   Uso de reconhecimento facial para ação de sopro, com níveis diferentes de intensidade.
+            
 ### 🎛️ Interface e Controle
 
--   **Launcher:** Interface gráfica para a seleção de instrumentos, timbres e configuração de parâmetros, incluindo parâmetros de processamento e simulação e dos instrumentos, como:
-	- Tempo de sustentação de notas, velocidade e sensibilidade de toque, cálculo de previsão da ação de toque
+-   **Launcher:** Interface gráfica para a seleção de instrumentos, timbres e configuração de parâmetros, incluindo parâmetros de processamento e simulação individuais de cada instrumento, como:
+	- Tempo de sustentação de notas
+    - Velocidade e sensibilidade de toque ou batida
+    - Cálculo de previsão da ação de toque
 
 -  **Interação na GUI dos instrumentos:** Grave trechos, toque playbacks, calibre as mãos diretamente na interface dos instrumentos.
       
--   **Gravação e Exportação:** Permite registrar a performance e exportá-la nos formatos `.WAV`, `.MP3` ou `.MID` (MIDI), além de organizar pastas de áudio.
+-   **Gravação e Exportação:** Permite gravar e exportar nos formatos `.WAV`, `.MP3` ou `.MID` (MIDI), além de organizar pastas de áudio.
 
 ## 🛠️ Stack de Tecnologias
 
@@ -37,9 +43,11 @@ O projeto foi desenvolvido inteiramente em **Python**, orquestrando bibliotecas 
 
 |Componente       |Tecnologia | Utilização
 |----------------|---------|-------|
-|Visão Computacional		 |`OpenCV(cv2)`| Gerenciamento de captura de vídeo, processamento de imagem e renderização da interface|
-|IA & ML|`MediaPipe`| Inferência dos marcos anatômicos da mão em tempo real|
+|Visão Computacional |`OpenCV(cv2)`| Gerenciamento de captura de vídeo, processamento de imagem e renderização da interface|
+|IA & ML|`MediaPipe`| Inferência dos marcos anatômicos da mão e rosto (para instrumentos de sopro) em tempo real|
 |Backend de Áudio|`pyFluidSynth`|Wrapper para a biblioteca FluidSynth em C, garantindo baixa latência|
 |Interface Gráfica |`CustomTkinter` | Framework para construção de interfaces de usuário moderna em linguagem Python
 
 > **Bancos de som utilizados incluem** [ModuleMaster](https://musical-artifacts.com/artifacts/5978), de Vini e [The Definitive Perfect Drums Soundfont](https://musical-artifacts.com/artifacts/6554), de TEC Again
+
+## Como utilizar

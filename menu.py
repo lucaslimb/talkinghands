@@ -1,29 +1,45 @@
 import customtkinter as ctk
-from importlib import import_module
+from importlib import import_module, reload
 import sys
+import os
+import ctypes
 import config.settings as settings  
 
 ctk.set_appearance_mode("Dark")
-ctk.set_default_color_theme("green")
+ctk.set_default_color_theme("blue")
+
+try:
+    myappid = 'talkinghands.instrument.gui.1.0'
+    ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
+except:
+    pass
 
 class InstrumentSelector(ctk.CTk):
     def __init__(self):
         super().__init__()
         
+        if os.path.exists("icon.ico"):
+            self.iconbitmap("icon.ico")
+
         # --- ORGANIZAÇÃO DO CATÁLOGO ---
-        self.catalog = {"Teclado": [], "Bateria": []}
+        # Adicionada chave 'Flauta'
+        self.catalog = {"Teclado": [], "Bateria": [], "Flauta": []}
         
         # Separa os instrumentos com base na configuração do settings.py
         for name, data in settings.INSTRUMENTS.items():
             sf_key = data[0] 
             if sf_key == "drums":
                 self.catalog["Bateria"].append(name)
+            elif sf_key == "flute":
+                self.catalog["Flauta"].append(name)
             else:
                 self.catalog["Teclado"].append(name)
         
         self.current_type = "Teclado"
-        if not self.catalog["Teclado"] and self.catalog["Bateria"]:
-            self.current_type = "Bateria"
+        # Lógica de fallback se não houver teclado
+        if not self.catalog["Teclado"]:
+            if self.catalog["Bateria"]: self.current_type = "Bateria"
+            elif self.catalog["Flauta"]: self.current_type = "Flauta"
             
         self.instruments = self.catalog[self.current_type]
         self.current_index = 0
@@ -32,23 +48,25 @@ class InstrumentSelector(ctk.CTk):
         
         self._load_defaults_from_settings()
 
+        # Vars de Gravação
         def_mid = getattr(settings, 'RECORD_SAVE_MID', True)
         def_mp3 = getattr(settings, 'RECORD_SAVE_MP3', False)
         def_wav = getattr(settings, 'RECORD_SAVE_WAV', False)
         def_pb_folder = getattr(settings, 'RECORD_SEPARATE_PLAYBACK_FOLDER', False)
 
-        # Inicializa as variáveis da GUI com os valores do settings
         self.var_mid = ctk.BooleanVar(value=def_mid)
         self.var_mp3 = ctk.BooleanVar(value=def_mp3)
         self.var_wav = ctk.BooleanVar(value=def_wav)
         self.var_separate_pb = ctk.BooleanVar(value=def_pb_folder)
+        
+        # Var Específica Flauta
+        self.var_invert_blow = ctk.BooleanVar(value=False) # False = Boca fechada toca forte (Padrão sopro)
 
         self.is_advanced_open = False
 
         self.base_height = 250
-        self.expanded_height = 550
+        self.expanded_height = 600 # Aumentei um pouco para caber opções da flauta
 
-        
         self.title("Talking Hands Launcher")
         self.geometry(f"600x{self.base_height}")
         self.resizable(False, False)
@@ -63,9 +81,10 @@ class InstrumentSelector(ctk.CTk):
         self.main_frame.grid_columnconfigure(1, weight=1)
         self.main_frame.grid_rowconfigure((0, 1, 2), weight=0)
 
+        # Segmented Button agora inclui Flauta
         self.seg_type = ctk.CTkSegmentedButton(
             self.main_frame,
-            values=["Teclado", "Bateria"],
+            values=["Teclado", "Bateria", "Flauta"],
             command=self.change_instrument_type,
             font=("Segoe UI", 14, "bold"),
             height=35
@@ -86,7 +105,7 @@ class InstrumentSelector(ctk.CTk):
         self.btn_start = ctk.CTkButton(
             self.main_frame, text=start_text, font=main_font,
             height=80, width=300, corner_radius=40,
-            fg_color="#00b050", hover_color="#009040", text_color="white",
+            fg_color="#005bb0", hover_color="#003E90", text_color="white",
             command=self.confirm_selection
         )
         self.btn_start.grid(row=2, column=1, sticky="ew")
@@ -119,11 +138,16 @@ class InstrumentSelector(ctk.CTk):
         self.bind("<Return>", lambda e: self.confirm_selection())
 
     def _load_defaults_from_settings(self):
+        # Keyboard / Drums defaults
         self.custom_sustain = float(getattr(settings, 'SUSTAIN_DECAY', 0.8))
         self.custom_lift = float(getattr(settings, 'LIFT_THRESHOLD', 0.02))
         self.custom_tolerance = float(getattr(settings, 'TOUCH_TOLERANCE', 0.005))
         self.custom_touch_velocity = float(getattr(settings, 'TOUCH_VELOCITY', 0.012))
         
+        # Flute Defaults
+        self.custom_mouth_peak = float(getattr(settings, 'MOUTH_PEAK_OPEN', 0.01))
+        self.custom_mouth_max = float(getattr(settings, 'MOUTH_MAX_OPEN', 0.05))
+        self.custom_hole_size = "Médio" # Valor visual inicial
 
     def _center_window(self, width, height):
         screen_width = self.winfo_screenwidth()
@@ -170,18 +194,68 @@ class InstrumentSelector(ctk.CTk):
         
         if self.current_type == "Teclado":
             self._build_keyboard_options()
-        else:
+        elif self.current_type == "Bateria":
             self._build_drums_options()
+        else:
+            self._build_flute_options()
             
         ctk.CTkFrame(self.advanced_frame, height=1, fg_color="#333333").pack(fill="x", padx=40, pady=(15, 5))
         self.btn_reset = ctk.CTkButton(
-            self.advanced_frame, text="Restaurar", font=("Segoe UI", 11),
+            self.advanced_frame, text="Restaurar Padrões", font=("Segoe UI", 11),
             fg_color="transparent", border_width=1, border_color="#555555", 
             hover_color="#333333", text_color="#888888", 
-            height=24, width=120,
+            height=24, width=140,
             command=self.restore_defaults
         )
         self.btn_reset.pack(pady=(5, 15))
+
+    # --- UI FLAUTA ---
+    def _build_flute_options(self):
+        frm = ctk.CTkFrame(self.advanced_frame, fg_color="transparent")
+        frm.pack(fill="x", padx=10, pady=5)
+
+        # Seção Sopro
+        ctk.CTkLabel(frm, text="ÁUDIO", font=("Segoe UI", 12, "bold"), text_color="#005bb0", anchor="center").pack(fill="x")
+        
+        # Toggle Inverter
+        self.chk_invert = ctk.CTkSwitch(frm, text="Inverter lógica de sopro", 
+                                        variable=self.var_invert_blow, 
+                                        onvalue=True, offvalue=False,
+                                        font=("Segoe UI", 11), progress_color="#005bb0")
+        self.chk_invert.pack(pady=(5, 10))
+        ctk.CTkLabel(frm, text="Padrão: quanto mais fechada está a boca, mais forte é o sopro.\nInvertido: quanto mais aberta está a boca, mais forte é o sopro.", 
+                     font=("Segoe UI", 10), text_color="#666666", wraplength=400).pack(pady=(0, 10))
+
+        # Mouth Peak
+        ctk.CTkLabel(frm, text="Limite superior de sopro (Mouth Peak). Define o ponto extremo onde o volume é máximo. Valores baixos exigem bico mais fechado quando a lógica de sopro é padrão.", 
+                     font=("Segoe UI", 11), text_color="#aaaaaa", wraplength=400, justify="center").pack(fill="x")
+        # Display convertido para 0-100 (x1000 sobre o float)
+        val_peak = int(self.custom_mouth_peak * 1000)
+        self.lbl_mouth_peak = self._create_selector(frm, val_peak, "", 1, self.update_mouth_peak)
+
+        # Mouth Max
+        ctk.CTkLabel(frm, text="Limite inferior de sopro (Mouth Max). Define o ponto extremo onde o volume é minimo.", 
+                     font=("Segoe UI", 11), text_color="#aaaaaa", wraplength=400, justify="center").pack(fill="x", pady=(10, 0))
+        val_max = int(self.custom_mouth_max * 1000)
+        self.lbl_mouth_max = self._create_selector(frm, val_max, "", 1, self.update_mouth_max)
+
+        # Seção Furos
+        ctk.CTkFrame(self.advanced_frame, height=2, fg_color="#333333").pack(fill="x", padx=15, pady=10)
+        frm_holes = ctk.CTkFrame(self.advanced_frame, fg_color="transparent")
+        frm_holes.pack(fill="x", padx=10, pady=5)
+
+        ctk.CTkLabel(frm_holes, text="PRECISÃO", font=("Segoe UI", 12, "bold"), text_color="#005bb0", anchor="center").pack(fill="x")
+        ctk.CTkLabel(frm_holes, text="Tamanho e espaçamento dos furos na tela.", font=("Segoe UI", 11), text_color="#aaaaaa").pack(pady=(0, 10))
+
+        self.seg_hole_size = ctk.CTkSegmentedButton(
+            frm_holes, values=["Pequeno", "Médio", "Grande"],
+            command=self.update_hole_size,
+            selected_color="#005bb0", unselected_color="#333333"
+        )
+        self.seg_hole_size.set(self.custom_hole_size)
+        self.seg_hole_size.pack(pady=5)
+
+        self._build_recording_section()
 
     def _build_keyboard_options(self):
         frm_audio = ctk.CTkFrame(self.advanced_frame, fg_color="transparent")
@@ -190,7 +264,7 @@ class InstrumentSelector(ctk.CTk):
         ctk.CTkLabel(frm_audio, 
                      text="ÁUDIO", 
                      font=("Segoe UI", 12, "bold"), 
-                     text_color="#00b050", 
+                     text_color="#005bb0", 
                      anchor="center").pack(fill="x")
         ctk.CTkLabel(frm_audio, 
                      text="Tempo de sustentação da nota após soltar a tecla (Sustain Decay). O tempo minimo e máximo varia de acordo com o Preset escolhido, portanto valores extremos podem as vezes não ter efeito.", 
@@ -205,7 +279,7 @@ class InstrumentSelector(ctk.CTk):
         frm_input = ctk.CTkFrame(self.advanced_frame, fg_color="transparent")
         frm_input.pack(fill="x", padx=10, pady=5)
 
-        ctk.CTkLabel(frm_input, text="PRECISÃO", font=("Segoe UI", 12, "bold"), text_color="#00b050", anchor="center").pack(fill="x")
+        ctk.CTkLabel(frm_input, text="PRECISÃO", font=("Segoe UI", 12, "bold"), text_color="#005bb0", anchor="center").pack(fill="x")
         
         ctk.CTkLabel(frm_input,  text="Sensibilidade da Mesa (Touch Tolerance). Quanto maior o valor, mais sensível fica a linha do teclado ao considerar um toque.", 
                      font=("Segoe UI", 11), 
@@ -221,29 +295,13 @@ class InstrumentSelector(ctk.CTk):
                      anchor="center").pack(fill="x", pady=(5,0))
         self.lbl_tolerance_val = self._create_selector(frm_input, int(self.custom_tolerance * 1000), "", 1, self.update_tolerance)
 
-        ctk.CTkFrame(self.advanced_frame, height=2, fg_color="#333333").pack(fill="x", padx=15, pady=5)
-
-        frm_rec_adv = ctk.CTkFrame(self.advanced_frame, fg_color="transparent") 
-        frm_rec_adv.pack(fill="x", padx=10, pady=10) 
-        ctk.CTkLabel(frm_rec_adv, text="GRAVAÇÃO", font=("Segoe UI", 12, "bold"), text_color="#00b050", anchor="center").pack(fill="x")
-        self.chk_mid_adv = ctk.CTkCheckBox(frm_rec_adv, text=".MID", variable=self.var_mid, font=("Segoe UI", 12), 
-                                        width=60, fg_color="#00b050", hover_color="#009040") 
-        self.chk_mid_adv.pack(side="left", padx=10) 
-        self.chk_mp3_adv = ctk.CTkCheckBox(frm_rec_adv, text=".MP3", variable=self.var_mp3, 
-                                           font=("Segoe UI", 12), width=60, fg_color="#00b050", hover_color="#009040") 
-        self.chk_mp3_adv.pack(side="left", padx=10) 
-        self.chk_wav_adv = ctk.CTkCheckBox(frm_rec_adv, text=".WAV", variable=self.var_wav, font=("Segoe UI", 12), 
-                                           width=60, fg_color="#00b050", hover_color="#009040") 
-        self.chk_wav_adv.pack(side="left", padx=10) 
-        self.chk_folder_adv = ctk.CTkSwitch(frm_rec_adv, text="Separar pastas para playback e gravação", 
-                                            variable=self.var_separate_pb, font=("Segoe UI", 11), progress_color="#00b050") 
-        self.chk_folder_adv.pack(pady=5)
+        self._build_recording_section()
 
     def _build_drums_options(self):
         frm_drum = ctk.CTkFrame(self.advanced_frame, fg_color="transparent")
         frm_drum.pack(fill="x", padx=10, pady=10)
         
-        ctk.CTkLabel(frm_drum, text="PRECISÃO",  font=("Segoe UI", 12, "bold"), text_color="#00b050", anchor="center").pack(fill="x")
+        ctk.CTkLabel(frm_drum, text="PRECISÃO",  font=("Segoe UI", 12, "bold"), text_color="#005bb0", anchor="center").pack(fill="x")
         
         ctk.CTkLabel(frm_drum, 
                       text="Tamanho da Área de Toque (Touch Tolerance). Quanto maior a porcentagem, maior será a área de contato com os tambores, pratos, bumbo.", 
@@ -253,28 +311,30 @@ class InstrumentSelector(ctk.CTk):
         self.lbl_drum_pct = self._create_selector(frm_drum, pct, "%", 1, self.update_drum_tolerance)
 
         # --- TOUCH VELOCITY ---
-        drum_touch_velocity = float(getattr(settings, 'TOUCH_VELOCITY', 0.012)) 
-        self.custom_touch_velocity = drum_touch_velocity 
         ctk.CTkLabel(frm_drum, text="Velocidade mínima para bater o tambor (Touch Velocity). Quanto maior, mais rápido você precisa mover a mão para gerar o som.", 
                      font=("Segoe UI", 11), text_color="#aaaaaa", wraplength=400, justify="center").pack(pady=(10, 0)) 
         self.lbl_touch_velocity = self._create_selector(frm_drum, int(self.custom_touch_velocity*1000), "", 1, self.update_touch_velocity)
 
+        self._build_recording_section()
+
+    def _build_recording_section(self):
         ctk.CTkFrame(self.advanced_frame, height=2, fg_color="#333333").pack(fill="x", padx=15, pady=5)
-        
+
+
         frm_rec_adv = ctk.CTkFrame(self.advanced_frame, fg_color="transparent") 
         frm_rec_adv.pack(fill="x", padx=10, pady=10) 
-        ctk.CTkLabel(frm_rec_adv, text="GRAVAÇÃO", font=("Segoe UI", 12, "bold"), text_color="#00b050", anchor="center").pack(fill="x")
+        ctk.CTkLabel(frm_rec_adv, text="GRAVAÇÃO", font=("Segoe UI", 12, "bold"), text_color="#005bb0", anchor="center").pack(fill="x")
         self.chk_mid_adv = ctk.CTkCheckBox(frm_rec_adv, text=".MID", variable=self.var_mid, font=("Segoe UI", 12), 
-                                        width=60, fg_color="#00b050", hover_color="#009040") 
+                                            width=60, fg_color="#005bb0", hover_color="#003E90") 
         self.chk_mid_adv.pack(side="left", padx=10) 
         self.chk_mp3_adv = ctk.CTkCheckBox(frm_rec_adv, text=".MP3", variable=self.var_mp3, 
-                                           font=("Segoe UI", 12), width=60, fg_color="#00b050", hover_color="#009040") 
+                                            font=("Segoe UI", 12), width=60, fg_color="#005bb0", hover_color="#003E90") 
         self.chk_mp3_adv.pack(side="left", padx=10) 
         self.chk_wav_adv = ctk.CTkCheckBox(frm_rec_adv, text=".WAV", variable=self.var_wav, font=("Segoe UI", 12), 
-                                           width=60, fg_color="#00b050", hover_color="#009040") 
+                                            width=60, fg_color="#005bb0", hover_color="#003E90") 
         self.chk_wav_adv.pack(side="left", padx=10) 
         self.chk_folder_adv = ctk.CTkSwitch(frm_rec_adv, text="Separar pastas para playback e gravação", 
-                                            variable=self.var_separate_pb, font=("Segoe UI", 11), progress_color="#00b050") 
+                                             variable=self.var_separate_pb, font=("Segoe UI", 11), progress_color="#005bb0") 
         self.chk_folder_adv.pack(pady=5)
 
     def _create_selector(self, parent, initial_val_display, unit_suffix, step, command_func):
@@ -293,6 +353,24 @@ class InstrumentSelector(ctk.CTk):
         self._rebuild_advanced_panel() 
         print("Configurações restauradas.")
 
+    # --- Updates Flauta ---
+    def update_mouth_peak(self, amount):
+        # Valor base: 0.01 -> Display 10
+        current_display = int(self.custom_mouth_peak * 1000)
+        new_display = max(1, min(current_display + int(amount), 50)) # Max 50 (0.05)
+        self.custom_mouth_peak = new_display / 1000.0
+        self.lbl_mouth_peak.configure(text=f"{new_display}")
+
+    def update_mouth_max(self, amount):
+        current_display = int(self.custom_mouth_max * 1000)
+        new_display = max(20, min(current_display + int(amount), 200)) # Max 200 (0.2)
+        self.custom_mouth_max = new_display / 1000.0
+        self.lbl_mouth_max.configure(text=f"{new_display}")
+
+    def update_hole_size(self, value):
+        self.custom_hole_size = value
+
+    # --- Updates Teclado/Bateria ---
     def update_sustain(self, amount):
         new_val = round(max(0.1, self.custom_sustain + amount), 1)
         self.custom_sustain = new_val
@@ -359,6 +437,26 @@ def show_menu_and_start():
                     user_tolerance=app.custom_tolerance,
                     rec_options=rec_opts,
                     touch_velocity=app.custom_touch_velocity,
+                )
+            elif instr_type == "Flauta":
+                flute = import_module("instruments.flute")
+                reload(flute)
+                
+                h_radius = 0.019
+                h_spacing = 0.068
+                if app.custom_hole_size == "Pequeno":
+                    h_radius, h_spacing = 0.015, 0.058
+                elif app.custom_hole_size == "Grande":
+                    h_radius, h_spacing = 0.023, 0.077
+                
+                flute.start_flute(
+                    chosen_instrument=chosen,
+                    mouth_peak=app.custom_mouth_peak,
+                    mouth_max=app.custom_mouth_max,
+                    hole_radius=h_radius,
+                    hole_spacing=h_spacing,
+                    invert_blow=app.var_invert_blow.get(),
+                    rec_options=rec_opts
                 )
             else:
                 keyboard = import_module("instruments.keyboard")
