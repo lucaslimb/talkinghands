@@ -149,6 +149,8 @@ class InstrumentSelector(ctk.CTk):
         self.custom_mouth_max = float(getattr(settings, 'MOUTH_MAX_OPEN', 0.05))
         self.custom_hole_size = "Médio" # Valor visual inicial
 
+        self.recordings_folder = str(getattr(settings, 'RECORDINGS_FOLDER', 'recordings'))
+
     def _center_window(self, width, height):
         screen_width = self.winfo_screenwidth()
         screen_height = self.winfo_screenheight()
@@ -227,14 +229,14 @@ class InstrumentSelector(ctk.CTk):
                      font=("Segoe UI", 10), text_color="#666666", wraplength=400).pack(pady=(0, 10))
 
         # Mouth Peak
-        ctk.CTkLabel(frm, text="Limite superior de sopro (Mouth Peak). Define o ponto extremo onde o volume é máximo. Valores baixos exigem bico mais fechado quando a lógica de sopro é padrão.", 
+        ctk.CTkLabel(frm, text="Limite superior de sopro (Mouth Max). Define o ponto extremo onde o volume é máximo. Valores baixos exigem bico mais fechado quando a lógica de sopro é padrão.", 
                      font=("Segoe UI", 11), text_color="#aaaaaa", wraplength=400, justify="center").pack(fill="x")
         # Display convertido para 0-100 (x1000 sobre o float)
         val_peak = int(self.custom_mouth_peak * 1000)
         self.lbl_mouth_peak = self._create_selector(frm, val_peak, "", 1, self.update_mouth_peak)
 
         # Mouth Max
-        ctk.CTkLabel(frm, text="Limite inferior de sopro (Mouth Max). Define o ponto extremo onde o volume é minimo.", 
+        ctk.CTkLabel(frm, text="Limite inferior de sopro (Mouth Min). Define o ponto extremo onde o volume é minimo.", 
                      font=("Segoe UI", 11), text_color="#aaaaaa", wraplength=400, justify="center").pack(fill="x", pady=(10, 0))
         val_max = int(self.custom_mouth_max * 1000)
         self.lbl_mouth_max = self._create_selector(frm, val_max, "", 1, self.update_mouth_max)
@@ -324,18 +326,30 @@ class InstrumentSelector(ctk.CTk):
         frm_rec_adv = ctk.CTkFrame(self.advanced_frame, fg_color="transparent") 
         frm_rec_adv.pack(fill="x", padx=10, pady=10) 
         ctk.CTkLabel(frm_rec_adv, text="GRAVAÇÃO", font=("Segoe UI", 12, "bold"), text_color="#005bb0", anchor="center").pack(fill="x")
-        self.chk_mid_adv = ctk.CTkCheckBox(frm_rec_adv, text=".MID", variable=self.var_mid, font=("Segoe UI", 12), 
+        frm_checks = ctk.CTkFrame(frm_rec_adv, fg_color="transparent")
+        frm_checks.pack(pady=5)
+        
+        self.chk_mid_adv = ctk.CTkCheckBox(frm_checks, text=".MID", variable=self.var_mid, font=("Segoe UI", 12), 
                                             width=60, fg_color="#005bb0", hover_color="#003E90") 
         self.chk_mid_adv.pack(side="left", padx=10) 
-        self.chk_mp3_adv = ctk.CTkCheckBox(frm_rec_adv, text=".MP3", variable=self.var_mp3, 
+        
+        self.chk_mp3_adv = ctk.CTkCheckBox(frm_checks, text=".MP3", variable=self.var_mp3, 
                                             font=("Segoe UI", 12), width=60, fg_color="#005bb0", hover_color="#003E90") 
         self.chk_mp3_adv.pack(side="left", padx=10) 
-        self.chk_wav_adv = ctk.CTkCheckBox(frm_rec_adv, text=".WAV", variable=self.var_wav, font=("Segoe UI", 12), 
+        
+        self.chk_wav_adv = ctk.CTkCheckBox(frm_checks, text=".WAV", variable=self.var_wav, font=("Segoe UI", 12), 
                                             width=60, fg_color="#005bb0", hover_color="#003E90") 
         self.chk_wav_adv.pack(side="left", padx=10) 
+        
         self.chk_folder_adv = ctk.CTkSwitch(frm_rec_adv, text="Separar pastas para playback e gravação", 
                                              variable=self.var_separate_pb, font=("Segoe UI", 11), progress_color="#005bb0") 
         self.chk_folder_adv.pack(pady=5)
+        
+        # [NOVO] Botão para abrir pasta
+        btn_open_folder = ctk.CTkButton(frm_rec_adv, text="Abrir gravações", 
+                                        font=("Segoe UI", 11), fg_color="#333333", hover_color="#444444", 
+                                        height=24, command=self.open_recordings_folder)
+        btn_open_folder.pack(pady=(5, 0))
 
     def _create_selector(self, parent, initial_val_display, unit_suffix, step, command_func):
         container = ctk.CTkFrame(parent, fg_color="transparent")
@@ -352,6 +366,15 @@ class InstrumentSelector(ctk.CTk):
         self._load_defaults_from_settings()
         self._rebuild_advanced_panel() 
         print("Configurações restauradas.")
+
+    def open_recordings_folder(self):
+        # Garante que a pasta existe antes de abrir
+        if not os.path.exists(self.recordings_folder):
+            os.makedirs(self.recordings_folder)
+        try:
+            os.startfile(self.recordings_folder)
+        except Exception as e:
+            print(f"Erro ao abrir pasta: {e}")
 
     # --- Updates Flauta ---
     def update_mouth_peak(self, amount):
