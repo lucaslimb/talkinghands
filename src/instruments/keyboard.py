@@ -358,18 +358,9 @@ def start_piano(chosen_instrument, user_sustain=None, lift_threshold=None, touch
     # Surface lógica (Se usar tela cheia, o código vai escalar isso aqui)
     main_surface = pygame.Surface((LOGICAL_W, LOGICAL_H))
     
-    # Fonte
-    caminho_fonte = "assets/ShadowsOfSecurity-5zW8.ttf" 
-    tamanho_fonte = 16
-    try:
-        # Carrega arquivo externo (Ideal para estilizar o jogo)
-        main_font = pygame.font.Font(caminho_fonte, tamanho_fonte)
-        calib_font = pygame.font.Font(caminho_fonte, tamanho_fonte + 4)
-    except FileNotFoundError:
-        print(f"AVISO: Fonte {caminho_fonte} não encontrada. Usando Arial.")
-        # Fallback (Plano B) caso o arquivo não exista
-        main_font = pygame.font.SysFont("Arial", 18, bold=True)
-        calib_font = pygame.font.SysFont("Arial", 24, bold=True)
+
+    main_font = pygame.font.SysFont("Arial", 18, bold=True)
+    calib_font = pygame.font.SysFont("Arial", 24, bold=True)
 
     is_calibrating = False
     calib_start_time = 0

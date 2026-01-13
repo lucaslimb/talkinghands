@@ -1,6 +1,6 @@
 # Talking Hands - Instrumentos Invisíveis com Visão Computacional
 
-Aplicação de _Air Instrument_ de alta performance projetada para transformar qualquer ambiente em interfaces musicais virtuais. O sistema utiliza algoritmos avançados de Inteligência Artificial para o rastreamento de mãos em tempo real, integrados a um motor de síntese de áudio de baixa latência, permitindo a execução musical via webcam sem a necessidade de periféricos físicos adicionais, com mais de 40 sons dividos em diversos instrumentos.
+Aplicação de _Air Instrument_ projetada para transformar qualquer ambiente em interfaces musicais virtuais. O sistema utiliza algoritmos avançados de Inteligência Artificial para o rastreamento de mãos em tempo real, integrados a um motor de síntese de áudio de baixa latência, permitindo a execução musical via webcam sem a necessidade de periféricos físicos adicionais, com mais de 40 sons dividos em diversos instrumentos.
 
 ## 🚀 Funcionalidades do Sistema
 
@@ -40,14 +40,15 @@ Aplicação de _Air Instrument_ de alta performance projetada para transformar q
 
 ## 🛠️ Stack de Tecnologias
 
-O projeto foi desenvolvido inteiramente em **Python**, orquestrando bibliotecas de baixo nível em C++ para garantir a performance.
+O projeto foi desenvolvido inteiramente em **Python**, orquestrando bibliotecas de baixo nível em C/C++ para garantir a performance.
 
 |Componente       |Tecnologia | Utilização
 |----------------|---------|-------|
 |Visão Computacional |`OpenCV(cv2)`| Gerenciamento de captura de vídeo, processamento de imagem e renderização da interface|
 |IA & ML|`MediaPipe`| Inferência dos marcos anatômicos da mão e rosto (para instrumentos de sopro) em tempo real|
 |Backend de Áudio|`pyFluidSynth`|Wrapper para a biblioteca FluidSynth em C, garantindo baixa latência|
-|Interface Gráfica |`CustomTkinter` | Framework para construção de interfaces de usuário moderna em linguagem Python
+|Interface Gráfica (Launcher) |`CustomTkinter` | Biblioteca para construção de interfaces de usuário moderna em linguagem Python
+|Interface Gráfica (Instrumentos)|`PyGame` | Biblioteca para construção de interfaces e jogos em linguagem Python
 
 > **Bancos de som utilizados incluem** [ModuleMaster](https://musical-artifacts.com/artifacts/5978), de Vini, [The Definitive Perfect Drums Soundfont](https://musical-artifacts.com/artifacts/6554), de TEC Again e [Chris Flutes and Harmonicas](https://www.producersbuzz.com/downloads/download-free-soundfonts-sf2/top-14-free-flute-soundfonts-sf2/), de C.Clews
 
