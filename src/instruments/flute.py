@@ -9,8 +9,16 @@ import numpy as np
 import sys
 import os
 import pygame # NOVO
-import config.settings as settings
-from instruments.recorder import MidiRecorder
+import sys
+import os
+from pathlib import Path
+
+FILE_PATH = Path(__file__).resolve()
+PROJECT_ROOT = FILE_PATH.parent.parent.parent
+sys.path.append(str(PROJECT_ROOT))
+
+from src.config import settings
+from src.engines.audio.recorder import MidiRecorder
 
 # --- CONSTANTES ---
 NUM_HOLES = 7

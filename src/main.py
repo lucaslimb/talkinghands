@@ -8,13 +8,15 @@ import config.settings as settings
 ctk.set_appearance_mode("Dark")
 ctk.set_default_color_theme("blue")
 
-def resource_path(relative_path):
-    try:
-        base_path = sys._MEIPASS
-    except Exception:
-        base_path = os.path.abspath(".")
+from pathlib import Path
 
-    return os.path.join(base_path, relative_path)
+# AJUSTE DE IMPORTAÇÃO: Adiciona a raiz do projeto ao sys.path
+FILE_PATH = Path(__file__).resolve()
+PROJECT_ROOT = FILE_PATH.parent.parent
+sys.path.append(str(PROJECT_ROOT))
+
+from src.config import settings
+from src.utils.utils import get_asset_path
 
 try:
     myappid = 'talkinghands.instrument.gui.1.0'
@@ -26,8 +28,12 @@ class InstrumentSelector(ctk.CTk):
     def __init__(self):
         super().__init__()
         
-        if os.path.exists(resource_path("icon.ico")):
-            self.iconbitmap(resource_path("icon.ico"))
+
+        icon_path = get_asset_path("icon.ico")
+        if os.path.exists(icon_path):
+            try:
+                self.iconbitmap(icon_path)
+            except: pass            
 
         # --- ORGANIZAÇÃO DO CATÁLOGO ---
         # Adicionada chave 'Flauta'
@@ -462,7 +468,7 @@ def show_menu_and_start():
         
         try:
             if instr_type == "Bateria":
-                drums = import_module("instruments.drums")
+                drums = import_module("src.instruments.drums")
                 drums.start_drums(
                     chosen_instrument=chosen,
                     user_tolerance=app.custom_tolerance,
@@ -470,7 +476,7 @@ def show_menu_and_start():
                     touch_velocity=app.custom_touch_velocity,
                 )
             elif instr_type == "Flauta":
-                flute = import_module("instruments.flute")
+                flute = import_module("src.instruments.flute")
                 reload(flute)
                 
                 h_radius = 0.019
@@ -490,7 +496,7 @@ def show_menu_and_start():
                     rec_options=rec_opts
                 )
             else:
-                keyboard = import_module("instruments.keyboard")
+                keyboard = import_module("src.instruments.keyboard")
                 keyboard.start_piano(
                     chosen_instrument=chosen, 
                     user_sustain=app.custom_sustain,

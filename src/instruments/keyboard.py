@@ -1,3 +1,4 @@
+from pathlib import Path
 import cv2
 import mediapipe as mp
 import threading
@@ -5,11 +6,17 @@ import queue
 import fluidsynth
 import time
 import ctypes
+import sys
+import os
 import pygame  # NOVO
 import numpy as np # NOVO
 
-import config.settings as settings
-from instruments.recorder import MidiRecorder
+FILE_PATH = Path(__file__).resolve()
+PROJECT_ROOT = FILE_PATH.parent.parent.parent
+sys.path.append(str(PROJECT_ROOT))
+
+from src.config import settings
+from src.engines.audio.recorder import MidiRecorder
 
 RELEASE_THRESHOLD = 0.015
 MIN_NOTE_DURATION = 0.1

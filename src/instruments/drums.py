@@ -8,18 +8,23 @@ import numpy as np
 import sys
 import os
 import pygame  # NOVO
-from instruments.recorder import MidiRecorder
+
+import sys
+import os
+from pathlib import Path
+
+FILE_PATH = Path(__file__).resolve()
+PROJECT_ROOT = FILE_PATH.parent.parent.parent
+sys.path.append(str(PROJECT_ROOT))
+
+from src.engines.audio.recorder import MidiRecorder
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
 root_dir = os.path.dirname(current_dir)
 if root_dir not in sys.path:
     sys.path.append(root_dir)
 
-try:
-    from config import settings
-except ImportError:
-    print("ERRO: Config não encontrada.")
-    sys.exit()
+from src.config import settings
 
 VELOCITY_THRESHOLD = 0.002 
 TOUCH_VELOCITY = getattr(settings, 'TOUCH_VELOCITY')
@@ -72,30 +77,25 @@ drum_sfid = -1
 POLYPHONY_CHANNELS = 16
 recorder = MidiRecorder()
 
-FIXED_SF2_PATH = r"sounds\drums\Drums.sf2"
+FIXED_SF2_PATH = settings.SF2_PATHS["drums"]
 
 try:
     fs = fluidsynth.Synth()
     fs.start(driver="dsound") 
     
     print(f">>> Carregando SoundFont Fixo: {FIXED_SF2_PATH}...")
-    
-    if not os.path.isabs(FIXED_SF2_PATH):
-        abs_path = os.path.join(root_dir, FIXED_SF2_PATH)
-    else:
-        abs_path = FIXED_SF2_PATH
         
-    if os.path.exists(abs_path):
-        drum_sfid = fs.sfload(abs_path)
+    if os.path.exists(FIXED_SF2_PATH):
+        drum_sfid = fs.sfload(FIXED_SF2_PATH)
         if drum_sfid != -1:
             print(f"Sucesso! ID do SF2: {drum_sfid}")
             # Inicializa o preset em todos os canais de polifonia
             for i in range(POLYPHONY_CHANNELS):
                 fs.program_select(i, drum_sfid, 128, 0)
         else:
-            print(f"ERRO CRÍTICO: Falha ao carregar o arquivo {abs_path}")
+            print(f"ERRO CRÍTICO: Falha ao carregar o arquivo {FIXED_SF2_PATH}")
     else:
-        print(f"ERRO CRÍTICO: Arquivo não encontrado em {abs_path}")
+        print(f"ERRO CRÍTICO: Arquivo não encontrado em {FIXED_SF2_PATH}")
 
 except Exception as e:
     print(f"ERRO CRÍTICO AUDIO: {e}")
@@ -109,8 +109,7 @@ def select_kit_by_name(name):
     # Aplica o kit em todos os canais para manter consistência no rodízio
     for i in range(POLYPHONY_CHANNELS):
         fs.program_select(i, drum_sfid, bank, preset)
-    abs_sf2_path = os.path.join(root_dir, FIXED_SF2_PATH) if not os.path.isabs(FIXED_SF2_PATH) else FIXED_SF2_PATH
-    recorder.set_instrument(abs_sf2_path, bank, preset, is_drum=True)
+    recorder.set_instrument(FIXED_SF2_PATH, bank, preset, is_drum=True)
 
     return True
 

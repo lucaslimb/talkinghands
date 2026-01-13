@@ -7,6 +7,13 @@ import subprocess
 import fluidsynth
 import threading
 
+from pathlib import Path
+import sys
+
+FILE_PATH = Path(__file__).resolve()
+PROJECT_ROOT = FILE_PATH.parent.parent.parent
+sys.path.append(str(PROJECT_ROOT))
+
 class MidiRecorder:
     def __init__(self):
         self.is_recording = False
