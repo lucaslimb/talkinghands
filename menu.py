@@ -8,6 +8,14 @@ import config.settings as settings
 ctk.set_appearance_mode("Dark")
 ctk.set_default_color_theme("blue")
 
+def resource_path(relative_path):
+    try:
+        base_path = sys._MEIPASS
+    except Exception:
+        base_path = os.path.abspath(".")
+
+    return os.path.join(base_path, relative_path)
+
 try:
     myappid = 'talkinghands.instrument.gui.1.0'
     ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
@@ -18,8 +26,8 @@ class InstrumentSelector(ctk.CTk):
     def __init__(self):
         super().__init__()
         
-        if os.path.exists("icon.ico"):
-            self.iconbitmap("icon.ico")
+        if os.path.exists(resource_path("icon.ico")):
+            self.iconbitmap(resource_path("icon.ico"))
 
         # --- ORGANIZAÇÃO DO CATÁLOGO ---
         # Adicionada chave 'Flauta'

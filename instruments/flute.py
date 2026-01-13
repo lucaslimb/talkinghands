@@ -6,9 +6,13 @@ import fluidsynth
 import time
 import math
 import numpy as np
+import sys
+import os
+import pygame # NOVO
 import config.settings as settings
 from instruments.recorder import MidiRecorder
 
+# --- CONSTANTES ---
 NUM_HOLES = 7
 HOLE_RADIUS = getattr(settings, 'HOLE_RADIUS', 0.019)
 HOLE_SPACING = getattr(settings, 'HOLE_SPACING', 0.068)
@@ -26,12 +30,13 @@ VELOCITY_CHANGE_THRESHOLD = 4
 PLAYBACK_CHANNEL = 0
 LIVE_CHANNEL = 1
 
-# Cores
+# CORES (Convertidas para RGB)
 COLOR_HOLE_OPEN = (150, 150, 150)
 COLOR_HOLE_CLOSED = (0, 200, 0)
 COLOR_FLUTE_BODY_EMPTY = (30, 30, 30) 
-COLOR_BLOW_ACTIVE = (0, 255, 255)     
-COLOR_LIP_POINT = (0, 0, 255) 
+COLOR_BLOW_ACTIVE = (255, 255, 0)  # Amarelo (RGB)    
+COLOR_LIP_POINT = (255, 0, 0)      # Vermelho (RGB)
+COLOR_TEXT = (255, 255, 255)
 
 BASE_NOTE = 60 # C4
 SCALE_FLUTE = [0, 2, 4, 5, 7, 9, 11, 12] 
@@ -153,8 +158,9 @@ def get_mouth_distance(face_landmarks):
     lower = face_landmarks.landmark[14]
     return abs(upper.y - lower.y)
 
-def process_interaction(frame, hand_landmarks):
-    h, w, _ = frame.shape
+# MODIFICADO: Recebe Surface do Pygame para desenhar pontas dos dedos
+def process_interaction(hand_landmarks, w, h, screen):
+    # Reseta estado dos furos
     for hole in holes: hole.is_covered = False
     
     if hand_landmarks:
@@ -164,7 +170,8 @@ def process_interaction(frame, hand_landmarks):
                 tip = lm.landmark[fid]
                 fx, fy = int(tip.x * w), int(tip.y * h)
                 
-                cv2.circle(frame, (fx, fy), 6, (0, 0, 255), -1)
+                # PYGAME: Desenha indicador da ponta do dedo
+                pygame.draw.circle(screen, (255, 0, 0), (fx, fy), 6)
                 
                 for hole in holes:
                     hx, hy = int(hole.x_rel * w), int(hole.y_rel * h)
@@ -186,9 +193,14 @@ def calculate_current_note():
     scale_index = max(0, min(scale_index, len(SCALE_FLUTE) - 1))
     return BASE_NOTE + SCALE_FLUTE[scale_index]
 
-def draw_flute_ui(frame, velocity, face_landmarks=None):
-    h, w, _ = frame.shape
-    overlay = frame.copy()
+# AUXILIAR: Texto
+def draw_text(surface, text, pos, font, color=COLOR_TEXT):
+    txt_surf = font.render(text, True, color)
+    surface.blit(txt_surf, pos)
+
+def draw_flute_ui_pygame(screen, w, h, velocity, face_landmarks, font):
+    # Surface transparente
+    overlay = pygame.Surface((w, h), pygame.SRCALPHA)
     
     if not holes: return
 
@@ -203,52 +215,57 @@ def draw_flute_ui(frame, velocity, face_landmarks=None):
     
     tube_width = 25 
     
-    cv2.rectangle(overlay, (x_center - tube_width//2, y_start), 
-                  (x_center + tube_width//2, y_end), COLOR_FLUTE_BODY_EMPTY, -1)
+    # 1. Corpo vazio da flauta (Alpha 200)
+    body_rect = pygame.Rect(x_center - tube_width//2, y_start, tube_width, flute_height)
+    pygame.draw.rect(overlay, (*COLOR_FLUTE_BODY_EMPTY, 200), body_rect)
     
+    # 2. Barra de sopro (Velocity) (Alpha 200)
     if velocity > 0:
         fill_ratio = velocity / 127.0
         fill_height = int(flute_height * fill_ratio)
-        fill_y_bottom = min(y_start + fill_height, y_end)
-        
-        cv2.rectangle(overlay, (x_center - tube_width//2, y_start), 
-                      (x_center + tube_width//2, fill_y_bottom), COLOR_BLOW_ACTIVE, -1)
+        fill_rect = pygame.Rect(x_center - tube_width//2, y_start, tube_width, fill_height)
+        pygame.draw.rect(overlay, (*COLOR_BLOW_ACTIVE, 200), fill_rect)
 
-    cv2.rectangle(overlay, (x_center - tube_width//2, y_start), 
-                  (x_center + tube_width//2, y_end), (100,100,100), 2)
+    # 3. Borda da flauta (Opaca)
+    pygame.draw.rect(overlay, (100, 100, 100), body_rect, 2)
     
+    # 4. Furos
+    hole_alpha = 180 # Nível de transparência dos furos (0-255)
     for hole in holes:
         cx = int(hole.x_rel * w)
         cy = int(hole.y_rel * h)
         radius = int(HOLE_RADIUS * w)
         
-        color = COLOR_HOLE_CLOSED if hole.is_covered else COLOR_HOLE_OPEN
+        base_color = COLOR_HOLE_CLOSED if hole.is_covered else COLOR_HOLE_OPEN
+        # Adiciona o canal alpha à cor base
+        color_with_alpha = (*base_color, hole_alpha)
         
+        # Efeito visual quando soprando e furo aberto (brilho interno opaco)
         if velocity > 0 and not hole.is_covered:
-            cv2.circle(overlay, (cx, cy), radius - 2, (255, 255, 255), -1)
+            pygame.draw.circle(overlay, (255, 255, 255), (cx, cy), radius - 2)
         
-        cv2.circle(overlay, (cx, cy), radius, color, -1)
-        cv2.circle(overlay, (cx, cy), radius, (50, 50, 50), 1)
+        # Desenha o círculo principal com transparência
+        pygame.draw.circle(overlay, color_with_alpha, (cx, cy), radius)
+        # Borda do furo (Opaca)
+        pygame.draw.circle(overlay, (50, 50, 50), (cx, cy), radius, 1)
 
+    # 5. Pontos da Boca (Face Mesh)
     if face_landmarks:
         up = face_landmarks.landmark[13]
         low = face_landmarks.landmark[14]
         cx_u, cy_u = int(up.x * w), int(up.y * h)
         cx_l, cy_l = int(low.x * w), int(low.y * h)
-        cv2.circle(overlay, (cx_u, cy_u), 2, COLOR_LIP_POINT, -1)
-        cv2.circle(overlay, (cx_l, cy_l), 2, COLOR_LIP_POINT, -1)
+        pygame.draw.circle(overlay, COLOR_LIP_POINT, (cx_u, cy_u), 2)
+        pygame.draw.circle(overlay, COLOR_LIP_POINT, (cx_l, cy_l), 2)
     
+    screen.blit(overlay, (0,0))
+
     if recorder.is_recording:
-        cv2.circle(frame, (w - 90, 30), 10, (0, 0, 255), -1)
-        cv2.putText(frame, "REC", (w - 75, 40),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2)
+        pygame.draw.circle(screen, (255, 0, 0), (w - 90, 30), 10)
+        draw_text(screen, "REC", (w - 75, 20), font, (255, 0, 0))
         
     if recorder.is_playing:
-        cv2.putText(frame, "PLAYBACK", (w - 200, 50),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2)
-
-    cv2.addWeighted(overlay, 0.6, frame, 0.4, 0, frame)
-
+        draw_text(screen, "PLAYBACK", (w - 200, 30), font, (255, 0, 0))
 # ------------------------
 # FUNÇÃO PRINCIPAL
 # ------------------------
@@ -274,8 +291,18 @@ def start_flute(chosen_instrument, mouth_peak=0.01, mouth_max=0.05, hole_radius=
     hands = mp_hands.Hands(max_num_hands=2, model_complexity=1, min_detection_confidence=0.5)
     face_mesh = mp_face.FaceMesh(max_num_faces=1, refine_landmarks=True)
     
+    # PYGAME & CAPTURE SETUP
+    LOGICAL_W, LOGICAL_H = 1280, 720
     cap = cv2.VideoCapture(0, cv2.CAP_DSHOW)
     if not cap.isOpened(): cap = cv2.VideoCapture(0)
+    cap.set(cv2.CAP_PROP_FPS, 60)
+    cap.set(cv2.CAP_PROP_FRAME_WIDTH, LOGICAL_W)
+    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, LOGICAL_H)
+    
+    pygame.init()
+    screen = pygame.display.set_mode((LOGICAL_W, LOGICAL_H))
+    pygame.display.set_caption("Talking Hands - Flauta")
+    font = pygame.font.SysFont("Arial", 18, bold=True)
 
     print(f">>> FLAUTA INICIADA: {chosen_instrument}")
     print(f"    Peak: {mouth_peak}, Max: {mouth_max}, Inv: {invert_blow}")
@@ -286,16 +313,43 @@ def start_flute(chosen_instrument, mouth_peak=0.01, mouth_max=0.05, hole_radius=
     avg_mouth_dist = 0.0
     last_sent_velocity = 0
     show_gui = True
+    manual_blow = False
+
+    running = True
 
     try:
-        while True:
+        while running:
+            # 1. INPUT PYGAME
+            manual_blow = False
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    running = False
+                elif event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_ESCAPE:
+                        recorder.stop_playback()
+                        running = False
+                    elif event.key == pygame.K_1: recorder.start()
+                    elif event.key == pygame.K_2: recorder.stop(f"flute_{int(time.time())}.mid")
+                    elif event.key == pygame.K_3: 
+                        fs.cc(PLAYBACK_CHANNEL, 11, 127)
+                        recorder.toggle_playback(fs)
+                    elif event.key == pygame.K_4: recorder.stop_playback()
+                    elif event.key == pygame.K_0: show_gui = not show_gui
+                    
+            keys = pygame.key.get_pressed()
+            if keys[pygame.K_SPACE]:
+                manual_blow = True
+
+            # 2. CAPTURE
             ret, frame = cap.read()
             if not ret: break
 
+            frame = cv2.resize(frame, (LOGICAL_W, LOGICAL_H))
             frame = cv2.flip(frame, 1)
-            rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             
-            res_face = face_mesh.process(rgb)
+            # 3. LÓGICA DE SOPRO (Face) 
+            res_face = face_mesh.process(frame_rgb)
             current_mouth_dist = 0.0
             face_landmarks_data = None
             
@@ -305,9 +359,6 @@ def start_flute(chosen_instrument, mouth_peak=0.01, mouth_max=0.05, hole_radius=
             
             avg_mouth_dist = (current_mouth_dist * MOUTH_SMOOTHING_FACTOR) + (avg_mouth_dist * (1.0 - MOUTH_SMOOTHING_FACTOR))
                 
-            k = cv2.waitKey(1)
-            manual_blow = (k == 32) 
-
             velocity = 0
             if manual_blow:
                 velocity = 127
@@ -325,9 +376,16 @@ def start_flute(chosen_instrument, mouth_peak=0.01, mouth_max=0.05, hole_radius=
                 
                 velocity = int(max(0.0, min(ratio, 1.0)) * 127)
 
-            res_hands = hands.process(rgb)
-            process_interaction(frame, res_hands.multi_hand_landmarks)
+            # 4. DESENHO VÍDEO
+            frame_surface = pygame.image.frombuffer(frame_rgb.tobytes(), (LOGICAL_W, LOGICAL_H), 'RGB')
+            screen.blit(frame_surface, (0, 0))
+
+            # 5. PROCESSAMENTO MÃOS E FUROS
+            res_hands = hands.process(frame_rgb)
+            # Passamos a screen para desenhar os pontos dos dedos
+            process_interaction(res_hands.multi_hand_landmarks, LOGICAL_W, LOGICAL_H, screen)
             
+            # 6. LÓGICA DE NOTAS
             if velocity > 0:
                 target_note = calculate_current_note()
                 
@@ -347,11 +405,12 @@ def start_flute(chosen_instrument, mouth_peak=0.01, mouth_max=0.05, hole_radius=
                     last_note = -1
                     last_sent_velocity = 0
 
-            draw_flute_ui(frame, last_sent_velocity, face_landmarks_data)
+            # 7. DESENHO UI (FLAUTA E MENU)
+            draw_flute_ui_pygame(screen, LOGICAL_W, LOGICAL_H, last_sent_velocity, face_landmarks_data, font)
             
             if show_gui:
                 instructions = [
-                    "ESC  -> sair",
+                    "ESC   -> sair",
                     "1 -> iniciar gravacao",
                     "2 -> encerrar gravacao",
                     "3 -> iniciar/interromper playback",
@@ -360,27 +419,13 @@ def start_flute(chosen_instrument, mouth_peak=0.01, mouth_max=0.05, hole_radius=
 
                 y0 = 30
                 for i, txt in enumerate(instructions):
-                    cv2.putText(frame, txt, (20, y0 + i * 25),
-                                cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)                
+                    draw_text(screen, txt, (20, y0 + i * 25), font)
             
-            width, height = 1920, 1080
-            frame = cv2.resize(frame, (width, height))
-            cv2.imshow("Talking Hands - Flauta", frame)
-            
-            if k == 27: # ESC
-                recorder.stop_playback()
-                break
-            elif k == 49: recorder.start() # 1
-            elif k == 50: recorder.stop(f"flute_{int(time.time())}.mid") # 2
-            elif k == 51: 
-                fs.cc(PLAYBACK_CHANNEL, 11, 127) 
-                recorder.toggle_playback(fs) # 3
-            elif k == 52: recorder.stop_playback() # 4
-            elif k == 48: show_gui = not show_gui # 0
+            pygame.display.flip()
 
     finally:
         cap.release()
-        cv2.destroyAllWindows()
+        pygame.quit()
         audio_queue.put(None)
         print(">>> Flauta encerrada.")
 

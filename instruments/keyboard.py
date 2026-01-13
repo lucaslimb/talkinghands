@@ -5,6 +5,8 @@ import queue
 import fluidsynth
 import time
 import ctypes
+import pygame  # NOVO
+import numpy as np # NOVO
 
 import config.settings as settings
 from instruments.recorder import MidiRecorder
@@ -21,15 +23,16 @@ NUM_KEYS = 30
 ACTIVE_FINGERS = [4, 8, 12, 16, 20]
 show_menu = True
 
+# CORES (Convertidas para RGB para o Pygame)
 COLOR_TABLE_LINE = (0, 255, 0)
 COLOR_TABLE_FRONT = (30, 30, 30)
 COLOR_KEY_DIVIDER = (100, 100, 100)
-COLOR_HIT = (0, 255, 255)
-COLOR_ARMED = (0, 165, 255)
-COLOR_HOLD = (0, 200, 0)
+COLOR_HIT = (255, 255, 0)     # Amarelo (RGB)
+COLOR_ARMED = (255, 165, 0)   # Laranja (RGB)
+COLOR_HOLD = (0, 200, 0)      # Verde Escuro
 
 # ------------------------
-# AUDIO SETUP
+# AUDIO SETUP (INTACTO)
 # ------------------------
 audio_queue = queue.Queue()
 loaded_sfids = {}
@@ -107,7 +110,6 @@ hands_state = {
 }
 
 def reset_hands_state():
-    """Reseta o estado dos dedos para evitar travamentos ao reiniciar"""
     for hand in ["Left", "Right"]:
         for fid in ACTIVE_FINGERS:
             hands_state[hand]["finger_status"][fid] = "IDLE"
@@ -139,7 +141,8 @@ def check_active_keys_integrity():
                     key["is_active"] = False
                     key["off_timer"] = 0
 
-def processar_dedo(label, fid, y_current, x_current, table_y, cx, cy, frame, h_frame):
+# MODIFICADO: Recebe screen (Pygame surface) em vez de frame (OpenCV image)
+def processar_dedo(label, fid, y_current, x_current, table_y, cx, cy, screen, h_frame):
     state = hands_state[label]
     status = state["finger_status"][fid]
     last_action_time = state["finger_timers"][fid]
@@ -147,6 +150,7 @@ def processar_dedo(label, fid, y_current, x_current, table_y, cx, cy, frame, h_f
     state["last_seen"][fid] = current_time
     dist_above_table = table_y - y_current
 
+    # Lógica de estados (MANTIDA IDÊNTICA)
     if status != "TOUCHING" and state["active_notes"][fid] is not None:
         note_to_kill = state["active_notes"][fid]
         audio_queue.put(("off", note_to_kill))
@@ -175,7 +179,10 @@ def processar_dedo(label, fid, y_current, x_current, table_y, cx, cy, frame, h_f
             state["finger_timers"][fid] = current_time
             key_data["last_hit"] = current_time
             key_data["is_active"] = True
-            cv2.circle(frame, (cx, int(table_y * h_frame)), 15, COLOR_HIT, -1)
+            
+            # DESENHO PYGAME: Feedback visual do toque
+            # cx e cy aqui são relativos a 640x480.
+            pygame.draw.circle(screen, COLOR_HIT, (cx, int(table_y * h_frame)), 15)
 
     elif status == "TOUCHING":
         active_note = state["active_notes"][fid]
@@ -206,19 +213,15 @@ def processar_dedo(label, fid, y_current, x_current, table_y, cx, cy, frame, h_f
         normal_release = (dist_above_table > RELEASE_THRESHOLD) and (time_held > MIN_NOTE_DURATION)
 
         if force_release or normal_release:
-            # audio_queue.put(("off", active_note))
-            # for k in PIANO_KEYS:
-            #     if k["note"] == active_note:
-            #         k["is_active"] = False
-            #         break
             state["active_notes"][fid] = None
             state["finger_status"][fid] = "ARMED"
             state["finger_timers"][fid] = current_time
 
+    # DESENHO PYGAME: Indicador na ponta do dedo
     color = COLOR_ARMED if status == "ARMED" else (100,100,100)
     if status == "TOUCHING":
         color = COLOR_HOLD
-    cv2.circle(frame, (cx, cy), 5, color, -1)
+    pygame.draw.circle(screen, color, (cx, cy), 5)
 
 def check_lost_fingers():
     current_time = time.time()
@@ -236,42 +239,57 @@ def check_lost_fingers():
                     state["active_notes"][fid] = None
                     state["finger_status"][fid] = "IDLE"
 
-def draw_ui_fast(frame, table_y, w, h):
+# NOVO: Função para renderizar texto no Pygame
+def draw_text(surface, text, pos, font, color=(255, 255, 255)):
+    text_surf = font.render(text, True, color)
+    surface.blit(text_surf, pos)
+
+# MODIFICADO: Usa Pygame Surface e Fontes
+def draw_ui_fast_pygame(screen, table_y, w, h, font):
     table_px = int(table_y * h)
     key_width = w / NUM_KEYS
-    overlay = frame.copy()
-    cv2.line(frame, (0, table_px), (w, table_px), COLOR_TABLE_LINE, 2)
+    
+    # 1. Desenhar a linha da mesa
+    pygame.draw.line(screen, COLOR_TABLE_LINE, (0, table_px), (w, table_px), 2)
+    
+    # 2. Criar surface para transparência (teclas)
+    # Surface com suporte a Alpha (transparência)
+    overlay = pygame.Surface((w, h), pygame.SRCALPHA)
+    
     for i, key in enumerate(PIANO_KEYS):
         x1 = int(i * key_width)
-        cv2.line(frame, (x1, table_px), (x1, h), COLOR_KEY_DIVIDER, 1)
+        # Linha divisória
+        pygame.draw.line(screen, COLOR_KEY_DIVIDER, (x1, table_px), (x1, h), 1)
+        
+        # Tecla ativa (retângulo com transparência)
         if key["is_active"] or (time.time() - key["last_hit"]) < 0.15:
             x2 = int((i + 1) * key_width)
-            cv2.rectangle(overlay, (x1, table_px), (x2, h), COLOR_HIT, -1)
-    cv2.addWeighted(overlay, 0.3, frame, 0.7, 0, frame)
+            rect_h = h - table_px
+            # (R, G, B, Alpha) -> Alpha 76 é aprox 0.3 do OpenCV (255 * 0.3)
+            pygame.draw.rect(overlay, (*COLOR_HIT, 76), (x1, table_px, x2-x1, rect_h))
+    
+    # Aplica o overlay transparente na tela principal
+    screen.blit(overlay, (0,0))
 
     if recorder.is_recording:
-        cv2.circle(frame, (w - 90, 30), 10, (0, 0, 255), -1)
-        cv2.putText(frame, "REC", (w - 75, 40),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2)
+        pygame.draw.circle(screen, (255, 0, 0), (w - 90, 30), 10)
+        draw_text(screen, "REC", (w - 75, 20), font, (255, 0, 0))
         
     if recorder.is_playing:
-        cv2.putText(frame, "PLAYBACK", (w - 200, 50),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2)
+        draw_text(screen, "PLAYBACK", (w - 200, 30), font, (255, 0, 0))
 
     if show_menu:
         instructions = [
-            "ESC  -> sair",
+            "ESC   -> sair",
             "ESPACO -> calibrar",
             "1 -> iniciar gravacao",
             "2 -> encerrar gravacao",
             "3 -> iniciar/interromper playback",
             "0 -> ocultar/mostrar menu"
         ]
-
         y0 = 30
         for i, txt in enumerate(instructions):
-            cv2.putText(frame, txt, (20, y0 + i * 25),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+            draw_text(screen, txt, (20, y0 + i * 25), font)
 
 # ------------------------
 # START
@@ -281,17 +299,14 @@ def start_piano(chosen_instrument, user_sustain=None, lift_threshold=None, touch
     if user_sustain is not None and user_sustain > 0:
         global SUSTAIN_DECAY
         SUSTAIN_DECAY = user_sustain
-        print(f">>> Sustain configurado: {SUSTAIN_DECAY}s")
 
     if lift_threshold is not None and lift_threshold > 0:
         global LIFT_THRESHOLD
         LIFT_THRESHOLD = lift_threshold
-        print(f">>> Lift configurado: {LIFT_THRESHOLD}")
 
     if touch_tolerance is not None and touch_tolerance > 0:
         global TOUCH_TOLERANCE
         TOUCH_TOLERANCE = touch_tolerance
-        print(f">>> Tolerância de Toque configurada: {TOUCH_TOLERANCE}")
 
     global show_menu
 
@@ -307,86 +322,136 @@ def start_piano(chosen_instrument, user_sustain=None, lift_threshold=None, touch
 
     hands = mp.solutions.hands.Hands(max_num_hands=2, model_complexity=1,
                                      min_detection_confidence=0.3, min_tracking_confidence=0.3)
+    
+    # Câmera Setup
     cap = cv2.VideoCapture(0, cv2.CAP_DSHOW)
     if not cap.isOpened():
         cap = cv2.VideoCapture(0)
 
-    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
-    cap.set(cv2.CAP_PROP_FPS, 60)
-    cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+    # 1. AJUSTE: Aumentar resolução de captura para HD (Melhora qualidade e zoom)
+    LOGICAL_W, LOGICAL_H = 1280, 720 
+    
+    cap.set(cv2.CAP_PROP_FRAME_WIDTH, LOGICAL_W)
+    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, LOGICAL_H)
+    cap.set(cv2.CAP_PROP_FPS, 60) # 30 FPS é mais seguro para HD em USB 2.0
+    
+    # PYGAME SETUP
+    pygame.init()
+    
+    # 2. AJUSTE: Janela do mesmo tamanho da captura (Evita esticar/pixelar)
+    DISPLAY_W, DISPLAY_H = 1280, 720 
+    
+    # Se quiser tela cheia REAL, descomente a linha abaixo e comente a de cima:
+    # window_display = pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
+    # DISPLAY_W, DISPLAY_H = window_display.get_size()
+    
+    window_display = pygame.display.set_mode((DISPLAY_W, DISPLAY_H))
+    pygame.display.set_caption("Talking Hands - Pygame HD")
+    
+    # Surface lógica (Se usar tela cheia, o código vai escalar isso aqui)
+    main_surface = pygame.Surface((LOGICAL_W, LOGICAL_H))
+    
+    # Fonte
+    caminho_fonte = "assets/ShadowsOfSecurity-5zW8.ttf" 
+    tamanho_fonte = 16
+    try:
+        # Carrega arquivo externo (Ideal para estilizar o jogo)
+        main_font = pygame.font.Font(caminho_fonte, tamanho_fonte)
+        calib_font = pygame.font.Font(caminho_fonte, tamanho_fonte + 4)
+    except FileNotFoundError:
+        print(f"AVISO: Fonte {caminho_fonte} não encontrada. Usando Arial.")
+        # Fallback (Plano B) caso o arquivo não exista
+        main_font = pygame.font.SysFont("Arial", 18, bold=True)
+        calib_font = pygame.font.SysFont("Arial", 24, bold=True)
 
     is_calibrating = False
     calib_start_time = 0
 
-    print(">>> TECLADO INICIADO")
+    print(">>> TECLADO INICIADO (Pygame)")
+    running = True
 
     try:
-        while True:
+        while running:
+            # 1. EVENTOS PYGAME (Substitui waitKey)
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    running = False
+                elif event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_ESCAPE:
+                        recorder.stop_playback()
+                        running = False
+                    elif event.key == pygame.K_SPACE:
+                        is_calibrating = True
+                        calib_start_time = time.time()
+                        reset_hands_state()
+                    elif event.key == pygame.K_1:
+                        recorder.start()
+                    elif event.key == pygame.K_2:
+                        timestamp = int(time.time())
+                        filename = f"keyboard_{chosen_instrument.replace(' ', '_')}_{timestamp}.mid"
+                        recorder.stop(filename)
+                    elif event.key == pygame.K_3:
+                        recorder.toggle_playback(fs)
+                    elif event.key == pygame.K_4:
+                        recorder.stop_playback()
+                    elif event.key == pygame.K_0:
+                        show_menu = not show_menu
+
+            # 2. CAPTURA E FORÇAR TAMANHO (A CORREÇÃO É AQUI)
             ret, frame = cap.read()
             if not ret:
                 break
 
+            # --- CORREÇÃO DO ERRO DE BUFFER ---
+            # Força o frame a ter exatamente o tamanho que configuramos (1280x720)
+            # Isso garante que a contagem de bytes bata com o esperado pelo frombuffer
+            frame = cv2.resize(frame, (LOGICAL_W, LOGICAL_H))
+            # ----------------------------------
+
+            # A. Espelhar
             frame = cv2.flip(frame, 1)
-            h, w, _ = frame.shape
+            
+            # B. Converter para RGB
+            frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
-            draw_ui_fast(frame, global_state["table_y"], w, h)
+            # C. PROCESSAMENTO MEDIAPIPE (Usa a imagem RGB já redimensionada)
+            results = hands.process(frame_rgb)
 
-            rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            results = hands.process(rgb)
+            # D. CRIAÇÃO DA IMAGEM PYGAME
+            # Agora frame_rgb tem GARANTIDAMENTE o tamanho (LOGICAL_W, LOGICAL_H)
+            frame_surface = pygame.image.frombuffer(frame_rgb.tobytes(), (LOGICAL_W, LOGICAL_H), 'RGB')
+            
+            main_surface.blit(frame_surface, (0, 0))
 
-            if is_calibrating:
-                cv2.putText(frame, "CALIBRANDO...", (50, h//2), cv2.FONT_HERSHEY_SIMPLEX, 1, (0,255,255), 2)
-                if (time.time() - calib_start_time) > 3.0:
-                    is_calibrating = False
-                    if results.multi_hand_landmarks:
-                        total_y = 0
-                        count = 0
-                        for lm in results.multi_hand_landmarks:
-                            for fid in ACTIVE_FINGERS:
-                                total_y += lm.landmark[fid].y
-                                count += 1
-                        if count > 0:
-                            global_state["table_y"] = min((total_y / count), 0.95)
-                            global_state["calibrated"] = True
-                            print(f"Calibrado Y={global_state['table_y']:.2f}")
+            # 3. DRAW UI (Desenhamos SOBRE o vídeo)
+            # Passamos main_surface, que tem tamanho LOGICAL_W x LOGICAL_H
+            draw_ui_fast_pygame(main_surface, global_state["table_y"], LOGICAL_W, LOGICAL_H, main_font)
 
+            # 4. DESENHO DOS PONTOS (Mãos)
             if results.multi_hand_landmarks:
                 for idx, lm in enumerate(results.multi_hand_landmarks):
                     lbl = results.multi_handedness[idx].classification[0].label
 
                     for fid in ACTIVE_FINGERS:
                         finger = lm.landmark[fid]
-                        cx, cy = int(finger.x * w), int(finger.y * h)
-                        processar_dedo(lbl, fid, finger.y, finger.x, global_state["table_y"], cx, cy, frame, h)
+                        
+                        # Cálculo de coordenadas
+                        # Como main_surface tem o tamanho LOGICAL_W/H, a matemática bate perfeito
+                        cx, cy = int(finger.x * LOGICAL_W), int(finger.y * LOGICAL_H)
+                        
+                        processar_dedo(lbl, fid, finger.y, finger.x, global_state["table_y"], cx, cy, main_surface, LOGICAL_H)
 
+            # 5. ATUALIZAÇÕES FINAIS
             check_lost_fingers()
             check_active_keys_integrity()
-            width, height = 1920, 1080
-            frame = cv2.resize(frame, (width, height))
+            
+            # Escala a superfície lógica (640x480) para o tamanho da janela (1920x1080)
+            scaled_surface = pygame.transform.scale(main_surface, (DISPLAY_W, DISPLAY_H))
+            window_display.blit(scaled_surface, (0, 0))
+            
+            pygame.display.flip()
+            # pygame.time.Clock().tick(60) # Opcional: limitar FPS se necessário
 
-            cv2.imshow("Talking Hands - Teclado", frame)
-
-            k = cv2.waitKey(1)
-            if k == 32: # ESPAÇO
-                is_calibrating = True
-                calib_start_time = time.time()
-                reset_hands_state()
-            elif k == 49: # Tecla '1'
-                recorder.start()
-            elif k == 50: # Tecla '2'
-                timestamp = int(time.time())
-                filename = f"keyboard_{chosen_instrument.replace(' ', '_')}_{timestamp}.mid"
-                recorder.stop(filename)
-            elif k == 51: # Tecla 3 - PLAYBACK
-                recorder.toggle_playback(fs)
-            elif k == 52: # 4
-                recorder.stop_playback()
-            elif k == 48:
-                show_menu = not show_menu
-            elif k == 27: # ESC
-                recorder.stop_playback()
-                break # Sai do loop, caindo no finally
     finally:
         print(">>> Encerrando notas ativas...")
         for key in PIANO_KEYS:
@@ -398,7 +463,7 @@ def start_piano(chosen_instrument, user_sustain=None, lift_threshold=None, touch
                 key["is_active"] = False
 
         cap.release()
-        cv2.destroyAllWindows()
+        pygame.quit()
         audio_queue.put(None)
         print(">>> Sessão encerrada.")
 
