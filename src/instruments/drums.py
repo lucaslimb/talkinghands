@@ -7,8 +7,7 @@ import time
 import numpy as np
 import sys
 import os
-import pygame  # NOVO
-
+import pygame 
 import sys
 import os
 from pathlib import Path
@@ -31,11 +30,8 @@ TOUCH_VELOCITY = getattr(settings, 'TOUCH_VELOCITY')
 TOUCH_TOLERANCE = getattr(settings, 'TOUCH_TOLERANCE', 0.01)
 ELLIPSE_THRESHOLD = 1.0 - TOUCH_TOLERANCE 
 
-# CORES (Convertidas para RGB para o Pygame)
-# No OpenCV (0,0,255) era vermelho. No Pygame é Azul.
-# Então ajustamos para o padrão RGB:
 COLOR_RED = (255, 0, 0)        # Vermelho
-COLOR_HIT_FILL = (255, 0, 0)   # Vermelho
+COLOR_HIT_FILL = (255, 0, 0)  
 COLOR_READY = (255, 255, 0)    # Amarelo
 COLOR_IDLE = (100, 100, 100)   # Cinza
 COLOR_TEXT = (255, 255, 255)   # Branco
@@ -106,7 +102,6 @@ def select_kit_by_name(name):
     _, bank, preset = settings.INSTRUMENTS[name]
     print(f">>> SELECIONANDO KIT: {name} | B: {bank} P: {preset}")
     
-    # Aplica o kit em todos os canais para manter consistência no rodízio
     for i in range(POLYPHONY_CHANNELS):
         fs.program_select(i, drum_sfid, bank, preset)
     recorder.set_instrument(FIXED_SF2_PATH, bank, preset, is_drum=True)
@@ -147,13 +142,11 @@ def check_collision(x, y, drum):
         tol = TOUCH_TOLERANCE
         return (x_min + tol <= x <= x_max - tol) and (y_min + tol <= y <= y_max - tol)
     else:
-        # Equação da Elipse
         val = ((x - h)**2 / rx**2) + ((y - k)**2 / ry**2)
         return val <= ELLIPSE_THRESHOLD
 
 # MODIFICADO: Recebe screen e font do Pygame
 def process_hand(label, landmarks, w, h, screen, font):
-    # Ponto de Referência: Ponta do Dedão (Landmark 4)
     ref_point = landmarks[4] 
     ref_x, ref_y = ref_point.x, ref_point.y
     
@@ -213,24 +206,18 @@ def process_hand(label, landmarks, w, h, screen, font):
     state["prev_y"] = ref_y
     state["can_hit"] = can_hit
 
-    # PYGAME: Desenho do cursor
     pygame.draw.circle(screen, cursor_color, cursor_pos, radius)
     pygame.draw.circle(screen, (255, 255, 255), cursor_pos, radius + 2, 2)
 
-# AUXILIAR: Desenhar texto
 def draw_text(surface, text, pos, font, color=COLOR_TEXT):
     txt_surf = font.render(text, True, color)
     surface.blit(txt_surf, pos)
 
-# MODIFICADO: Desenho com Pygame
 def draw_drums_pygame(screen, w, h, font):
-    # Surface transparente para efeitos de alpha
     overlay = pygame.Surface((w, h), pygame.SRCALPHA)
     
     for drum in DRUM_KIT:
-        # Conversão de coordenadas normalizadas para Pixels e Rects
-        # Pos (h, k) é o centro. Axes (rx, ry) são os raios.
-        # Pygame Rect precisa de (left, top, width, height)
+
         cx_px = int(drum["pos"][0] * w)
         cy_px = int(drum["pos"][1] * h)
         rx_px = int(drum["axes"][0] * w)
@@ -246,30 +233,24 @@ def draw_drums_pygame(screen, w, h, font):
         color = drum["color"]
         fill_alpha = 50 # Transparência leve (aprox 0.4 do OpenCV)
         
-        # Efeito de Hit
         if (time.time() - drum["last_hit"]) < 0.15:
-            fill_alpha = 200 # Mais opaco no hit
+            fill_alpha = 200 
             color = COLOR_HIT_FILL
         
-        # Cor com Alpha
         color_with_alpha = (*color, fill_alpha)
         
         if drum["shape"] == "rect":
-            # Preenchimento
+
             pygame.draw.rect(overlay, color_with_alpha, drum_rect)
-            # Borda
             pygame.draw.rect(overlay, color, drum_rect, 2)
         else:
-            # Preenchimento
             pygame.draw.ellipse(overlay, color_with_alpha, drum_rect)
-            # Borda
             pygame.draw.ellipse(overlay, color, drum_rect, 2)
             
-        # Nome do tambor (opcional, centralizado)
+        # Nome do tambor
         # name_surf = font.render(drum["name"], True, (255,255,255))
         # screen.blit(name_surf, (cx_px - name_surf.get_width()//2, cy_px))
 
-    # Aplica o overlay na tela principal
     screen.blit(overlay, (0, 0))
 
     if recorder.is_recording:
@@ -334,11 +315,9 @@ def start_drums(chosen_instrument=None, user_tolerance=None, rec_options=None, t
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, LOGICAL_H)
     
     pygame.init()
-    # Usando resolução lógica direta para evitar erros de buffer e distorção
     screen = pygame.display.set_mode((LOGICAL_W, LOGICAL_H))
     pygame.display.set_caption("Talking Hands - Bateria")
     
-    # Fonte
     font = pygame.font.SysFont("Arial", 18, bold=True)
     
     hands = mp.solutions.hands.Hands(max_num_hands=2, model_complexity=1, min_detection_confidence=0.3, min_tracking_confidence=0.3)
@@ -368,28 +347,21 @@ def start_drums(chosen_instrument=None, user_tolerance=None, rec_options=None, t
                         recorder.stop_playback()
                     elif event.key == pygame.K_0:
                         show_menu = not show_menu
-                    # Atalho de depuração/teclado físico para o Bumbo (Kick)
                     elif event.key == pygame.K_SPACE:
                         audio_queue.put((36, 127)) # 36 = Kick
 
-            # 2. CAPTURA E VÍDEO
             ret, frame = cap.read()
             if not ret: break
             
-            # Força o tamanho correto para o buffer do pygame
             frame = cv2.resize(frame, (LOGICAL_W, LOGICAL_H))
             frame = cv2.flip(frame, 1)
             frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             
-            # Desenha o vídeo na tela
             frame_surface = pygame.image.frombuffer(frame_rgb.tobytes(), (LOGICAL_W, LOGICAL_H), 'RGB')
             screen.blit(frame_surface, (0, 0))
             
-            # 3. DESENHO DOS TAMBORES (Overlay)
             draw_drums_pygame(screen, LOGICAL_W, LOGICAL_H, font)
             
-            # 4. PROCESSAMENTO MEDIAPIPE E CURSORES
-            # Note que passamos 'screen' e 'font' para process_hand desenhar
             results = hands.process(frame_rgb)
             
             if results.multi_hand_landmarks:
@@ -397,7 +369,6 @@ def start_drums(chosen_instrument=None, user_tolerance=None, rec_options=None, t
                     lbl = results.multi_handedness[idx].classification[0].label
                     process_hand(lbl, landmarks.landmark, LOGICAL_W, LOGICAL_H, screen, font)
             
-            # 5. ATUALIZA TELA
             pygame.display.flip()
                 
     except Exception as e:

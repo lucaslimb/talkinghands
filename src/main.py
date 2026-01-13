@@ -36,10 +36,8 @@ class InstrumentSelector(ctk.CTk):
             except: pass            
 
         # --- ORGANIZAÇÃO DO CATÁLOGO ---
-        # Adicionada chave 'Flauta'
         self.catalog = {"Teclado": [], "Bateria": [], "Flauta": []}
         
-        # Separa os instrumentos com base na configuração do settings.py
         for name, data in settings.INSTRUMENTS.items():
             sf_key = data[0] 
             if sf_key == "drums":
@@ -50,7 +48,6 @@ class InstrumentSelector(ctk.CTk):
                 self.catalog["Teclado"].append(name)
         
         self.current_type = "Teclado"
-        # Lógica de fallback se não houver teclado
         if not self.catalog["Teclado"]:
             if self.catalog["Bateria"]: self.current_type = "Bateria"
             elif self.catalog["Flauta"]: self.current_type = "Flauta"
@@ -74,12 +71,12 @@ class InstrumentSelector(ctk.CTk):
         self.var_separate_pb = ctk.BooleanVar(value=def_pb_folder)
         
         # Var Específica Flauta
-        self.var_invert_blow = ctk.BooleanVar(value=False) # False = Boca fechada toca forte (Padrão sopro)
+        self.var_invert_blow = ctk.BooleanVar(value=False) 
 
         self.is_advanced_open = False
 
-        self.base_height = 250
-        self.expanded_height = 600 # Aumentei um pouco para caber opções da flauta
+        self.base_height = 300
+        self.expanded_height = 600 
 
         self.title("Talking Hands Launcher")
         self.geometry(f"600x{self.base_height}")
@@ -93,18 +90,25 @@ class InstrumentSelector(ctk.CTk):
         self.main_frame = ctk.CTkFrame(self, corner_radius=0, fg_color="transparent")
         self.main_frame.grid(row=0, column=0, sticky="nsew", padx=20, pady=20)
         self.main_frame.grid_columnconfigure(1, weight=1)
-        self.main_frame.grid_rowconfigure((0, 1, 2), weight=0)
+        self.main_frame.grid_rowconfigure((0, 1, 2, 3), weight=0)
 
-        # Segmented Button agora inclui Flauta
+        self.lbl_title = ctk.CTkLabel(
+            self.main_frame,
+            text="Talking Hands",
+            font=("Segoe UI", 42, "bold"), 
+            text_color="#005bb0"
+        )
+        self.lbl_title.grid(row=0, column=0, columnspan=3, sticky="ew", pady=(0, 10))
+
         self.seg_type = ctk.CTkSegmentedButton(
             self.main_frame,
             values=["Teclado", "Bateria", "Flauta"],
             command=self.change_instrument_type,
-            font=("Segoe UI", 14, "bold"),
+            font=("Segoe UI", 14),
             height=35
         )
         self.seg_type.set(self.current_type)
-        self.seg_type.grid(row=0, column=0, columnspan=3, sticky="ew", pady=(0, 20), padx=80)
+        self.seg_type.grid(row=1, column=0, columnspan=3, sticky="ew", pady=(0, 20), padx=80)
         
         arrow_font = ("Segoe UI", 32, "bold")
         main_font = ("Segoe UI", 24, "bold")
@@ -390,7 +394,6 @@ class InstrumentSelector(ctk.CTk):
         except Exception as e:
             print(f"Erro ao abrir pasta: {e}")
 
-    # --- Updates Flauta ---
     def update_mouth_peak(self, amount):
         # Valor base: 0.01 -> Display 10
         current_display = int(self.custom_mouth_peak * 1000)

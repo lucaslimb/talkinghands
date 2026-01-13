@@ -20,7 +20,6 @@ sys.path.append(str(PROJECT_ROOT))
 from src.config import settings
 from src.engines.audio.recorder import MidiRecorder
 
-# --- CONSTANTES ---
 NUM_HOLES = 7
 HOLE_RADIUS = getattr(settings, 'HOLE_RADIUS', 0.019)
 HOLE_SPACING = getattr(settings, 'HOLE_SPACING', 0.068)
@@ -38,7 +37,6 @@ VELOCITY_CHANGE_THRESHOLD = 4
 PLAYBACK_CHANNEL = 0
 LIVE_CHANNEL = 1
 
-# CORES (Convertidas para RGB)
 COLOR_HOLE_OPEN = (150, 150, 150)
 COLOR_HOLE_CLOSED = (0, 200, 0)
 COLOR_FLUTE_BODY_EMPTY = (30, 30, 30) 
@@ -106,9 +104,7 @@ def audio_thread():
             note = val1
             if current_note != note:
                 if current_note is not None: 
-                    # Ao Vivo: Canal 1
                     fs.noteoff(LIVE_CHANNEL, current_note)
-                    # Gravação: Canal 0 (Padrão do Recorder)
                     recorder.record_note_off(current_note)
                 
                 fs.noteon(LIVE_CHANNEL, note, 127) 
@@ -131,10 +127,8 @@ def audio_thread():
             controller = val1
             value = val2
             
-            # [FIX] Ao Vivo afeta apenas Canal 1
             fs.cc(LIVE_CHANNEL, controller, value)
             
-            # Gravação salva no Canal 0 (Padrão)
             try:
                 if hasattr(recorder, 'record_cc'):
                     recorder.record_cc(PLAYBACK_CHANNEL, controller, value)
@@ -166,9 +160,7 @@ def get_mouth_distance(face_landmarks):
     lower = face_landmarks.landmark[14]
     return abs(upper.y - lower.y)
 
-# MODIFICADO: Recebe Surface do Pygame para desenhar pontas dos dedos
 def process_interaction(hand_landmarks, w, h, screen):
-    # Reseta estado dos furos
     for hole in holes: hole.is_covered = False
     
     if hand_landmarks:
@@ -178,7 +170,6 @@ def process_interaction(hand_landmarks, w, h, screen):
                 tip = lm.landmark[fid]
                 fx, fy = int(tip.x * w), int(tip.y * h)
                 
-                # PYGAME: Desenha indicador da ponta do dedo
                 pygame.draw.circle(screen, (255, 0, 0), (fx, fy), 6)
                 
                 for hole in holes:
@@ -201,13 +192,11 @@ def calculate_current_note():
     scale_index = max(0, min(scale_index, len(SCALE_FLUTE) - 1))
     return BASE_NOTE + SCALE_FLUTE[scale_index]
 
-# AUXILIAR: Texto
 def draw_text(surface, text, pos, font, color=COLOR_TEXT):
     txt_surf = font.render(text, True, color)
     surface.blit(txt_surf, pos)
 
 def draw_flute_ui_pygame(screen, w, h, velocity, face_landmarks, font):
-    # Surface transparente
     overlay = pygame.Surface((w, h), pygame.SRCALPHA)
     
     if not holes: return
@@ -223,38 +212,31 @@ def draw_flute_ui_pygame(screen, w, h, velocity, face_landmarks, font):
     
     tube_width = 25 
     
-    # 1. Corpo vazio da flauta (Alpha 200)
     body_rect = pygame.Rect(x_center - tube_width//2, y_start, tube_width, flute_height)
     pygame.draw.rect(overlay, (*COLOR_FLUTE_BODY_EMPTY, 200), body_rect)
     
-    # 2. Barra de sopro (Velocity) (Alpha 200)
     if velocity > 0:
         fill_ratio = velocity / 127.0
         fill_height = int(flute_height * fill_ratio)
         fill_rect = pygame.Rect(x_center - tube_width//2, y_start, tube_width, fill_height)
         pygame.draw.rect(overlay, (*COLOR_BLOW_ACTIVE, 200), fill_rect)
 
-    # 3. Borda da flauta (Opaca)
     pygame.draw.rect(overlay, (100, 100, 100), body_rect, 2)
     
     # 4. Furos
-    hole_alpha = 180 # Nível de transparência dos furos (0-255)
+    hole_alpha = 180 
     for hole in holes:
         cx = int(hole.x_rel * w)
         cy = int(hole.y_rel * h)
         radius = int(HOLE_RADIUS * w)
         
         base_color = COLOR_HOLE_CLOSED if hole.is_covered else COLOR_HOLE_OPEN
-        # Adiciona o canal alpha à cor base
         color_with_alpha = (*base_color, hole_alpha)
         
-        # Efeito visual quando soprando e furo aberto (brilho interno opaco)
         if velocity > 0 and not hole.is_covered:
             pygame.draw.circle(overlay, (255, 255, 255), (cx, cy), radius - 2)
         
-        # Desenha o círculo principal com transparência
         pygame.draw.circle(overlay, color_with_alpha, (cx, cy), radius)
-        # Borda do furo (Opaca)
         pygame.draw.circle(overlay, (50, 50, 50), (cx, cy), radius, 1)
 
     # 5. Pontos da Boca (Face Mesh)
@@ -279,7 +261,6 @@ def draw_flute_ui_pygame(screen, w, h, velocity, face_landmarks, font):
 # ------------------------
 def start_flute(chosen_instrument, mouth_peak=0.01, mouth_max=0.05, hole_radius=0.019, hole_spacing=0.068, invert_blow=False, rec_options=None):
     
-    # Atualiza Globais
     global MOUTH_PEAK_OPEN, MOUTH_MAX_OPEN, HOLE_RADIUS, HOLE_SPACING, INVERT_BLOW_LOGIC
     MOUTH_PEAK_OPEN = mouth_peak
     MOUTH_MAX_OPEN = mouth_max
@@ -384,16 +365,12 @@ def start_flute(chosen_instrument, mouth_peak=0.01, mouth_max=0.05, hole_radius=
                 
                 velocity = int(max(0.0, min(ratio, 1.0)) * 127)
 
-            # 4. DESENHO VÍDEO
             frame_surface = pygame.image.frombuffer(frame_rgb.tobytes(), (LOGICAL_W, LOGICAL_H), 'RGB')
             screen.blit(frame_surface, (0, 0))
 
-            # 5. PROCESSAMENTO MÃOS E FUROS
             res_hands = hands.process(frame_rgb)
-            # Passamos a screen para desenhar os pontos dos dedos
             process_interaction(res_hands.multi_hand_landmarks, LOGICAL_W, LOGICAL_H, screen)
             
-            # 6. LÓGICA DE NOTAS
             if velocity > 0:
                 target_note = calculate_current_note()
                 
@@ -413,7 +390,6 @@ def start_flute(chosen_instrument, mouth_peak=0.01, mouth_max=0.05, hole_radius=
                     last_note = -1
                     last_sent_velocity = 0
 
-            # 7. DESENHO UI (FLAUTA E MENU)
             draw_flute_ui_pygame(screen, LOGICAL_W, LOGICAL_H, last_sent_velocity, face_landmarks_data, font)
             
             if show_gui:
