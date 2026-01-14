@@ -24,6 +24,9 @@ NUM_HOLES = 7
 HOLE_RADIUS = getattr(settings, 'HOLE_RADIUS', 0.019)
 HOLE_SPACING = getattr(settings, 'HOLE_SPACING', 0.068)
 
+DEFAULT_FLUTE_X = 0.6
+DEFAULT_FLUTE_Y = 0.25
+
 MOUTH_MIN_OPEN = 0.002
 MOUTH_PEAK_OPEN = getattr(settings, 'MOUTH_PEAK_OPEN', 0.01)
 MOUTH_MAX_OPEN = getattr(settings, 'MOUTH_MAX_OPEN', 0.05)
@@ -146,12 +149,10 @@ class FluteHole:
 
 holes = []
 
-def setup_holes():
+def update_hole_positions(start_x, start_y):
     holes.clear()
-    fixed_x = 0.6
-    start_y = 0.25 
     for i in range(NUM_HOLES):
-        h = FluteHole(i, fixed_x, start_y + (i * HOLE_SPACING))
+        h = FluteHole(i, start_x, start_y + (i * HOLE_SPACING))
         holes.append(h)
 
 def get_mouth_distance(face_landmarks):
@@ -192,11 +193,28 @@ def calculate_current_note():
     scale_index = max(0, min(scale_index, len(SCALE_FLUTE) - 1))
     return BASE_NOTE + SCALE_FLUTE[scale_index]
 
+def is_mouse_over_flute(mx, my, w, h):
+    if not holes: return False
+    
+    # Pega o primeiro e o último furo para calcular a altura total
+    start_hole = holes[0]
+    end_hole = holes[-1]
+    
+    # Calcula a área visual da flauta (igual ao draw_flute_ui)
+    x_center = int(start_hole.x_rel * w)
+    y_start = int((start_hole.y_rel - 0.08) * h)
+    y_end = int((end_hole.y_rel + 0.08) * h)
+    
+    tube_width = 30 # Um pouco mais largo para facilitar o clique
+    
+    # Verifica se o mouse está dentro do retângulo da flauta
+    return (x_center - tube_width < mx < x_center + tube_width) and (y_start < my < y_end)
+
 def draw_text(surface, text, pos, font, color=COLOR_TEXT):
     txt_surf = font.render(text, True, color)
     surface.blit(txt_surf, pos)
 
-def draw_flute_ui_pygame(screen, w, h, velocity, face_landmarks, font):
+def draw_flute_ui_pygame(screen, w, h, velocity, face_landmarks, font, is_dragging=False):
     overlay = pygame.Surface((w, h), pygame.SRCALPHA)
     
     if not holes: return
@@ -213,6 +231,13 @@ def draw_flute_ui_pygame(screen, w, h, velocity, face_landmarks, font):
     tube_width = 25 
     
     body_rect = pygame.Rect(x_center - tube_width//2, y_start, tube_width, flute_height)
+    
+    body_color = (*COLOR_FLUTE_BODY_EMPTY, 200)
+    border_color = (100, 100, 100)
+    
+    if is_dragging:
+        body_color = (255, 165, 0, 150) # Laranja transparente
+        border_color = (255, 255, 255)
     pygame.draw.rect(overlay, (*COLOR_FLUTE_BODY_EMPTY, 200), body_rect)
     
     if velocity > 0:
@@ -271,7 +296,6 @@ def start_flute(chosen_instrument, mouth_peak=0.01, mouth_max=0.05, hole_radius=
     if rec_options:
         recorder.set_options(rec_options)
         
-    setup_holes()
     select_instrument_by_name(chosen_instrument)
     
     mp_hands = mp.solutions.hands
@@ -296,6 +320,15 @@ def start_flute(chosen_instrument, mouth_peak=0.01, mouth_max=0.05, hole_radius=
     print(f">>> FLAUTA INICIADA: {chosen_instrument}")
     print(f"    Peak: {mouth_peak}, Max: {mouth_max}, Inv: {invert_blow}")
     
+# --- VARIÁVEIS DE ESTADO E POSIÇÃO ---
+    flute_x = DEFAULT_FLUTE_X
+    flute_y = DEFAULT_FLUTE_Y
+    
+    update_hole_positions(flute_x, flute_y)
+
+    dragging_flute = False
+    drag_offset = (0, 0)
+
     last_note = -1
     is_playing = False
     
@@ -313,6 +346,34 @@ def start_flute(chosen_instrument, mouth_peak=0.01, mouth_max=0.05, hole_radius=
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     running = False
+
+                elif event.type == pygame.MOUSEBUTTONDOWN:
+                    if event.button == 1: # Clique Esquerdo
+                        mx, my = event.pos
+                        if is_mouse_over_flute(mx, my, LOGICAL_W, LOGICAL_H):
+                            dragging_flute = True
+                            norm_mx = mx / LOGICAL_W
+                            norm_my = my / LOGICAL_H
+                            drag_offset = (flute_x - norm_mx, flute_y - norm_my)
+
+                elif event.type == pygame.MOUSEBUTTONUP:
+                    if event.button == 1:
+                        dragging_flute = False
+
+                elif event.type == pygame.MOUSEMOTION:
+                    if dragging_flute:
+                        mx, my = event.pos
+                        norm_mx = mx / LOGICAL_W
+                        norm_my = my / LOGICAL_H
+                        
+                        flute_x = norm_mx + drag_offset[0]
+                        flute_y = norm_my + drag_offset[1]
+                        
+                        flute_x = max(0.05, min(flute_x, 0.95))
+                        flute_y = max(0.05, min(flute_y, 0.8))
+                        
+                        update_hole_positions(flute_x, flute_y)
+
                 elif event.type == pygame.KEYDOWN:
                     if event.key == pygame.K_ESCAPE:
                         recorder.stop_playback()
@@ -322,7 +383,11 @@ def start_flute(chosen_instrument, mouth_peak=0.01, mouth_max=0.05, hole_radius=
                     elif event.key == pygame.K_3: 
                         fs.cc(PLAYBACK_CHANNEL, 11, 127)
                         recorder.toggle_playback(fs)
-                    elif event.key == pygame.K_4: recorder.stop_playback()
+                    elif event.key == pygame.K_5:
+                        flute_x = DEFAULT_FLUTE_X
+                        flute_y = DEFAULT_FLUTE_Y
+                        update_hole_positions(flute_x, flute_y)
+                        print(">>> Posição da flauta resetada.")
                     elif event.key == pygame.K_0: show_gui = not show_gui
                     
             keys = pygame.key.get_pressed()
@@ -390,7 +455,7 @@ def start_flute(chosen_instrument, mouth_peak=0.01, mouth_max=0.05, hole_radius=
                     last_note = -1
                     last_sent_velocity = 0
 
-            draw_flute_ui_pygame(screen, LOGICAL_W, LOGICAL_H, last_sent_velocity, face_landmarks_data, font)
+            draw_flute_ui_pygame(screen, LOGICAL_W, LOGICAL_H, last_sent_velocity, face_landmarks_data, font, dragging_flute)            
             
             if show_gui:
                 instructions = [
@@ -398,6 +463,7 @@ def start_flute(chosen_instrument, mouth_peak=0.01, mouth_max=0.05, hole_radius=
                     "1 -> iniciar gravacao",
                     "2 -> encerrar gravacao",
                     "3 -> iniciar/interromper playback",
+                    "5 -> resetar posicao da flauta",
                     "0 -> ocultar/mostrar menu"
                 ]
 

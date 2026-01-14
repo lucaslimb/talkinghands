@@ -17,6 +17,8 @@ Aplicação de _Air Instrument_ projetada para transformar qualquer ambiente em 
 -   **Bateria:**
     
     -   Dispõe espacialmente os componentes da bateria (Caixa, Bumbo, Pratos, Tons).
+
+    -   Permite reposicionar os elementos da bateria.
         
     -   Modula a intensidade sonora baseando-se na velocidade vetorial do movimento de batida.
 
@@ -24,7 +26,7 @@ Aplicação de _Air Instrument_ projetada para transformar qualquer ambiente em 
 
     -   Uso de reconhecimento facial para ação de sopro, com níveis diferentes de intensidade.
     
-    -   Permite calibrar tamanho e posição dos furos da flauta, para se adaptar a mão e a distância da camera do usuário.
+    -   Permite calibrar tamanho e posição dos furos da flauta, para se adaptar a mão e ao ambiente do usuário.
             
 ### 🎛️ Interface e Controle
 

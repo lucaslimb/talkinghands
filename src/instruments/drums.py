@@ -60,6 +60,8 @@ DRUM_KIT = [
     {"id": 7, "pos": (0.50, 0.96), "axes": (0.15, 0.03), "note": 36, "name": "KICK",   "shape": "rect"},
 ]
 
+INITIAL_POSITIONS = {d["id"]: d["pos"] for d in DRUM_KIT}
+
 for drum in DRUM_KIT:
     drum["last_hit"] = 0
     drum["color"] = COLOR_RED 
@@ -120,6 +122,17 @@ def audio_thread_target():
         fs.noteon(channel, note, velocity)
         recorder.record_note_on(note, velocity=velocity)
 
+def is_mouse_over_drum(mx, my, drum, w, h):
+    cx = drum["pos"][0] * w
+    cy = drum["pos"][1] * h
+    rx = drum["axes"][0] * w
+    ry = drum["axes"][1] * h
+    
+    if drum["shape"] == "rect":
+        return (cx - rx < mx < cx + rx) and (cy - ry < my < cy + ry)
+    else:
+        return ((mx - cx)**2 / rx**2) + ((my - cy)**2 / ry**2) <= 1.0
+
 # ------------------------
 # MÃOS
 # ------------------------
@@ -131,6 +144,12 @@ hands_state = {
 def reset_hands_state():
     hands_state["Left"] = {"prev_y": 0.0, "can_hit": True}
     hands_state["Right"] = {"prev_y": 0.0, "can_hit": True}
+
+def reset_drum_positions():
+    for drum in DRUM_KIT:
+        if drum["id"] in INITIAL_POSITIONS:
+            drum["pos"] = INITIAL_POSITIONS[drum["id"]]
+    print(">>> Posições resetadas.")
 
 def check_collision(x, y, drum):
     h, k = drum["pos"]
@@ -145,7 +164,6 @@ def check_collision(x, y, drum):
         val = ((x - h)**2 / rx**2) + ((y - k)**2 / ry**2)
         return val <= ELLIPSE_THRESHOLD
 
-# MODIFICADO: Recebe screen e font do Pygame
 def process_hand(label, landmarks, w, h, screen, font):
     ref_point = landmarks[4] 
     ref_x, ref_y = ref_point.x, ref_point.y
@@ -196,8 +214,8 @@ def process_hand(label, landmarks, w, h, screen, font):
                 target_drum["last_hit"] = time.time()
                 
                 # PYGAME: Texto de Hit
-                hit_surf = font.render("HIT!", True, COLOR_GREEN)
-                screen.blit(hit_surf, (cursor_pos[0], cursor_pos[1] - 35))
+                # hit_surf = font.render("HIT!", True, COLOR_GREEN)
+                # screen.blit(hit_surf, (cursor_pos[0], cursor_pos[1] - 35))
             
             can_hit = False 
             cursor_color = COLOR_GREEN
@@ -213,7 +231,7 @@ def draw_text(surface, text, pos, font, color=COLOR_TEXT):
     txt_surf = font.render(text, True, color)
     surface.blit(txt_surf, pos)
 
-def draw_drums_pygame(screen, w, h, font):
+def draw_drums_pygame(screen, w, h, font, dragging_drum=None):
     overlay = pygame.Surface((w, h), pygame.SRCALPHA)
     
     for drum in DRUM_KIT:
@@ -236,6 +254,10 @@ def draw_drums_pygame(screen, w, h, font):
         if (time.time() - drum["last_hit"]) < 0.15:
             fill_alpha = 200 
             color = COLOR_HIT_FILL
+
+        if dragging_drum and drum["id"] == dragging_drum["id"]:
+            color = (255, 165, 0) # Laranja
+            fill_alpha = 100
         
         color_with_alpha = (*color, fill_alpha)
         
@@ -266,6 +288,7 @@ def draw_drums_pygame(screen, w, h, font):
             "1 -> iniciar gravacao",
             "2 -> encerrar gravacao",
             "3 -> iniciar/interromper playback",
+            "5 -> resetar posicao da bateria",
             "0 -> ocultar/mostrar menu"
         ]
         y0 = 30
@@ -321,9 +344,10 @@ def start_drums(chosen_instrument=None, user_tolerance=None, rec_options=None, t
     font = pygame.font.SysFont("Arial", 18, bold=True)
     
     hands = mp.solutions.hands.Hands(max_num_hands=2, model_complexity=1, min_detection_confidence=0.3, min_tracking_confidence=0.3)
-    
-    print(">>> [ESPAÇO] Kick (Atalho Teclado) | [ESC] Sair")
-    
+        
+    dragging_drum = None
+    drag_offset = (0, 0)
+
     running = True
     try:
         while running:
@@ -331,6 +355,37 @@ def start_drums(chosen_instrument=None, user_tolerance=None, rec_options=None, t
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     running = False
+
+                elif event.type == pygame.MOUSEBUTTONDOWN:
+                    if event.button == 1: # Clique Esquerdo
+                        mx, my = event.pos
+                        for drum in DRUM_KIT:
+                            if is_mouse_over_drum(mx, my, drum, LOGICAL_W, LOGICAL_H):
+                                dragging_drum = drum
+                                norm_mx = mx / LOGICAL_W
+                                norm_my = my / LOGICAL_H
+                                drag_offset = (drum["pos"][0] - norm_mx, drum["pos"][1] - norm_my)
+                                break
+
+                elif event.type == pygame.MOUSEBUTTONUP:
+                    if event.button == 1:
+                        dragging_drum = None
+                
+                elif event.type == pygame.MOUSEMOTION:
+                    if dragging_drum:
+                        mx, my = event.pos
+                        norm_mx = mx / LOGICAL_W
+                        norm_my = my / LOGICAL_H
+                        
+                        # Atualiza a posição baseada no mouse + offset inicial
+                        new_x = norm_mx + drag_offset[0]
+                        new_y = norm_my + drag_offset[1]
+                        
+                        new_x = max(0.05, min(new_x, 0.95))
+                        new_y = max(0.05, min(new_y, 0.95))
+                        
+                        dragging_drum["pos"] = (new_x, new_y)
+
                 elif event.type == pygame.KEYDOWN:
                     if event.key == pygame.K_ESCAPE:
                         recorder.stop_playback()
@@ -343,8 +398,8 @@ def start_drums(chosen_instrument=None, user_tolerance=None, rec_options=None, t
                         recorder.stop(f"drums_{clean_name}_{ts}.mid")
                     elif event.key == pygame.K_3:
                         recorder.toggle_playback(fs)
-                    elif event.key == pygame.K_4:
-                        recorder.stop_playback()
+                    elif event.key == pygame.K_5:
+                        reset_drum_positions()
                     elif event.key == pygame.K_0:
                         show_menu = not show_menu
                     elif event.key == pygame.K_SPACE:
@@ -360,7 +415,7 @@ def start_drums(chosen_instrument=None, user_tolerance=None, rec_options=None, t
             frame_surface = pygame.image.frombuffer(frame_rgb.tobytes(), (LOGICAL_W, LOGICAL_H), 'RGB')
             screen.blit(frame_surface, (0, 0))
             
-            draw_drums_pygame(screen, LOGICAL_W, LOGICAL_H, font)
+            draw_drums_pygame(screen, LOGICAL_W, LOGICAL_H, font, dragging_drum)
             
             results = hands.process(frame_rgb)
             

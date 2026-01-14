@@ -75,8 +75,8 @@ class InstrumentSelector(ctk.CTk):
 
         self.is_advanced_open = False
 
-        self.base_height = 300
-        self.expanded_height = 600 
+        self.base_height = 370
+        self.expanded_height = 700
 
         self.title("Talking Hands Launcher")
         self.geometry(f"600x{self.base_height}")
@@ -110,6 +110,22 @@ class InstrumentSelector(ctk.CTk):
         self.seg_type.set(self.current_type)
         self.seg_type.grid(row=1, column=0, columnspan=3, sticky="ew", pady=(0, 20), padx=80)
         
+        self.hint_texts = {
+            "Teclado": "Dica: ajuste sua câmera em um ângulo de 45° do seu ambiente ou mesa.",
+            "Bateria": "Dica: ajuste sua câmera em um ângulo levemente inclinado (aprox. 75°).\nClique e arraste os componentes para reposicioná-los.",
+            "Flauta":  "Dica: ajuste sua câmera em um ângulo reto em relação ao seu ambiente.\nClique e arraste o instrumento para reposicioná-lo."
+        }
+
+        self.lbl_hint = ctk.CTkLabel(
+            self.main_frame,
+            text=self.hint_texts[self.current_type],
+            font=("Segoe UI", 12),
+            text_color="#aaaaaa",
+            wraplength=500,
+            justify="center"
+        )
+        self.lbl_hint.grid(row=3, column=0, columnspan=3, sticky="n", pady=(15, 5))
+
         arrow_font = ("Segoe UI", 32, "bold")
         main_font = ("Segoe UI", 24, "bold")
 
@@ -141,8 +157,7 @@ class InstrumentSelector(ctk.CTk):
             text_color="#888888", hover_color="#333333", height=28, width=160,
             command=self.toggle_advanced
         )
-        self.btn_advanced.grid(row=3, column=0, columnspan=3, sticky="n", pady=(15, 10))
-
+        self.btn_advanced.grid(row=4, column=0, columnspan=3, sticky="n", pady=(15, 10))
         # --- Painel Avançado ---
         self.advanced_frame = ctk.CTkScrollableFrame(
             self.main_frame, 
@@ -183,6 +198,9 @@ class InstrumentSelector(ctk.CTk):
         
         text = self.instruments[0].upper() if self.instruments else "NENHUM"
         self.btn_start.configure(text=text)
+
+        if value in self.hint_texts:
+            self.lbl_hint.configure(text=self.hint_texts[value])
         
         if self.is_advanced_open:
             self._rebuild_advanced_panel()
@@ -200,7 +218,7 @@ class InstrumentSelector(ctk.CTk):
             self.is_advanced_open = False
         else:
             self._rebuild_advanced_panel()
-            self.advanced_frame.grid(row=4, column=0, columnspan=3, sticky="ew", pady=0)
+            self.advanced_frame.grid(row=5, column=0, columnspan=3, sticky="ew", pady=0)
             self.btn_advanced.configure(text="Ocultar ▲")
             self.geometry(f"600x{self.expanded_height}")
             self.is_advanced_open = True
