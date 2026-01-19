@@ -1,6 +1,6 @@
 # Talking Hands - Instrumentos Invisíveis com Visão Computacional
 
-Aplicação de _Air Instrument_ projetada para transformar qualquer ambiente em interfaces musicais virtuais. O sistema utiliza algoritmos avançados de Inteligência Artificial para o rastreamento de mãos em tempo real, integrados a um motor de síntese de áudio de baixa latência, permitindo a execução musical via webcam sem a necessidade de periféricos físicos adicionais, com mais de 40 sons dividos em diversos instrumentos.
+Aplicação de _Air Instrument_ projetada para transformar qualquer ambiente em interfaces musicais virtuais. O sistema utiliza algoritmos avançados de Inteligência Artificial para o rastreamento de mãos em tempo real, integrados a um motor de síntese de áudio de baixa latência, permitindo a execução musical via webcam sem a necessidade de periféricos físicos adicionais, com mais de 40 sons dividos em alguns instrumentos.
 
 ## 🚀 Funcionalidades do Sistema
 
@@ -10,27 +10,25 @@ Aplicação de _Air Instrument_ projetada para transformar qualquer ambiente em 
     
     -   O sistema mapeia duas oitavas completas (C3 a B4).
         
-    -   Permite calibrar tamanho e posição das teclas de acordo com as mãos do usuário.
+    -   Permite calibrar tamanho e posição das teclas automaticamente de acordo com as mãos do usuário.
                 
     -   Permite técnicas como deslize (glissando) e sustentação de maneira dinâmica e configurável.
         
 -   **Bateria:**
     
-    -   Dispõe espacialmente os componentes da bateria (Caixa, Bumbo, Pratos, Tons).
-
-    -   Permite reposicionar os elementos da bateria.
+    -   Dispõe espacialmente os componentes da bateria (Caixa, Bumbo, Pratos, Tons) e permite reposicioná-los como preferir.
         
-    -   Modula a intensidade sonora baseando-se na velocidade vetorial do movimento de batida.
+    -   Modula a intensidade sonora baseando-se na velocidade com que os movimentos são realizados, simulando a força da batida.
 
 -   **Flauta:**
 
     -   Uso de reconhecimento facial para ação de sopro, com níveis diferentes de intensidade.
     
-    -   Permite calibrar tamanho e posição dos furos da flauta, para se adaptar a mão e ao ambiente do usuário.
+    -   Permite calibrar tamanho e posição dos furos da flauta, para se adaptar a mão e ao ambiente do usuário, além de reposicionar o instrummento como preferir.
             
 ### 🎛️ Interface e Controle
 
--   **Launcher:** Interface gráfica para a seleção de instrumentos, timbres e configuração de parâmetros, incluindo parâmetros de processamento e simulação individuais de cada instrumento, como:
+-   **Launcher:** UI amigável para a seleção de instrumentos, timbres e configuração de parâmetros, incluindo parâmetros de processamento e simulação individuais de cada instrumento, como:
 	- Tempo de sustentação de notas
     - Velocidade e sensibilidade de toque ou batida
     - Cálculo de previsão da ação de toque
@@ -42,7 +40,7 @@ Aplicação de _Air Instrument_ projetada para transformar qualquer ambiente em 
 
 ## 🛠️ Stack de Tecnologias
 
-O projeto foi desenvolvido inteiramente em **Python**, orquestrando bibliotecas de baixo nível em C/C++ para garantir a performance.
+O projeto foi desenvolvido inteiramente em **Python**, orquestrando bibliotecas em C/C++ para garantir a performance.
 
 |Componente       |Tecnologia | Utilização
 |----------------|---------|-------|
