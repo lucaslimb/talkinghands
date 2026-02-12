@@ -8,7 +8,7 @@ import math
 import numpy as np
 import sys
 import os
-import pygame # NOVO
+import pygame
 import sys
 import os
 from pathlib import Path
@@ -18,7 +18,12 @@ PROJECT_ROOT = FILE_PATH.parent.parent.parent
 sys.path.append(str(PROJECT_ROOT))
 
 from src.config import settings
-from src.engines.audio.recorder import MidiRecorder
+from src.engines.recorder import MidiRecorder
+from src.instruments.common import (
+    init_fluidsynth, load_single_soundfont, select_instrument,
+    setup_video_capture, setup_pygame,
+    draw_text, draw_recording_indicator, draw_playback_indicator
+)
 
 NUM_HOLES = 7
 HOLE_RADIUS = getattr(settings, 'HOLE_RADIUS', 0.019)
@@ -57,21 +62,17 @@ audio_queue = queue.Queue()
 loaded_sfids = {}
 recorder = MidiRecorder()
 
-try:
-    fs = fluidsynth.Synth()
-    fs.start(driver="dsound") 
-    
+fs, loaded_sfids = init_fluidsynth(driver="dsound")
+if fs is not None:
     sf_path = settings.SF2_PATHS.get("flute")
     if sf_path:
-        sfid = fs.sfload(sf_path)
+        sfid = load_single_soundfont(fs, "flute", sf_path)
         if sfid != -1:
             loaded_sfids["flute"] = sfid
-            print(f"Carregado SF2 Flauta: {sf_path}")
         else:
             print("ERRO: SF2 de flauta não carregado.")
-
-except Exception as e:
-    print(f"ERRO CRÍTICO DE AUDIO: {e}")
+else:
+    print(f"ERRO CRÍTICO DE AUDIO: Falha ao inicializar FluidSynth")
 
 def select_instrument_by_name(name):
     if name not in settings.INSTRUMENTS: return
@@ -210,9 +211,7 @@ def is_mouse_over_flute(mx, my, w, h):
     # Verifica se o mouse está dentro do retângulo da flauta
     return (x_center - tube_width < mx < x_center + tube_width) and (y_start < my < y_end)
 
-def draw_text(surface, text, pos, font, color=COLOR_TEXT):
-    txt_surf = font.render(text, True, color)
-    surface.blit(txt_surf, pos)
+# draw_text is imported from src.instruments.common
 
 def draw_flute_ui_pygame(screen, w, h, velocity, face_landmarks, font, is_dragging=False):
     overlay = pygame.Surface((w, h), pygame.SRCALPHA)
@@ -276,11 +275,10 @@ def draw_flute_ui_pygame(screen, w, h, velocity, face_landmarks, font, is_draggi
     screen.blit(overlay, (0,0))
 
     if recorder.is_recording:
-        pygame.draw.circle(screen, (255, 0, 0), (w - 90, 30), 10)
-        draw_text(screen, "REC", (w - 75, 20), font, (255, 0, 0))
+        draw_recording_indicator(screen, w, h, font)
         
     if recorder.is_playing:
-        draw_text(screen, "PLAYBACK", (w - 200, 30), font, (255, 0, 0))
+        draw_playback_indicator(screen, w, font)
 # ------------------------
 # FUNÇÃO PRINCIPAL
 # ------------------------
@@ -306,16 +304,9 @@ def start_flute(chosen_instrument, mouth_peak=0.01, mouth_max=0.05, hole_radius=
     
     # PYGAME & CAPTURE SETUP
     LOGICAL_W, LOGICAL_H = 1280, 720
-    cap = cv2.VideoCapture(0, cv2.CAP_DSHOW)
-    if not cap.isOpened(): cap = cv2.VideoCapture(0)
-    cap.set(cv2.CAP_PROP_FPS, 60)
-    cap.set(cv2.CAP_PROP_FRAME_WIDTH, LOGICAL_W)
-    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, LOGICAL_H)
+    cap = setup_video_capture(width=LOGICAL_W, height=LOGICAL_H, fps=60)
     
-    pygame.init()
-    screen = pygame.display.set_mode((LOGICAL_W, LOGICAL_H))
-    pygame.display.set_caption("Talking Hands - Flauta")
-    font = pygame.font.SysFont("Arial", 18, bold=True)
+    screen, font = setup_pygame(window_width=LOGICAL_W, window_height=LOGICAL_H, title="Talking Hands - Flauta")
 
     print(f">>> FLAUTA INICIADA: {chosen_instrument}")
     print(f"    Peak: {mouth_peak}, Max: {mouth_max}, Inv: {invert_blow}")

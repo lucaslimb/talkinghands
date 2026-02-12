@@ -16,7 +16,12 @@ FILE_PATH = Path(__file__).resolve()
 PROJECT_ROOT = FILE_PATH.parent.parent.parent
 sys.path.append(str(PROJECT_ROOT))
 
-from src.engines.audio.recorder import MidiRecorder
+from src.engines.recorder import MidiRecorder
+from src.instruments.common import (
+    init_fluidsynth, load_single_soundfont, select_instrument,
+    setup_video_capture, setup_pygame,
+    draw_text, draw_recording_indicator, draw_playback_indicator
+)
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
 root_dir = os.path.dirname(current_dir)
@@ -77,26 +82,18 @@ recorder = MidiRecorder()
 
 FIXED_SF2_PATH = settings.SF2_PATHS["drums"]
 
-try:
-    fs = fluidsynth.Synth()
-    fs.start(driver="dsound") 
-    
+fs, _ = init_fluidsynth(driver="dsound")
+if fs is not None:
     print(f">>> Carregando SoundFont Fixo: {FIXED_SF2_PATH}...")
-        
-    if os.path.exists(FIXED_SF2_PATH):
-        drum_sfid = fs.sfload(FIXED_SF2_PATH)
-        if drum_sfid != -1:
-            print(f"Sucesso! ID do SF2: {drum_sfid}")
-            # Inicializa o preset em todos os canais de polifonia
-            for i in range(POLYPHONY_CHANNELS):
-                fs.program_select(i, drum_sfid, 128, 0)
-        else:
-            print(f"ERRO CRÍTICO: Falha ao carregar o arquivo {FIXED_SF2_PATH}")
+    drum_sfid = load_single_soundfont(fs, "drums", FIXED_SF2_PATH)
+    if drum_sfid != -1:
+        print(f"Sucesso! ID do SF2: {drum_sfid}")
+        for i in range(POLYPHONY_CHANNELS):
+            fs.program_select(i, drum_sfid, 128, 0)
     else:
-        print(f"ERRO CRÍTICO: Arquivo não encontrado em {FIXED_SF2_PATH}")
-
-except Exception as e:
-    print(f"ERRO CRÍTICO AUDIO: {e}")
+        print(f"ERRO CRÍTICO: Falha ao carregar o arquivo {FIXED_SF2_PATH}")
+else:
+    print(f"ERRO CRÍTICO: Falha ao inicializar FluidSynth")
 
 def select_kit_by_name(name):
     if drum_sfid == -1: return False
@@ -133,9 +130,6 @@ def is_mouse_over_drum(mx, my, drum, w, h):
     else:
         return ((mx - cx)**2 / rx**2) + ((my - cy)**2 / ry**2) <= 1.0
 
-# ------------------------
-# MÃOS
-# ------------------------
 hands_state = {
     "Left":  {"prev_y": 0.0, "can_hit": True},
     "Right": {"prev_y": 0.0, "can_hit": True}
@@ -227,9 +221,7 @@ def process_hand(label, landmarks, w, h, screen, font):
     pygame.draw.circle(screen, cursor_color, cursor_pos, radius)
     pygame.draw.circle(screen, (255, 255, 255), cursor_pos, radius + 2, 2)
 
-def draw_text(surface, text, pos, font, color=COLOR_TEXT):
-    txt_surf = font.render(text, True, color)
-    surface.blit(txt_surf, pos)
+# draw_text is imported from src.instruments.common
 
 def draw_drums_pygame(screen, w, h, font, dragging_drum=None):
     overlay = pygame.Surface((w, h), pygame.SRCALPHA)
@@ -276,11 +268,10 @@ def draw_drums_pygame(screen, w, h, font, dragging_drum=None):
     screen.blit(overlay, (0, 0))
 
     if recorder.is_recording:
-        pygame.draw.circle(screen, (255, 0, 0), (w - 90, 30), 10)
-        draw_text(screen, "REC", (w - 75, 20), font, (255, 0, 0))
+        draw_recording_indicator(screen, w, h, font)
         
     if recorder.is_playing:
-        draw_text(screen, "PLAYBACK", (w - 200, 30), font, (255, 0, 0))
+        draw_playback_indicator(screen, w, font)
         
     if show_menu:
         instructions = [
@@ -295,10 +286,7 @@ def draw_drums_pygame(screen, w, h, font, dragging_drum=None):
         for i, txt in enumerate(instructions):
             draw_text(screen, txt, (20, y0 + i * 25), font)
 
-
-# ------------------------
-# LOOP PRINCIPAL
-# ------------------------
+ # Loop principal
 def start_drums(chosen_instrument=None, user_tolerance=None, rec_options=None, touch_velocity=None):
     print(">>> INICIANDO BATERIA (Pygame)")
     
@@ -330,18 +318,9 @@ def start_drums(chosen_instrument=None, user_tolerance=None, rec_options=None, t
     # --- SETUP VÍDEO E PYGAME ---
     LOGICAL_W, LOGICAL_H = 1280, 720
     
-    cap = cv2.VideoCapture(0, cv2.CAP_DSHOW)
-    if not cap.isOpened(): cap = cv2.VideoCapture(0)
+    cap = setup_video_capture(width=LOGICAL_W, height=LOGICAL_H, fps=60)
     
-    cap.set(cv2.CAP_PROP_FPS, 60)
-    cap.set(cv2.CAP_PROP_FRAME_WIDTH, LOGICAL_W)
-    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, LOGICAL_H)
-    
-    pygame.init()
-    screen = pygame.display.set_mode((LOGICAL_W, LOGICAL_H))
-    pygame.display.set_caption("Talking Hands - Bateria")
-    
-    font = pygame.font.SysFont("Arial", 18, bold=True)
+    screen, font = setup_pygame(window_width=LOGICAL_W, window_height=LOGICAL_H, title="Talking Hands - Bateria")
     
     hands = mp.solutions.hands.Hands(max_num_hands=2, model_complexity=1, min_detection_confidence=0.3, min_tracking_confidence=0.3)
         

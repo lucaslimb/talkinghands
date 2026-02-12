@@ -16,7 +16,13 @@ PROJECT_ROOT = FILE_PATH.parent.parent.parent
 sys.path.append(str(PROJECT_ROOT))
 
 from src.config import settings
-from src.engines.audio.recorder import MidiRecorder
+from src.engines.recorder import MidiRecorder
+from src.instruments.common import (
+    init_fluidsynth, load_all_soundfonts, select_instrument,
+    setup_video_capture, setup_pygame_with_scaling,
+    draw_text, draw_recording_indicator, draw_playback_indicator,
+    process_frame_to_pygame
+)
 
 RELEASE_THRESHOLD = 0.015
 MIN_NOTE_DURATION = 0.1
@@ -44,39 +50,16 @@ audio_queue = queue.Queue()
 loaded_sfids = {}
 recorder = MidiRecorder()
 
-try:
-    fs = fluidsynth.Synth()
-    fs.start(driver="dsound")
-
-    print(">>> Carregando bancos de som...")
-    for nickname, path in settings.SF2_PATHS.items():
-        sfid = fs.sfload(path)
-        if sfid == -1:
-            print(f"ERRO: Não foi possível carregar {path}")
-        else:
-            loaded_sfids[nickname] = sfid
-            print(f"Carregado: {nickname} (ID: {sfid})")
-
-except Exception as e:
-    print(f"ERRO CRÍTICO DE AUDIO: {e}")
+fs, loaded_sfids = init_fluidsynth(driver="dsound")
+if fs is None:
+    print("ERRO CRÍTICO DE AUDIO: Falha ao inicializar FluidSynth")
     exit()
 
-def select_instrument_by_name(name, channel=0):
-    if name not in settings.INSTRUMENTS:
-        print(f"Instrumento '{name}' não encontrado.")
-        return
+loaded_sfids = load_all_soundfonts(fs)
 
-    sf_nickname, bank, preset = settings.INSTRUMENTS[name]
-    target_sfid = loaded_sfids.get(sf_nickname)
-    if target_sfid is not None:
-        print(f">>> SOM: {name} (B:{bank} P:{preset})")
-        fs.program_select(channel, target_sfid, bank, preset)
-        
-        sf_path = settings.SF2_PATHS.get(sf_nickname)
-            
-        recorder.set_instrument(sf_path, bank, preset, is_drum=False)
-        return True
-    return False
+def select_instrument_by_name(name, channel=0):
+    # Wrapper around common.select_instrument() for compatibility
+    return select_instrument(fs, name, loaded_sfids, recorder, channel=channel, is_drum=False)
 
 def audio_thread_target():
     """Consome a fila e toca notas. Encerra se receber None."""
@@ -115,6 +98,7 @@ hands_state = {
     "Right": {"finger_status": {}, "finger_timers": {}, "active_notes": {}, "last_seen": {}}
 }
 
+# Aqui inicializamos os estados para cada dedo ativo
 def reset_hands_state():
     for hand in ["Left", "Right"]:
         for fid in ACTIVE_FINGERS:
@@ -123,6 +107,7 @@ def reset_hands_state():
             hands_state[hand]["active_notes"][fid] = None
             hands_state[hand]["last_seen"][fid] = 0.0
 
+# Aqui verificamos se as notas ativas ainda estão sendo tocadas ou se devem ser desligadas por falta de contato ou por sustain expirado
 def check_active_keys_integrity():
     current_time = time.time()
     notes_currently_touched = set()
@@ -147,6 +132,7 @@ def check_active_keys_integrity():
                     key["is_active"] = False
                     key["off_timer"] = 0
 
+# Aqui processamos cada dedo, verificando seu status atual e decidindo se deve armar para toque, iniciar um toque, mudar de nota ou liberar a nota
 def processar_dedo(label, fid, y_current, x_current, table_y, cx, cy, screen, h_frame):
     state = hands_state[label]
     status = state["finger_status"][fid]
@@ -224,6 +210,7 @@ def processar_dedo(label, fid, y_current, x_current, table_y, cx, cy, screen, h_
         color = COLOR_HOLD
     pygame.draw.circle(screen, color, (cx, cy), 5)
 
+# Aqui verificamos se algum dedo que deveria estar tocando ou armado desapareceu (perda de rastreamento) e desligamos a nota correspondente para evitar que fique presa
 def check_lost_fingers():
     current_time = time.time()
     for hand in ["Left", "Right"]:
@@ -240,9 +227,7 @@ def check_lost_fingers():
                     state["active_notes"][fid] = None
                     state["finger_status"][fid] = "IDLE"
 
-def draw_text(surface, text, pos, font, color=(255, 255, 255)):
-    text_surf = font.render(text, True, color)
-    surface.blit(text_surf, pos)
+# draw_text is imported from src.instruments.common
 
 def draw_ui_fast_pygame(screen, table_y, w, h, font):
     table_px = int(table_y * h)
@@ -265,11 +250,10 @@ def draw_ui_fast_pygame(screen, table_y, w, h, font):
     screen.blit(overlay, (0,0))
 
     if recorder.is_recording:
-        pygame.draw.circle(screen, (255, 0, 0), (w - 90, 30), 10)
-        draw_text(screen, "REC", (w - 75, 20), font, (255, 0, 0))
+        draw_recording_indicator(screen, w, h, font)
         
     if recorder.is_playing:
-        draw_text(screen, "PLAYBACK", (w - 200, 30), font, (255, 0, 0))
+        draw_playback_indicator(screen, w, font)
 
     if show_menu:
         instructions = [
@@ -317,30 +301,17 @@ def start_piano(chosen_instrument, user_sustain=None, lift_threshold=None, touch
                                      min_detection_confidence=0.3, min_tracking_confidence=0.3)
     
     # Câmera Setup
-    cap = cv2.VideoCapture(0, cv2.CAP_DSHOW)
-    if not cap.isOpened():
-        cap = cv2.VideoCapture(0)
-
-    LOGICAL_W, LOGICAL_H = 1280, 720 
+    LOGICAL_W, LOGICAL_H = 1280, 720
+    DISPLAY_W, DISPLAY_H = 1280, 720
     
-    cap.set(cv2.CAP_PROP_FRAME_WIDTH, LOGICAL_W)
-    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, LOGICAL_H)
-    cap.set(cv2.CAP_PROP_FPS, 60) # 30 FPS é mais seguro para HD em USB 2.0
+    cap = setup_video_capture(width=LOGICAL_W, height=LOGICAL_H, fps=60)
     
-    pygame.init()
-    
-    DISPLAY_W, DISPLAY_H = 1280, 720 
-    
-    window_display = pygame.display.set_mode((DISPLAY_W, DISPLAY_H))
-    pygame.display.set_caption("Talking Hands - Pygame HD")
-    
-    main_surface = pygame.Surface((LOGICAL_W, LOGICAL_H))
-    
-    main_font = pygame.font.SysFont("Arial", 18, bold=True)
-    calib_font = pygame.font.SysFont("Arial", 24, bold=True)
-
-    is_calibrating = False
-    calib_start_time = 0
+    DISPLAY_W, DISPLAY_H = 1280, 720
+    window_display, main_surface, main_font = setup_pygame_with_scaling(
+        logical_width=LOGICAL_W, logical_height=LOGICAL_H,
+        display_width=DISPLAY_W, display_height=DISPLAY_H,
+        title="Talking Hands - Teclado"
+    )
 
     print(">>> TECLADO INICIADO (Pygame)")
     running = True
@@ -356,8 +327,7 @@ def start_piano(chosen_instrument, user_sustain=None, lift_threshold=None, touch
                         recorder.stop_playback()
                         running = False
                     elif event.key == pygame.K_SPACE:
-                        is_calibrating = True
-                        calib_start_time = time.time()
+                        # Aqui recalibramos a posição da mesa, resetamos os estados dos dedos e desligamos todas as notas ativas para evitar que fiquem presas
                         reset_hands_state()
                     elif event.key == pygame.K_1:
                         recorder.start()
@@ -379,15 +349,15 @@ def start_piano(chosen_instrument, user_sustain=None, lift_threshold=None, touch
             frame = cv2.resize(frame, (LOGICAL_W, LOGICAL_H))
             frame = cv2.flip(frame, 1)
             frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            frame_surface = pygame.image.frombuffer(frame_rgb.tobytes(), (LOGICAL_W, LOGICAL_H), 'RGB')
 
             results = hands.process(frame_rgb)
-
-            frame_surface = pygame.image.frombuffer(frame_rgb.tobytes(), (LOGICAL_W, LOGICAL_H), 'RGB')
             
             main_surface.blit(frame_surface, (0, 0))
 
             draw_ui_fast_pygame(main_surface, global_state["table_y"], LOGICAL_W, LOGICAL_H, main_font)
 
+            # Aqui a IA processa os resultados do MediaPipe para cada mão e dedo, atualizando os estados, com o processar_dedo()
             if results.multi_hand_landmarks:
                 for idx, lm in enumerate(results.multi_hand_landmarks):
                     lbl = results.multi_handedness[idx].classification[0].label
