@@ -127,14 +127,18 @@ def setup_video_capture(width=1280, height=720, fps=60):
 # PYGAME INITIALIZATION
 # ========================
 
-def setup_pygame(window_width=1280, window_height=720, title="Talking Hands"):
+def setup_pygame(window_width=1280, window_height=720, title="Talking Hands", borderless=True):
     """
     Initialize pygame, create display window, and setup font.
+    
+    Args:
+        borderless (bool): If True, creates a borderless window (no title bar, minimize, close buttons)
     
     Returns: (screen_surface, font_object)
     """
     pygame.init()
-    screen = pygame.display.set_mode((window_width, window_height))
+    flags = pygame.NOFRAME if borderless else 0
+    screen = pygame.display.set_mode((window_width, window_height), flags)
     pygame.display.set_caption(title)
     font = pygame.font.SysFont("Arial", 18, bold=True)
     
@@ -142,7 +146,7 @@ def setup_pygame(window_width=1280, window_height=720, title="Talking Hands"):
 
 
 def setup_pygame_with_scaling(logical_width=1280, logical_height=720, 
-                               display_width=1280, display_height=720, title="Talking Hands"):
+                               display_width=1280, display_height=720, title="Talking Hands", borderless=True):
     """
     Setup pygame with logical and display surfaces (allows upscaling/downscaling).
     Useful for rendering at logical resolution then scaling to display resolution.
@@ -150,7 +154,8 @@ def setup_pygame_with_scaling(logical_width=1280, logical_height=720,
     Returns: (display_screen, logical_surface, font_object)
     """
     pygame.init()
-    display_screen = pygame.display.set_mode((display_width, display_height))
+    flags = pygame.NOFRAME if borderless else 0
+    display_screen = pygame.display.set_mode((display_width, display_height), flags)
     pygame.display.set_caption(title)
     
     logical_surface = pygame.Surface((logical_width, logical_height))
