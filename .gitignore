@@ -5,3 +5,7 @@ playbacks/
 build/
 dist/
 *.spec
+*.zip
+*.tar.gz
+.venv/
+venv/

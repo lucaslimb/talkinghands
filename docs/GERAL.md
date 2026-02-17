@@ -53,7 +53,7 @@ Vá para Settings > procure por files.exclude > adicione:
 
 **/__init__.py
 
-### Buildar um exe
+### Buildar um exe (Windows)
 
 Se não tiver instalado o pyinstaller, rode:
 ```bash
@@ -62,12 +62,14 @@ pip install pyinstaller
 
 Rode o build.py num terminal com os seguintes argumentos (vai excluir a build anterior e substituir pela nova):
 ```bash
-cd "c:...\Talking Hands" ; rmdir /s /q dist build 2>$null; .\.venv\Scripts\python.exe build.py
+cd "c:...\Talking Hands" ; rmdir /s /q dist build 2>$null; .\.venv\Scripts\python.exe builders/build.py
 ```
 
-Depois de buildar, pode deletar tudo em build/ enquanto o .exe vai estar em dist/
+Depois de buildar, pode deletar tudo em build/ enquanto o .exe vai estar em dist/ e o package zippado vai estar na root
 
 Code signing (verificar se é necessário)
 ```bash
 signtool sign /f mycert.pfx /p password /d "Talking Hands" dist/THEngine.exe
 ```
+
+Para buildar para Linux o processo é basicamente o mesmo, mas utilizando o build_linux.py, enquanto que o package final é no formato tar.gz

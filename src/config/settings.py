@@ -2,17 +2,25 @@ import os
 import sys
 from pathlib import Path
 
-# Handle both development and PyInstaller bundled environments
+# Handle development, PyInstaller Windows bundle, and Linux installations
 if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
-    # Running as PyInstaller bundle
+    # Running as PyInstaller bundle (Windows exe)
     BASE_DIR = Path(sys._MEIPASS)
+elif 'TALKING_HANDS_HOME' in os.environ:
+    # Running from Linux installation (set by launcher or venv)
+    BASE_DIR = Path(os.environ['TALKING_HANDS_HOME'])
 else:
-    # Running as normal Python script
+    # Running as normal Python script (development)
     BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
 ASSETS_DIR = BASE_DIR / "assets"
 SOUNDFONTS_DIR = ASSETS_DIR / "soundfonts"
-RECORDINGS_DIR = BASE_DIR / "recordings"
+
+# Recordings directory: use ~/Documents on Linux, project folder on Windows
+if sys.platform.startswith('linux'):
+    RECORDINGS_DIR = Path.home() / "Documents" / "TalkingHands Recordings"
+else:
+    RECORDINGS_DIR = BASE_DIR / "recordings"
 
 os.makedirs(RECORDINGS_DIR, exist_ok=True)
 
