@@ -40,14 +40,14 @@ Aplicação de _Air Instrument_ projetada para transformar qualquer ambiente em 
 
 ## 🛠️ Stack de Tecnologias
 
-O projeto foi desenvolvido inteiramente em **Python**, orquestrando bibliotecas em C/C++ para garantir a performance.
+O projeto foi desenvolvido em **Python**, ...
 
 |Componente       |Tecnologia | Utilização
 |----------------|---------|-------|
-|Visão Computacional |`OpenCV(cv2)`| Gerenciamento de captura de vídeo, processamento de imagem e renderização da interface|
+|Visão Computacional |`OpenCV`| Gerenciamento de captura de vídeo, processamento de imagem e renderização da interface|
 |IA & ML|`MediaPipe`| Inferência dos marcos anatômicos da mão e rosto (para instrumentos de sopro) em tempo real|
 |Backend de Áudio|`pyFluidSynth`|Wrapper para a biblioteca FluidSynth em C, garantindo baixa latência|
-|Interface Gráfica (Launcher) |`CustomTkinter` | Biblioteca para construção de interfaces de usuário moderna em linguagem Python
+|Interface Gráfica (Launcher) |`TODO` | Alguma explicação
 |Interface Gráfica (Instrumentos)|`PyGame` | Biblioteca para construção de interfaces e jogos em linguagem Python
 
 > **Bancos de som utilizados incluem** [ModuleMaster](https://musical-artifacts.com/artifacts/5978), de Vini, [The Definitive Perfect Drums Soundfont](https://musical-artifacts.com/artifacts/6554), de TEC Again e [Chris Flutes and Harmonicas](https://www.producersbuzz.com/downloads/download-free-soundfonts-sf2/top-14-free-flute-soundfonts-sf2/), de C.Clews
