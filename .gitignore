@@ -2,3 +2,6 @@ __pycache__/
 *.pyc
 recordings/
 playbacks/
+build/
+dist/
+*.spec

@@ -9,12 +9,39 @@ import os
 from importlib import import_module, reload
 from pathlib import Path
 
-# Setup imports
-FILE_PATH = Path(__file__).resolve()
-PROJECT_ROOT = FILE_PATH.parent.parent
-sys.path.append(str(PROJECT_ROOT))
+# Setup imports - handle both normal and PyInstaller bundled environments
+if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
+    # Running as PyInstaller bundle
+    PROJECT_ROOT = Path(sys._MEIPASS)
+    # Add the project root to sys.path so src modules can be imported
+    sys.path.insert(0, str(PROJECT_ROOT))
+else:
+    # Running as normal Python script
+    FILE_PATH = Path(__file__).resolve()
+    PROJECT_ROOT = FILE_PATH.parent.parent
+    sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.config import settings
+
+
+def safe_import_module(module_path):
+    """
+    Safely import a module, handling both normal and PyInstaller bundled environments.
+    Adjusts the module path dynamically for the bundled environment.
+    """
+    try:
+        # Try normal import first (development environment)
+        return import_module(module_path)
+    except ModuleNotFoundError:
+        # Fallback for PyInstaller bundled environment
+        if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
+            # Adjust path for bundled environment
+            bundled_path = module_path.replace('src.', '')
+            try:
+                return import_module(bundled_path)
+            except ModuleNotFoundError:
+                pass
+        raise
 
 def get_available_instruments():
     """Get instruments grouped by type"""
@@ -62,7 +89,7 @@ def create_argparse():
         epilog="""
     Examples:
     python main.py -i "Perfect Drums 1" -tf
-    python main.py -i "Grand Piano" --piano-sd 0.5 --piano-lf 0.025
+    python main.py -i "Grand Piano" --keyboard-sd 0.5 --keyboard-lf 0.025
     python main.py -i "Recorder" --flute-max 0.06 --flute-p medium
     python main.py -i "Quality Flute" --flute-invert
         """
@@ -267,7 +294,7 @@ def start_drums(args, rec_opts):
     print(f"    Tolerance: {tolerance}")
     print(f"    Touch Velocity: {touch_velocity}")
     
-    drums = import_module("src.instruments.drums")
+    drums = safe_import_module("src.instruments.drums")
     drums.start_drums(
         chosen_instrument=args.instrument,
         user_tolerance=tolerance,
@@ -291,7 +318,7 @@ def start_flute(args, rec_opts):
     print(f"    Precision: {args.flute_precision}")
     print(f"    Invert Blow: {args.flute_invert}")
     
-    flute = import_module("src.instruments.flute")
+    flute = safe_import_module("src.instruments.flute")
     reload(flute)
     
     flute.start_flute(
@@ -319,7 +346,7 @@ def start_keyboard(args, rec_opts):
     print(f"    Lift Threshold: {lift}")
     print(f"    Touch Tolerance: {tolerance}")
     
-    keyboard = import_module("src.instruments.keyboard")
+    keyboard = safe_import_module("src.instruments.keyboard")
     keyboard.start_piano(
         chosen_instrument=args.instrument,
         user_sustain=sustain,

@@ -1,7 +1,15 @@
 import os
+import sys
 from pathlib import Path
 
-BASE_DIR = Path(__file__).resolve().parent.parent.parent
+# Handle both development and PyInstaller bundled environments
+if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
+    # Running as PyInstaller bundle
+    BASE_DIR = Path(sys._MEIPASS)
+else:
+    # Running as normal Python script
+    BASE_DIR = Path(__file__).resolve().parent.parent.parent
+
 ASSETS_DIR = BASE_DIR / "assets"
 SOUNDFONTS_DIR = ASSETS_DIR / "soundfonts"
 RECORDINGS_DIR = BASE_DIR / "recordings"
