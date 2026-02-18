@@ -113,7 +113,7 @@ def main():
         # Use list format to avoid shell parsing issues with spaces in paths
         cmd = [
             sys.executable, "-m", "PyInstaller",
-            "--onefile",
+            "--onedir",
             "--name", "THEngine-linux",
             "--distpath", str(linux_dist),
             "--console",  # Show console for CLI output

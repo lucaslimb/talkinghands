@@ -98,7 +98,7 @@ def main():
         # Use list format to avoid shell parsing issues with spaces in paths
         cmd = [
             sys.executable, "-m", "PyInstaller",
-            "--onefile",
+            "--onedir",
             "--name", "THEngine",
             "--console",  # Show console for CLI output
             "--icon=assets/icon.ico",

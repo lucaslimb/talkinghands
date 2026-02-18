@@ -325,10 +325,6 @@ def parse_args():
     if args.help:
         print_documentation()
     
-    # Handle --sound as alias for --instrument
-    if args.sound and not args.instrument:
-        args.instrument = validate_instrument(args.sound)
-    
     return args
 
 

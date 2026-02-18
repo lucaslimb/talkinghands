@@ -67,7 +67,7 @@ cd "c:...\Talking Hands" ; rmdir /s /q dist build 2>$null; .\.venv\Scripts\pytho
 
 dlls do FluidSynth precisam ser incluidas no bundle, então são baixadas automaticamente caso não estejam em assets/
 
-Depois de buildar, pode deletar tudo em build/ enquanto que o .exe vai estar em dist/
+Depois de buildar, pode deletar tudo em build/ enquanto que o diretorio gerado com o .exe vai estar em dist/ dividido em .exe e _internal (libs, dlls). Pra jogar em um repositório, zipamos tudo
 
 Code signing (evita warnings de unkwnown publisher, mas a principio nao vai ser necessario)
 ```bash
