@@ -53,7 +53,7 @@ Vá para Settings > procure por files.exclude > adicione:
 
 **/__init__.py
 
-### Buildar um exe
+### Buildar um exe para Windows
 
 Se não tiver instalado o pyinstaller, rode:
 ```bash
@@ -74,7 +74,9 @@ Code signing (evita warnings de unkwnown publisher, mas a principio nao vai ser 
 signtool sign /f mycert.pfx /p password /d "Talking Hands" dist/THEngine.exe
 ```
 
-Para buildar para Linux o processo é basicamente o mesmo, mas utilizando o build_linux.py:
+### Buildar um exe para Linux
+
+Primeiro, precisamos estar num ambiente Linux. Substituimos a lib do fluidsynth de assets, removendo-a e deixando o builder baixar automaticamente a lib correta.
 ```bash
 python builders/build_linux.py
 ```
