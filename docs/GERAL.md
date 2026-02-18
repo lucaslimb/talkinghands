@@ -9,7 +9,7 @@ Apenas execute o exe a partir do seu path com o args desejeados
 THEngine.exe <args>
 ```
 
-#### SEM BUILDED .EXE
+#### SEM BUILDED .EXE (Nao vai ser necessario)
 
 Instale o python 3.11.9 e o pip (gerenciador de dependencias)
 
@@ -53,23 +53,34 @@ Vá para Settings > procure por files.exclude > adicione:
 
 **/__init__.py
 
-### Buildar um exe (Windows)
+### Buildar um exe
 
 Se não tiver instalado o pyinstaller, rode:
 ```bash
 pip install pyinstaller
 ```
 
-Rode o build.py num terminal com os seguintes argumentos (vai excluir a build anterior e substituir pela nova):
+Rode o build.py num terminal com os seguintes argumentos (vai excluir a build anterior se houver e substituir pela nova):
 ```bash
 cd "c:...\Talking Hands" ; rmdir /s /q dist build 2>$null; .\.venv\Scripts\python.exe builders/build.py
 ```
 
-Depois de buildar, pode deletar tudo em build/ enquanto o .exe vai estar em dist/ e o package zippado vai estar na root
+dlls do FluidSynth precisam ser incluidas no bundle, então são baixadas automaticamente caso não estejam em assets/
 
-Code signing (verificar se é necessário)
+Depois de buildar, pode deletar tudo em build/ enquanto que o .exe vai estar em dist/
+
+Code signing (evita warnings de unkwnown publisher, mas a principio nao vai ser necessario)
 ```bash
 signtool sign /f mycert.pfx /p password /d "Talking Hands" dist/THEngine.exe
 ```
 
-Para buildar para Linux o processo é basicamente o mesmo, mas utilizando o build_linux.py, enquanto que o package final é no formato tar.gz
+Para buildar para Linux o processo é basicamente o mesmo, mas utilizando o build_linux.py:
+```bash
+python builders/build_linux.py
+```
+
+### FYI
+
+Se necessário, use o Github Copilot no VSCode com preferencia pelo modelo Claude Haiku 4.5
+
+Arquivos .sf2 (soundfonts) são enviados para o git com lfs, não mexa no .gitattributes!!

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Build script for Talking Hands Linux distribution
-Creates a source distribution with installation scripts
+Build script for Talking Hands Linux executable
+Creates a standalone executable with FluidSynth bundled
 
 Run from project root: python builders/build_linux.py
 Or from builders folder: python build_linux.py
@@ -9,73 +9,46 @@ Or from builders folder: python build_linux.py
 
 import subprocess
 import sys
+import os
 from pathlib import Path
 import shutil
-import tarfile
 
-def create_linux_distribution(project_root):
-    """Create a tar.gz package with source code and installation scripts"""
+def run_command(cmd, description, use_shell=False):
+    """Run a command and handle errors"""
+    print(f"[*] {description}...")
+    result = subprocess.run(cmd, shell=use_shell)
+    if result.returncode != 0:
+        print(f"[ERROR] {description} failed")
+        sys.exit(1)
+    print(f"[+] {description} complete")
+
+def setup_fluidsynth(project_root):
+    """Ensure FluidSynth 2.5.1 is set up"""
+    fluidsynth_dir = project_root / "assets" / "fluidsynth-v2.5.1"
     
-    print("[*] Creating Linux distribution package...")
+    if (fluidsynth_dir / "bin").exists():
+        print(f"[+] FluidSynth 2.5.1 already available")
+        return True
     
-    install_source = project_root / "installers" / "linux" / "install.sh"
-    uninstall_source = project_root / "installers" / "linux" / "uninstall.sh"
-    run_source = project_root / "installers" / "linux" / "run.sh"
-    requirements_source = project_root / "requirements.txt"
-    readme_source = project_root / "README.md"
+    print("[*] FluidSynth 2.5.1 not found. Running setup script...")
+    setup_script = project_root / "builders" / "setup_fluidsynth.py"
     
-    # Create tar.gz package
-    tar_name = "TalkingHands-Linux.tar.gz"
-    tar_path = project_root / tar_name
+    if not setup_script.exists():
+        print(f"[ERROR] Setup script not found at {setup_script}")
+        return False
     
-    try:
-        with tarfile.open(tar_path, 'w:gz') as tar:
-            # Add source code
-            print("    Adding source code...")
-            tar.add(project_root / "src", arcname="TalkingHands/src")
-            tar.add(project_root / "assets", arcname="TalkingHands/assets")
-            
-            # Add requirements
-            if requirements_source.exists():
-                tar.add(requirements_source, arcname="TalkingHands/requirements.txt")
-                print("    Added requirements.txt")
-            
-            # Add installation scripts
-            if install_source.exists():
-                tar.add(install_source, arcname="TalkingHands/install.sh")
-                print("    Added install.sh")
-                
-            if uninstall_source.exists():
-                tar.add(uninstall_source, arcname="TalkingHands/uninstall.sh")
-                print("    Added uninstall.sh")
-            
-            if run_source.exists():
-                tar.add(run_source, arcname="TalkingHands/run.sh")
-                print("    Added run.sh")
-            
-            # Add README
-            if readme_source.exists():
-                tar.add(readme_source, arcname="TalkingHands/README.md")
-                print("    Added README.md")
-            
-            # Add configs documentation
-            docs_config = project_root / "docs" / "Configs.md"
-            if docs_config.exists():
-                tar.add(docs_config, arcname="TalkingHands/docs/Configs.md")
-                print("    Added docs/Configs.md")
-        
-        size_mb = tar_path.stat().st_size / (1024 * 1024)
-        print(f"\n[+] Package created: {tar_path.name}")
-        print(f"    Size: {size_mb:.1f} MB")
-        
-        return tar_path
-    except Exception as e:
-        print(f"[ERROR] Failed to create tar.gz: {e}")
-        return None
+    result = subprocess.run([sys.executable, str(setup_script)])
+    
+    if (fluidsynth_dir / "bin").exists():
+        print(f"[+] FluidSynth 2.5.1 is ready")
+        return True
+    else:
+        print(f"[ERROR] FluidSynth setup failed")
+        return False
 
 def main():
     print("\n" + "="*60)
-    print("Talking Hands - Linux Distribution Builder")
+    print("Talking Hands - Build Executable (Linux)")
     print("="*60 + "\n")
     
     # Get project root (parent of builders/ folder)
@@ -84,32 +57,122 @@ def main():
     
     print(f"Project root: {project_root}\n")
     
-    # Verify required files exist
-    required_files = ["src", "assets", "requirements.txt", "README.md"]
-    missing = [f for f in required_files if not (project_root / f).exists()]
-    
-    if missing:
-        print(f"[ERROR] Missing required files: {', '.join(missing)}")
+    # Setup FluidSynth first
+    if not setup_fluidsynth(project_root):
+        print("\n[ERROR] Cannot proceed without FluidSynth 2.5.1")
         sys.exit(1)
+    print()
     
-    print("[+] All source files present\n")
+    # Check PyInstaller
+    print("[*] Checking PyInstaller...")
+    result = subprocess.run([sys.executable, "-m", "pip", "show", "pyinstaller"], 
+                          capture_output=True)
+    if result.returncode != 0:
+        print("[!] PyInstaller not found. Installing...")
+        subprocess.run([sys.executable, "-m", "pip", "install", "pyinstaller"],
+                      check=True)
+    print("[+] PyInstaller is ready\n")
     
-    # Create distribution
-    tar_path = create_linux_distribution(project_root)
+    # Clean previous Linux builds only (preserve Windows executable in dist/)
+    print("[*] Cleaning previous Linux builds...")
+    for folder in ["build", "__pycache__"]:
+        folder_path = project_root / folder
+        if folder_path.exists():
+            shutil.rmtree(folder_path)
+            print(f"    Removed {folder}")
     
-    print("\n" + "="*60)
-    print("LINUX DISTRIBUTION READY")
-    print("="*60 + "\n")
+    # Clean dist/linux folder to remove old Linux builds (but preserve Windows .exe)
+    linux_dist = project_root / "dist" / "linux"
+    if linux_dist.exists():
+        shutil.rmtree(linux_dist)
+        print("    Removed dist/linux")
+    print("[+] Cleanup complete\n")
     
-    if tar_path:
-        print(f"Distribution archive: {tar_path}\n")
-        print("To install on Linux:")
-        print(f"  1. tar -xzf {tar_path.name}")
-        print("  2. cd TalkingHands")
-        print("  3. bash install.sh\n")
-    else:
-        print("[ERROR] Failed to create distribution\n")
-        sys.exit(1)
+    # Create dist/linux directory for Linux build
+    linux_dist.mkdir(parents=True, exist_ok=True)
+    
+    # Note on FluidSynth: On Linux, FluidSynth libraries (.so files) will be collected
+    # automatically by PyInstaller's library detection. We ensure the assets are bundled.
+    
+    # Change to project root for PyInstaller
+    original_cwd = os.getcwd()
+    os.chdir(project_root)
+    
+    try:
+        # Build with PyInstaller
+        print("[*] Building executable (this may take 5-10 minutes)...")
+        print("    This bundles Python, all dependencies, and assets...\n")
+        
+        # Get mediapipe path for data collection
+        mediapipe_path = Path(sys.prefix) / "lib" / f"python3.{sys.version_info.minor}" / "site-packages" / "mediapipe"
+        
+        # If mediapipe_path doesn't exist, try a more generic path
+        if not mediapipe_path.exists():
+            mediapipe_path = Path(sys.prefix) / "lib" / "site-packages" / "mediapipe"
+        
+        # Use list format to avoid shell parsing issues with spaces in paths
+        cmd = [
+            sys.executable, "-m", "PyInstaller",
+            "--onefile",
+            "--name", "THEngine-linux",
+            "--distpath", str(linux_dist),
+            "--console",  # Show console for CLI output
+            # Assets and config
+            "--add-data", "assets/soundfonts:assets/soundfonts",
+            "--add-data", "assets/fonts:assets/fonts",
+            "--add-data", "assets/fluidsynth-v2.5.1:assets/fluidsynth-v2.5.1",
+            # Include FluidSynth binaries (.so libraries for Linux)
+            "--add-binary", "assets/fluidsynth-v2.5.1/bin/*.so*:assets/fluidsynth-v2.5.1/bin",
+            "--add-data", "src/config/:src/config",
+            "--add-data", "src/instruments/:src/instruments",
+            "--add-data", "src/engines/:src/engines",
+            "--add-data", "src/utils/:src/utils",
+            # MediaPipe data files (critical for hand/face tracking)
+            "--add-data", f"{mediapipe_path}:mediapipe",
+            # Standard library modules
+            "--hidden-import=wave",
+            "--hidden-import=struct",
+            "--hidden-import=shutil",
+            "--hidden-import=subprocess",
+            "--hidden-import=queue",
+            "--hidden-import=ctypes",
+            "--hidden-import=math",
+            "--hidden-import=argparse",
+            "--hidden-import=threading",
+            # Third-party packages
+            "--hidden-import=cv2",
+            "--hidden-import=mediapipe",
+            "--hidden-import=fluidsynth",
+            "--hidden-import=pyfluidsynth",
+            "--hidden-import=pygame",
+            "--hidden-import=customtkinter",
+            "--hidden-import=mido",
+            "--hidden-import=sounddevice",
+            "--hidden-import=numpy",
+            # MediaPipe submodules
+            "--collect-submodules", "mediapipe",
+            "src/main.py"
+        ]
+        
+        run_command(cmd, "Building executable")
+        
+        print("\n" + "="*60)
+        print("[+] Build Successful!")
+        print("="*60 + "\n")
+        
+        exe_path = linux_dist / "THEngine-linux"
+        
+        if exe_path.exists():
+            size_mb = exe_path.stat().st_size / (1024 * 1024)
+            print(f"Linux Executable: {exe_path}")
+            print(f"Size: {size_mb:.1f} MB\n")
+            print("Ready for distribution on Linux systems.")
+            print("Windows executable remains in: dist/THEngine.exe\n")
+        else:
+            print(f"[ERROR] Executable not found at {exe_path}\n")
+    
+    finally:
+        os.chdir(original_cwd)
 
 if __name__ == "__main__":
     main()

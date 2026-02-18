@@ -3,13 +3,44 @@
 
 import cv2
 import pygame
-import fluidsynth
 import sys
 import os
 from pathlib import Path
 
 from src.config import settings
 from src.engines.recorder import MidiRecorder
+
+# Configure FluidSynth path BEFORE importing fluidsynth
+# This ensures the DLL can be found even on fresh installations
+def _setup_fluidsynth_path():
+    """Ensure FluidSynth DLL is in PATH before importing the module"""
+    try:
+        # Try to get the bundled FluidSynth path
+        if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
+            project_root = Path(sys._MEIPASS)
+        else:
+            current_file = Path(__file__).resolve()
+            project_root = current_file.parent.parent.parent
+        
+        fluidsynth_bin = project_root / "assets" / "fluidsynth-v2.5.1" / "bin"
+        
+        if fluidsynth_bin.exists():
+            bin_str = str(fluidsynth_bin)
+            current_path = os.environ.get("PATH", "")
+            
+            # Add to PATH at the beginning (highest priority)
+            if bin_str not in current_path:
+                os.environ["PATH"] = f"{bin_str};{current_path}"
+            
+            # Set environment variables for pyfluidsynth
+            os.environ["FLUIDSYNTH_PATH"] = bin_str
+    except Exception as e:
+        print(f"[!] Warning: Could not pre-configure FluidSynth path: {e}")
+
+# Call before importing fluidsynth
+_setup_fluidsynth_path()
+
+import fluidsynth
 
 
 # ========================
@@ -22,11 +53,19 @@ def init_fluidsynth(driver="dsound"):
     Returns: (fs_instance, loaded_sfids_dict) or (None, {}) on failure
     """
     try:
+        # Ensure FluidSynth path is configured (safety check)
+        _setup_fluidsynth_path()
+        
         fs = fluidsynth.Synth()
         fs.start(driver=driver)
         return fs, {}
     except Exception as e:
         print(f"ERRO CRÍTICO DE AUDIO: {e}")
+        # Try to provide helpful debugging info
+        if "Could not find" in str(e) or "fluidsynth" in str(e).lower():
+            print("  [!] FluidSynth library not found. Checking environment...")
+            print(f"      PATH: {os.environ.get('PATH', 'NOT SET')[:100]}...")
+            print(f"      FLUIDSYNTH_PATH: {os.environ.get('FLUIDSYNTH_PATH', 'NOT SET')}")
         return None, {}
 
 

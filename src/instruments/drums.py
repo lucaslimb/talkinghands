@@ -2,14 +2,11 @@ import cv2
 import mediapipe as mp
 import threading
 import queue
-import fluidsynth
 import time
 import numpy as np
 import sys
 import os
-import pygame 
-import sys
-import os
+import pygame
 from pathlib import Path
 
 FILE_PATH = Path(__file__).resolve()
@@ -22,6 +19,9 @@ from src.instruments.common import (
     setup_video_capture, setup_pygame,
     draw_text, draw_recording_indicator, draw_playback_indicator
 )
+
+# Import fluidsynth AFTER common.py setup has run
+import fluidsynth
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
 root_dir = os.path.dirname(current_dir)

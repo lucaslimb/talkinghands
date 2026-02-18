@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 """
 Build script for Talking Hands executable (Windows)
-Creates a standalone .exe file without Python dependencies
-Generates a distribution package with installer scripts
+Creates a standalone .exe file with FluidSynth bundled
 
 Run from project root: python builders/build.py
 Or from builders folder: python build.py
@@ -10,9 +9,9 @@ Or from builders folder: python build.py
 
 import subprocess
 import sys
+import os
 from pathlib import Path
 import shutil
-import zipfile
 
 def run_command(cmd, description, use_shell=False):
     """Run a command and handle errors"""
@@ -23,48 +22,29 @@ def run_command(cmd, description, use_shell=False):
         sys.exit(1)
     print(f"[+] {description} complete")
 
-def create_distribution_package(project_root, exe_path):
-    """Create a zip file with exe and installer scripts in separate folders"""
+def setup_fluidsynth(project_root):
+    """Ensure FluidSynth 2.5.1 is set up"""
+    fluidsynth_dir = project_root / "assets" / "fluidsynth-v2.5.1"
     
-    print("\n[*] Creating distribution package...")
+    if (fluidsynth_dir / "bin").exists():
+        print(f"[+] FluidSynth 2.5.1 already available")
+        return True
     
-    install_source = project_root / "installers" / "windows" / "install.bat"
-    uninstall_source = project_root / "installers" / "windows" / "uninstall.bat"
+    print("[*] FluidSynth 2.5.1 not found. Running setup script...")
+    setup_script = project_root / "builders" / "setup_fluidsynth.py"
     
-    # Create zip package
-    zip_name = "TalkingHands.zip"
-    zip_path = project_root / zip_name
+    if not setup_script.exists():
+        print(f"[ERROR] Setup script not found at {setup_script}")
+        return False
     
-    try:
-        with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
-            # Add executable to root of zip
-            if exe_path.exists():
-                zipf.write(exe_path, arcname=exe_path.name)
-                print(f"    Added {exe_path.name}")
-            
-            # Add installer scripts to 'installer' folder in zip
-            if install_source.exists():
-                zipf.write(install_source, arcname=f"installer/{install_source.name}")
-                print(f"    Added installer/install.bat")
-            
-            if uninstall_source.exists():
-                zipf.write(uninstall_source, arcname=f"installer/{uninstall_source.name}")
-                print(f"    Added installer/uninstall.bat")
-            
-            # Add README to root
-            readme_path = project_root / "README.md"
-            if readme_path.exists():
-                zipf.write(readme_path, arcname="README.md")
-                print(f"    Added README.md")
-        
-        size_mb = zip_path.stat().st_size / (1024 * 1024)
-        print(f"\n[+] Package created: {zip_path.name}")
-        print(f"    Size: {size_mb:.1f} MB")
-        
-        return zip_path
-    except Exception as e:
-        print(f"[ERROR] Failed to create zip: {e}")
-        return None
+    result = subprocess.run([sys.executable, str(setup_script)])
+    
+    if (fluidsynth_dir / "bin").exists():
+        print(f"[+] FluidSynth 2.5.1 is ready")
+        return True
+    else:
+        print(f"[ERROR] FluidSynth setup failed")
+        return False
 
 def main():
     print("\n" + "="*60)
@@ -76,6 +56,12 @@ def main():
     project_root = script_dir.parent
     
     print(f"Project root: {project_root}\n")
+    
+    # Setup FluidSynth first
+    if not setup_fluidsynth(project_root):
+        print("\n[ERROR] Cannot proceed without FluidSynth 2.5.1")
+        sys.exit(1)
+    print()
     
     # Check PyInstaller
     print("[*] Checking PyInstaller...")
@@ -116,8 +102,11 @@ def main():
             "--name", "THEngine",
             "--console",  # Show console for CLI output
             "--icon=assets/icon.ico",
+            # Assets and config
             "--add-data", "assets/soundfonts:assets/soundfonts",
-            "--add-data", "assets/fonts:assets/fonts",
+            "--add-data", "assets/fonts:assets/fonts",      
+            "--add-data", "assets/fluidsynth-v2.5.1:assets/fluidsynth-v2.5.1",
+            "--add-binary", "assets/fluidsynth-v2.5.1/bin/*.dll:assets/fluidsynth-v2.5.1/bin",
             "--add-data", "src/config/:src/config",
             "--add-data", "src/instruments/:src/instruments",
             "--add-data", "src/engines/:src/engines",
@@ -161,17 +150,6 @@ def main():
             size_mb = exe_path.stat().st_size / (1024 * 1024)
             print(f"Executable: {exe_path}")
             print(f"Size: {size_mb:.1f} MB\n")
-            
-            # Create distribution package
-            zip_path = create_distribution_package(project_root, exe_path)
-            
-            print("\n" + "="*60)
-            print("DISTRIBUTION PACKAGE READY")
-            print("="*60 + "\n")
-            
-            if zip_path:
-                print(f"Distribution ZIP: {zip_path}\n")
-            
         else:
             print(f"[ERROR] Executable not found at {exe_path}\n")
     

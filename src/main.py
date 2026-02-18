@@ -22,26 +22,59 @@ else:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.config import settings
+from src.engines.dependency_manager import verify_dependencies_before_launch
 
 
 def safe_import_module(module_path):
     """
     Safely import a module, handling both normal and PyInstaller bundled environments.
-    Adjusts the module path dynamically for the bundled environment.
+    Prevents pyfluidsynth from crashing on hardcoded C:\\tools\\fluidsynth\\bin.
     """
-    try:
-        # Try normal import first (development environment)
-        return import_module(module_path)
-    except ModuleNotFoundError:
-        # Fallback for PyInstaller bundled environment
-        if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
-            # Adjust path for bundled environment
-            bundled_path = module_path.replace('src.', '')
+
+    # Resolve project root
+    if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
+        project_root = Path(sys._MEIPASS)
+    else:
+        project_root = PROJECT_ROOT
+
+    fluidsynth_bin = project_root / "assets" / "fluidsynth-v2.5.1" / "bin"
+
+    # Preconfigure correct FluidSynth path
+    if fluidsynth_bin.exists():
+        bin_str = str(fluidsynth_bin)
+        os.environ["FLUIDSYNTH_PATH"] = bin_str
+
+        if hasattr(os, "add_dll_directory"):
             try:
-                return import_module(bundled_path)
-            except ModuleNotFoundError:
+                os.add_dll_directory(bin_str)
+            except Exception:
                 pass
-        raise
+
+        current_path = os.environ.get("PATH", "")
+        if bin_str not in current_path:
+            os.environ["PATH"] = f"{bin_str};{current_path}"
+
+    # --- CRITICAL PART: patch os.add_dll_directory ---
+    original_add_dll_directory = getattr(os, "add_dll_directory", None)
+
+    def safe_add_dll_directory(path):
+        # Ignore pyfluidsynth's bad hardcoded path
+        if path.lower() == r"c:\tools\fluidsynth\bin":
+            return None
+        return original_add_dll_directory(path)
+
+    if original_add_dll_directory:
+        os.add_dll_directory = safe_add_dll_directory
+
+    try:
+        return import_module(module_path)
+
+    finally:
+        # Restore original function to avoid side effects
+        if original_add_dll_directory:
+            os.add_dll_directory = original_add_dll_directory
+
+
 
 def get_available_instruments():
     """Get instruments grouped by type"""
@@ -80,12 +113,62 @@ def get_instrument_type(instrument_name):
     else:
         return "keyboard"
 
+def print_documentation():
+    """Print comprehensive documentation and exit"""
+    doc = """╔════════════════════════════════════════════════════════════════════════════════╗
+║                          TALKING HANDS ENGINE GUIDE                          ║
+╚════════════════════════════════════════════════════════════════════════════════╝
+
+USAGE ON DEV ENV:
+  python src/main.py [OPTIONS]
+
+USAGE ON PRODUCTION (BUNDLED):
+  THEngine.exe [OPTIONS]
+
+GLOBAL OPTIONS:
+  -h, --help                         Show help message and exit
+  -i, --instrument INSTRUMENT_NAME   Instrument name to start (e.g., 'Perfect Drums 1', 'Grand Piano', 'Recorder')
+  -t, --trackers                     Show hand/face trackers on screen (default: off)
+  -f, --separate-folders             Keep playback and recordings in different folders (default: all in recordings)
+
+RECORDING FORMATS OPTIONS:
+  --mid                              Save .MID files (default: enabled)
+  --no-mid                           Disable .MID file saving
+  --mp3                              Save .MP3 files (default: disabled)
+  --wav                              Save .WAV files (default: disabled)
+
+KEYBOARD OPTIONS:
+  --keyboard-lf LIFT_THRESHOLD       Lift threshold in normalized units (default: 0.02). Quanto maior o valor, mais alto é preciso levantar o dedo para tocar uma nota.
+  --keyboard-sd SUSTAIN_DECAY        Sustain decay in seconds (default: 0.8). Tempo de sustentação da nota após ser tocada. Valores menores resultam em notas mais curtas, enquanto valores maiores permitem que as notas soem por mais tempo.
+  --keyboard-ts TOUCH_TOLERANCE      Touch sensitivity/tolerance in normalized units (default: 0.005). Quanto maior o valor, mais permissivo é o sistema para reconhecer um toque, quanto menor, mais preciso e exigente será o reconhecimento do toque.
+
+DRUMS OPTIONS:
+  --drums-tt TOUCH_TOLERANCE         Touch tolerance as normalized value (default: 0.01). Quanto maior a porcentagem, maior será a área de contato com os tambores, pratos, bumbo.
+  --drums-tv TOUCH_VELOCITY          Touch velocity threshold (default: 0.012). Quanto maior, mais rápido você precisa mover a mão para gerar um som mais alto.
+
+FLUTE OPTIONS:
+  --flute-inv                        Invert blow logic (higher mouth opening = louder) (default: lower mouth opening = louder)
+  --flute-max MOUTH_MAX              Maximum mouth opening threshold (default: 0.05)
+  --flute-min MOUTH_MIN              Minimum mouth opening threshold / peak (default: 0.01)
+  --flute-p {small,medium,large}     Hole size and spacing (default: medium)
+
+EXAMPLES:
+  python main.py -i "Perfect Drums 1" -tf
+  python main.py -i "Grand Piano" --keyboard-sd 0.5 --keyboard-lf 0.025
+  python main.py -i "Recorder" --flute-max 0.06 --flute-p medium
+  python main.py -i "Quality Flute" --flute-invert
+"""
+    print(doc)
+    sys.exit(0)
+
+
 def create_argparse():
     """Create and configure the argument parser"""
     parser = argparse.ArgumentParser(
         prog="Talking Hands",
         description="Virtual instrument platform using computer vision",
         formatter_class=argparse.RawDescriptionHelpFormatter,
+        add_help=False,  # Disable default help to prevent automatic exit
         epilog="""
     Examples:
     python main.py -i "Perfect Drums 1" -tf
@@ -95,18 +178,19 @@ def create_argparse():
         """
     )
     
+    # Add custom help argument
+    parser.add_argument(
+        "-h", "--help",
+        action="store_true",
+        help="Show help message and exit"
+    )
+    
     # Global arguments
     parser.add_argument(
         "-i", "--instrument",
         type=validate_instrument,
-        required=True,
+        required=False,  # Made optional to allow help without instrument
         help="Instrument name to start (e.g., 'Perfect Drums 1', 'Grand Piano', 'Recorder')"
-    )
-    
-    parser.add_argument(
-        "-s", "--sound",
-        type=str,
-        help="Alias for --instrument"
     )
     
     parser.add_argument(
@@ -224,8 +308,22 @@ def create_argparse():
 
 def parse_args():
     """Parse command line arguments"""
+    # Check for help flag BEFORE parsing (for early exit)
+    if "-h" in sys.argv or "--help" in sys.argv:
+        print_documentation()
+    
     parser = create_argparse()
     args = parser.parse_args()
+    
+    # Validate that instrument is provided (unless help was requested)
+    if not args.instrument and not args.help:
+        parser.print_help()
+        print("\nERROR: --instrument is required")
+        sys.exit(1)
+    
+    # Handle help flag
+    if args.help:
+        print_documentation()
     
     # Handle --sound as alias for --instrument
     if args.sound and not args.instrument:
@@ -359,6 +457,12 @@ def start_keyboard(args, rec_opts):
 def main():
     """Main CLI entry point"""
     try:
+        
+        # Verify and install dependencies if needed
+        # if not verify_dependencies_before_launch():
+        #     print("ERROR: Could not verify all dependencies. Application cannot start.")
+        #     sys.exit(1)
+        
         args = parse_args()
         
         # Validate settings

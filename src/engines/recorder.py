@@ -4,7 +4,6 @@ import os
 import wave
 import shutil
 import subprocess
-import fluidsynth
 import threading
 
 from pathlib import Path
@@ -13,6 +12,37 @@ import sys
 FILE_PATH = Path(__file__).resolve()
 PROJECT_ROOT = FILE_PATH.parent.parent.parent
 sys.path.append(str(PROJECT_ROOT))
+
+# Configure FluidSynth path BEFORE importing fluidsynth
+def _setup_fluidsynth_path():
+    """Ensure FluidSynth DLL is in PATH before importing the module"""
+    try:
+        # Try to get the bundled FluidSynth path
+        if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
+            project_root = Path(sys._MEIPASS)
+        else:
+            current_file = Path(__file__).resolve()
+            project_root = current_file.parent.parent.parent
+        
+        fluidsynth_bin = project_root / "assets" / "fluidsynth-v2.5.1" / "bin"
+        
+        if fluidsynth_bin.exists():
+            bin_str = str(fluidsynth_bin)
+            current_path = os.environ.get("PATH", "")
+            
+            # Add to PATH at the beginning (highest priority)
+            if bin_str not in current_path:
+                os.environ["PATH"] = f"{bin_str};{current_path}"
+            
+            # Set environment variables for pyfluidsynth
+            os.environ["FLUIDSYNTH_PATH"] = bin_str
+    except Exception as e:
+        print(f"[!] Warning: Could not pre-configure FluidSynth path in recorder: {e}")
+
+# Call before importing fluidsynth
+_setup_fluidsynth_path()
+
+import fluidsynth
 
 # MidiRecorder handles all MIDI event recording, playback, and audio file export
 # Supports simultaneous recording and playback, MIDI export, WAV rendering, and MP3 conversion

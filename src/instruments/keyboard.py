@@ -1,13 +1,12 @@
 from pathlib import Path
+import sys
+import os
 import cv2
 import mediapipe as mp
 import threading
 import queue
-import fluidsynth
 import time
 import ctypes
-import sys
-import os
 import pygame
 import numpy as np
 
@@ -23,6 +22,9 @@ from src.instruments.common import (
     draw_text, draw_recording_indicator, draw_playback_indicator,
     process_frame_to_pygame
 )
+
+# Import fluidsynth AFTER common.py setup has run
+import fluidsynth
 
 RELEASE_THRESHOLD = 0.015
 MIN_NOTE_DURATION = 0.1
