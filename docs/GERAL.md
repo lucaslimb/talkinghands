@@ -9,42 +9,20 @@ Apenas execute o exe a partir do seu path com o args desejeados
 THEngine.exe <args>
 ```
 
-#### SEM BUILDED .EXE (Nao vai ser necessario)
-
-Instale o python 3.11.9 e o pip (gerenciador de dependencias)
-
-Clone o repositório e abra-o na IDE
-
-Crie um ambiente python (da pra fazer com o VSCode sem linhas de comando):
-```bash
-python -m venv .venv
-```
-
-Ative o ambiente:
-```bash
-.venv\Scripts\activate
-```
-Caso ativo, vai aparecer na frente do path no terminal.
-
-Instale todas as dependencias:
-```bash
-pip install -r requirements.txt
-```
-
-Para testar, caso esteja em um projeto separado chame com o path completo:
-```bash
-C:...\TalkingHands\.venv\Scripts\python.exe C:...\TalkingHands\src\main.py <args>
-```
-
-Caso esteja no mesmo projeto que o python:
-Ative o ambiente e execute
-```bash
-python src/main.py <args>
-```
-
 Use o arg -h para exibir a documentação da CLI
 
-## Python team
+## Engine team
+
+### Testando
+
+Com o virtual environment ativo, rode:
+```
+python src/main.py <args>
+```
+ou
+```
+python path/classe.py
+```
 
 ### Ocultar arquivos cache e init no VSCode
 Vá para Settings > procure por files.exclude > adicione:
