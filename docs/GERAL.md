@@ -74,13 +74,6 @@ Code signing (evita warnings de unkwnown publisher, mas a principio nao vai ser 
 signtool sign /f mycert.pfx /p password /d "Talking Hands" dist/THEngine.exe
 ```
 
-### Buildar um exe para Linux
-
-Primeiro, precisamos estar num ambiente Linux. Substituimos a lib do fluidsynth de assets, removendo-a e deixando o builder baixar automaticamente a lib correta.
-```bash
-python builders/build_linux.py
-```
-
 ### FYI
 
 Se necessário, use o Github Copilot no VSCode com preferencia pelo modelo Claude Haiku 4.5
