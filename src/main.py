@@ -7,6 +7,7 @@ import argparse
 import sys
 import os
 from importlib import import_module, reload
+import importlib.util
 from pathlib import Path
 
 # Setup imports - handle both normal and PyInstaller bundled environments
@@ -125,6 +126,9 @@ USAGE ON DEV ENV:
 USAGE ON PRODUCTION (BUNDLED):
   THEngine.exe [OPTIONS]
 
+STANDALONE OPTIONS:
+  --test-cam                         Test camera Resolution and FPS capabilities and exit with result
+
 GLOBAL OPTIONS:
   -h, --help                         Show help message and exit
   -i, --instrument INSTRUMENT_NAME   Instrument name to start (e.g., 'Perfect Drums 1', 'Grand Piano', 'Recorder')
@@ -183,6 +187,13 @@ def create_argparse():
         "-h", "--help",
         action="store_true",
         help="Show help message and exit"
+    )
+    
+    # Test FPS argument
+    parser.add_argument(
+        "--test-cam",
+        action="store_true",
+        help="Test camera FPS capabilities and exit with result"
     )
     
     # Global arguments
@@ -315,8 +326,8 @@ def parse_args():
     parser = create_argparse()
     args = parser.parse_args()
     
-    # Validate that instrument is provided (unless help was requested)
-    if not args.instrument and not args.help:
+    # Validate that instrument is provided (unless help or test-cam was requested)
+    if not args.instrument and not args.help and not args.test_cam:
         parser.print_help()
         print("\nERROR: --instrument is required")
         sys.exit(1)
@@ -460,6 +471,17 @@ def main():
         #     sys.exit(1)
         
         args = parse_args()
+        
+        # Handle --test-fps early and exit
+        if args.test_cam:
+            print("\n>>> Running FPS test...\n")
+            # Load test-fps.py module by spec (handles hyphen in filename)
+            test_fps_path = PROJECT_ROOT / "src" / "utils" / "test-fps.py"
+            spec = importlib.util.spec_from_file_location("test_fps", test_fps_path)
+            test_fps_module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(test_fps_module)
+            # The module runs the test automatically and prints results
+            sys.exit(0)
         
         # Validate settings
         if not settings.INSTRUMENTS:
