@@ -34,6 +34,9 @@ VELOCITY_THRESHOLD = 0.002
 TOUCH_VELOCITY = getattr(settings, 'TOUCH_VELOCITY')
 TOUCH_TOLERANCE = getattr(settings, 'TOUCH_TOLERANCE', 0.01)
 ELLIPSE_THRESHOLD = 1.0 - TOUCH_TOLERANCE 
+DRUM_SYNTH_GAIN = 1.8
+DRUM_MIN_VELOCITY = 50
+MIN_REHIT_PIXELS = 32
 
 COLOR_RED = (255, 0, 0)        # Vermelho
 COLOR_HIT_FILL = (255, 0, 0)  
@@ -69,20 +72,20 @@ fps_tracker = FPSTracker(update_interval=10)
 # ------------------------
 DRUM_KIT = [
     # --- LINHA SUPERIOR (PRATOS) ---
-    {"id": 0, "pos": (0.20, 0.40), "axes": (0.12, 0.08), "note": 49, "name": "CRASH", "shape": "ellipse"},
-    {"id": 1, "pos": (0.80, 0.40), "axes": (0.12, 0.08), "note": 51, "name": "RIDE",  "shape": "ellipse"},
+    {"id": 0, "pos": (0.20, 0.40), "axes": (0.13, 0.045), "note": 49, "name": "CRASH", "shape": "ellipse"},
+    {"id": 1, "pos": (0.80, 0.40), "axes": (0.13, 0.045), "note": 51, "name": "RIDE",  "shape": "ellipse"},
     
     # --- LINHA DO MEIO (TOMS) ---
-    {"id": 2, "pos": (0.38, 0.60), "axes": (0.09, 0.06), "note": 48, "name": "HI-TOM", "shape": "ellipse"},
-    {"id": 3, "pos": (0.62, 0.60), "axes": (0.09, 0.06), "note": 45, "name": "LO-TOM", "shape": "ellipse"},
+    {"id": 2, "pos": (0.38, 0.60), "axes": (0.10, 0.045), "note": 48, "name": "HI-TOM", "shape": "ellipse"},
+    {"id": 3, "pos": (0.62, 0.60), "axes": (0.10, 0.045), "note": 45, "name": "LO-TOM", "shape": "ellipse"},
     
     # --- LINHA INFERIOR (TAMBORES PRINCIPAIS) ---
-    {"id": 4, "pos": (0.20, 0.85), "axes": (0.11, 0.09), "note": 42, "name": "HI-HAT", "shape": "ellipse"},
-    {"id": 5, "pos": (0.50, 0.80), "axes": (0.13, 0.10), "note": 38, "name": "SNARE",  "shape": "ellipse"},
-    {"id": 6, "pos": (0.80, 0.85), "axes": (0.11, 0.09), "note": 41, "name": "FLOOR",  "shape": "ellipse"},
+    {"id": 4, "pos": (0.20, 0.85), "axes": (0.12, 0.055), "note": 42, "name": "HI-HAT", "shape": "ellipse"},
+    {"id": 5, "pos": (0.50, 0.80), "axes": (0.14, 0.060), "note": 38, "name": "SNARE",  "shape": "ellipse"},
+    {"id": 6, "pos": (0.80, 0.85), "axes": (0.12, 0.055), "note": 41, "name": "FLOOR",  "shape": "ellipse"},
     
     # --- BUMBO (KICK) ---
-    {"id": 7, "pos": (0.50, 0.96), "axes": (0.15, 0.03), "note": 36, "name": "KICK",   "shape": "rect"},
+    {"id": 7, "pos": (0.50, 0.96), "axes": (0.16, 0.025), "note": 36, "name": "KICK",   "shape": "rect"},
 ]
 
 INITIAL_POSITIONS = {d["id"]: d["pos"] for d in DRUM_KIT}
@@ -104,12 +107,19 @@ FIXED_SF2_PATH = settings.SF2_PATHS["drums"]
 
 fs, _ = init_fluidsynth(driver="dsound")
 if fs is not None:
+    try:
+        fs.setting("synth.gain", DRUM_SYNTH_GAIN)
+    except Exception:
+        pass
+
     print(f">>> Carregando SoundFont Fixo: {FIXED_SF2_PATH}...")
     drum_sfid = load_single_soundfont(fs, "drums", FIXED_SF2_PATH)
     if drum_sfid != -1:
         print(f"Sucesso! ID do SF2: {drum_sfid}")
         for i in range(POLYPHONY_CHANNELS):
             fs.program_select(i, drum_sfid, 128, 0)
+            fs.cc(i, 7, 127)   # Channel Volume
+            fs.cc(i, 11, 127)  # Expression
     else:
         print(f"ERRO CRÍTICO: Falha ao carregar o arquivo {FIXED_SF2_PATH}")
 else:
@@ -123,6 +133,8 @@ def select_kit_by_name(name):
     
     for i in range(POLYPHONY_CHANNELS):
         fs.program_select(i, drum_sfid, bank, preset)
+        fs.cc(i, 7, 127)   # Channel Volume
+        fs.cc(i, 11, 127)  # Expression
     recorder.set_instrument(FIXED_SF2_PATH, bank, preset, is_drum=True)
 
     return True
@@ -151,13 +163,13 @@ def is_mouse_over_drum(mx, my, drum, w, h):
         return ((mx - cx)**2 / rx**2) + ((my - cy)**2 / ry**2) <= 1.0
 
 hands_state = {
-    "Left":  {"prev_y": 0.0, "can_hit": True},
-    "Right": {"prev_y": 0.0, "can_hit": True}
+    "Left":  {"prev_y": 0.0, "can_hit": True, "last_hit_pos": None, "last_hit_drum": None},
+    "Right": {"prev_y": 0.0, "can_hit": True, "last_hit_pos": None, "last_hit_drum": None}
 }
 
 def reset_hands_state():
-    hands_state["Left"] = {"prev_y": 0.0, "can_hit": True}
-    hands_state["Right"] = {"prev_y": 0.0, "can_hit": True}
+    hands_state["Left"] = {"prev_y": 0.0, "can_hit": True, "last_hit_pos": None, "last_hit_drum": None}
+    hands_state["Right"] = {"prev_y": 0.0, "can_hit": True, "last_hit_pos": None, "last_hit_drum": None}
 
 def reset_drum_positions():
     for drum in DRUM_KIT:
@@ -178,7 +190,7 @@ def check_collision(x, y, drum):
         val = ((x - h)**2 / rx**2) + ((y - k)**2 / ry**2)
         return val <= ELLIPSE_THRESHOLD
 
-def process_hand(label, landmarks, w, h, screen, font):
+def process_hand(label, landmarks, w, h, screen, font, show_trackers=False):
     ref_point = landmarks[4] 
     ref_x, ref_y = ref_point.x, ref_point.y
     
@@ -216,16 +228,25 @@ def process_hand(label, landmarks, w, h, screen, font):
 
     if hit_drum_id is not None:
         is_moving_down = dy > VELOCITY_THRESHOLD
+
+        moved_enough_after_last_hit = True
+        if state["last_hit_pos"] is not None and state["last_hit_drum"] == hit_drum_id:
+            last_x, last_y = state["last_hit_pos"]
+            dx_px = cursor_pos[0] - last_x
+            dy_px = cursor_pos[1] - last_y
+            moved_enough_after_last_hit = (dx_px * dx_px + dy_px * dy_px) >= (MIN_REHIT_PIXELS * MIN_REHIT_PIXELS)
         
         if can_hit:
             cursor_color = COLOR_READY
             
-        if can_hit and is_moving_down:
+        if can_hit and is_moving_down and moved_enough_after_last_hit:
             target_drum = next((d for d in DRUM_KIT if d["id"] == hit_drum_id), None)
             if target_drum:
-                velocity = int(min(max((dy - TOUCH_VELOCITY) * 8000, 30), 127))
+                velocity = int(min(max((dy - TOUCH_VELOCITY) * 10000, DRUM_MIN_VELOCITY), 127))
                 audio_queue.put((target_drum["note"], velocity))
                 target_drum["last_hit"] = time.time()
+                state["last_hit_pos"] = cursor_pos
+                state["last_hit_drum"] = hit_drum_id
                 
                 # PYGAME: Texto de Hit
                 # hit_surf = font.render("HIT!", True, COLOR_GREEN)
@@ -238,8 +259,9 @@ def process_hand(label, landmarks, w, h, screen, font):
     state["prev_y"] = ref_y
     state["can_hit"] = can_hit
 
-    pygame.draw.circle(screen, cursor_color, cursor_pos, radius)
-    pygame.draw.circle(screen, (255, 255, 255), cursor_pos, radius + 2, 2)
+    if show_trackers:
+        pygame.draw.circle(screen, cursor_color, cursor_pos, radius)
+        pygame.draw.circle(screen, (255, 255, 255), cursor_pos, radius + 2, 2)
 
 # draw_text is imported from src.instruments.common
 
@@ -300,6 +322,7 @@ def draw_drums_pygame(screen, w, h, font, dragging_drum=None):
             "2 -> encerrar gravacao",
             "3 -> iniciar/interromper playback",
             "5 -> resetar posicao da bateria",
+            "9 -> ocultar/mostrar trackers",
             "0 -> ocultar/mostrar menu"
         ]
         y0 = 30
@@ -310,8 +333,9 @@ def draw_drums_pygame(screen, w, h, font, dragging_drum=None):
         draw_text(screen, fps_text, (w - 120, 30), font)
 
  # Loop principal
-def start_drums(chosen_instrument=None, user_tolerance=None, rec_options=None, touch_velocity=None, resolution_profile=None):
+def start_drums(chosen_instrument=None, user_tolerance=None, rec_options=None, touch_velocity=None, resolution_profile=None, show_trackers=False):
     print(">>> INICIANDO BATERIA (Pygame)")
+    tracker_visible = bool(show_trackers)
     
     if user_tolerance:
         global ELLIPSE_THRESHOLD
@@ -420,6 +444,8 @@ def start_drums(chosen_instrument=None, user_tolerance=None, rec_options=None, t
                         recorder.toggle_playback(fs)
                     elif event.key == pygame.K_5:
                         reset_drum_positions()
+                    elif event.key == pygame.K_9:
+                        tracker_visible = not tracker_visible
                     elif event.key == pygame.K_0:
                         show_menu = not show_menu
                     elif event.key == pygame.K_SPACE:
@@ -444,7 +470,7 @@ def start_drums(chosen_instrument=None, user_tolerance=None, rec_options=None, t
             if results.multi_hand_landmarks:
                 for idx, landmarks in enumerate(results.multi_hand_landmarks):
                     lbl = results.multi_handedness[idx].classification[0].label
-                    process_hand(lbl, landmarks.landmark, LOGICAL_W, LOGICAL_H, main_surface, font)
+                    process_hand(lbl, landmarks.landmark, LOGICAL_W, LOGICAL_H, main_surface, font, show_trackers=tracker_visible)
 
             window_display.blit(main_surface, (0, 0))
             

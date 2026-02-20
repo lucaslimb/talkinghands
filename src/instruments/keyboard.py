@@ -135,7 +135,7 @@ def check_active_keys_integrity():
                     key["off_timer"] = 0
 
 # Aqui processamos cada dedo, verificando seu status atual e decidindo se deve armar para toque, iniciar um toque, mudar de nota ou liberar a nota
-def processar_dedo(label, fid, y_current, x_current, table_y, cx, cy, screen, h_frame):
+def processar_dedo(label, fid, y_current, x_current, table_y, cx, cy, screen, h_frame, show_trackers=False):
     state = hands_state[label]
     status = state["finger_status"][fid]
     last_action_time = state["finger_timers"][fid]
@@ -172,7 +172,8 @@ def processar_dedo(label, fid, y_current, x_current, table_y, cx, cy, screen, h_
             key_data["last_hit"] = current_time
             key_data["is_active"] = True
             
-            pygame.draw.circle(screen, COLOR_HIT, (cx, int(table_y * h_frame)), 15)
+            if show_trackers:
+                pygame.draw.circle(screen, COLOR_HIT, (cx, int(table_y * h_frame)), 15)
 
     elif status == "TOUCHING":
         active_note = state["active_notes"][fid]
@@ -210,7 +211,8 @@ def processar_dedo(label, fid, y_current, x_current, table_y, cx, cy, screen, h_
     color = COLOR_ARMED if status == "ARMED" else (100,100,100)
     if status == "TOUCHING":
         color = COLOR_HOLD
-    pygame.draw.circle(screen, color, (cx, cy), 5)
+    if show_trackers:
+        pygame.draw.circle(screen, color, (cx, cy), 5)
 
 # Aqui verificamos se algum dedo que deveria estar tocando ou armado desapareceu (perda de rastreamento) e desligamos a nota correspondente para evitar que fique presa
 def check_lost_fingers():
@@ -283,6 +285,7 @@ def draw_ui_fast_pygame(screen, table_y, w, h, font):
             "1 -> iniciar gravacao",
             "2 -> encerrar gravacao",
             "3 -> iniciar/interromper playback",
+            "9 -> ocultar/mostrar trackers",
             "0 -> ocultar/mostrar menu"
         ]
         y0 = 30
@@ -295,7 +298,7 @@ def draw_ui_fast_pygame(screen, table_y, w, h, font):
 # ------------------------
 # START
 # ------------------------
-def start_piano(chosen_instrument, user_sustain=None, lift_threshold=None, touch_tolerance=None, rec_options=None, resolution_profile=None):
+def start_piano(chosen_instrument, user_sustain=None, lift_threshold=None, touch_tolerance=None, rec_options=None, resolution_profile=None, show_trackers=False):
 
     if user_sustain is not None and user_sustain > 0:
         global SUSTAIN_DECAY
@@ -310,6 +313,7 @@ def start_piano(chosen_instrument, user_sustain=None, lift_threshold=None, touch
         TOUCH_TOLERANCE = touch_tolerance
 
     global show_menu
+    tracker_visible = bool(show_trackers)
 
     if rec_options:
         recorder.set_options(rec_options)
@@ -376,6 +380,8 @@ def start_piano(chosen_instrument, user_sustain=None, lift_threshold=None, touch
                         recorder.toggle_playback(fs)
                     elif event.key == pygame.K_4:
                         recorder.stop_playback()
+                    elif event.key == pygame.K_9:
+                        tracker_visible = not tracker_visible
                     elif event.key == pygame.K_0:
                         show_menu = not show_menu
 
@@ -406,7 +412,7 @@ def start_piano(chosen_instrument, user_sustain=None, lift_threshold=None, touch
                         
                         cx, cy = int(finger.x * LOGICAL_W), int(finger.y * LOGICAL_H)
                         
-                        processar_dedo(lbl, fid, finger.y, finger.x, global_state["table_y"], cx, cy, main_surface, LOGICAL_H)
+                        processar_dedo(lbl, fid, finger.y, finger.x, global_state["table_y"], cx, cy, main_surface, LOGICAL_H, show_trackers=tracker_visible)
 
             check_lost_fingers()
             check_active_keys_integrity()

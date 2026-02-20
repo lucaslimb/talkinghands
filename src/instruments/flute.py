@@ -182,7 +182,7 @@ def get_mouth_distance(face_landmarks):
     lower = face_landmarks.landmark[14]
     return abs(upper.y - lower.y)
 
-def process_interaction(hand_landmarks, w, h, screen):
+def process_interaction(hand_landmarks, w, h, screen, show_trackers=False):
     for hole in holes: hole.is_covered = False
     
     if hand_landmarks:
@@ -192,7 +192,8 @@ def process_interaction(hand_landmarks, w, h, screen):
                 tip = lm.landmark[fid]
                 fx, fy = int(tip.x * w), int(tip.y * h)
                 
-                pygame.draw.circle(screen, (255, 0, 0), (fx, fy), 6)
+                if show_trackers:
+                    pygame.draw.circle(screen, (255, 0, 0), (fx, fy), 6)
                 
                 for hole in holes:
                     hx, hy = int(hole.x_rel * w), int(hole.y_rel * h)
@@ -233,7 +234,7 @@ def is_mouse_over_flute(mx, my, w, h):
 
 # draw_text is imported from src.instruments.common
 
-def draw_flute_ui_pygame(screen, w, h, velocity, face_landmarks, font, is_dragging=False):
+def draw_flute_ui_pygame(screen, w, h, velocity, face_landmarks, font, is_dragging=False, show_trackers=False):
     overlay = pygame.Surface((w, h), pygame.SRCALPHA)
     
     if not holes: return
@@ -284,7 +285,7 @@ def draw_flute_ui_pygame(screen, w, h, velocity, face_landmarks, font, is_draggi
         pygame.draw.circle(overlay, (50, 50, 50), (cx, cy), radius, 1)
 
     # 5. Pontos da Boca (Face Mesh)
-    if face_landmarks:
+    if show_trackers and face_landmarks:
         up = face_landmarks.landmark[13]
         low = face_landmarks.landmark[14]
         cx_u, cy_u = int(up.x * w), int(up.y * h)
@@ -302,7 +303,7 @@ def draw_flute_ui_pygame(screen, w, h, velocity, face_landmarks, font, is_draggi
 # ------------------------
 # FUNÇÃO PRINCIPAL
 # ------------------------
-def start_flute(chosen_instrument, mouth_peak=0.01, mouth_max=0.05, hole_radius=0.019, hole_spacing=0.068, invert_blow=False, rec_options=None, resolution_profile=None):
+def start_flute(chosen_instrument, mouth_peak=0.01, mouth_max=0.05, hole_radius=0.019, hole_spacing=0.068, invert_blow=False, rec_options=None, resolution_profile=None, show_trackers=False):
     
     global MOUTH_PEAK_OPEN, MOUTH_MAX_OPEN, HOLE_RADIUS, HOLE_SPACING, INVERT_BLOW_LOGIC
     MOUTH_PEAK_OPEN = mouth_peak
@@ -310,6 +311,7 @@ def start_flute(chosen_instrument, mouth_peak=0.01, mouth_max=0.05, hole_radius=
     HOLE_RADIUS = hole_radius
     HOLE_SPACING = hole_spacing
     INVERT_BLOW_LOGIC = invert_blow
+    tracker_visible = bool(show_trackers)
     
     if rec_options:
         recorder.set_options(rec_options)
@@ -418,6 +420,8 @@ def start_flute(chosen_instrument, mouth_peak=0.01, mouth_max=0.05, hole_radius=
                         flute_y = DEFAULT_FLUTE_Y
                         update_hole_positions(flute_x, flute_y)
                         print(">>> Posição da flauta resetada.")
+                    elif event.key == pygame.K_9:
+                        tracker_visible = not tracker_visible
                     elif event.key == pygame.K_0: show_gui = not show_gui
                     
             keys = pygame.key.get_pressed()
@@ -466,7 +470,7 @@ def start_flute(chosen_instrument, mouth_peak=0.01, mouth_max=0.05, hole_radius=
             main_surface.blit(frame_surface, (0, 0))
 
             res_hands = hands.process(frame_rgb)
-            process_interaction(res_hands.multi_hand_landmarks, LOGICAL_W, LOGICAL_H, main_surface)
+            process_interaction(res_hands.multi_hand_landmarks, LOGICAL_W, LOGICAL_H, main_surface, show_trackers=tracker_visible)
             
             if velocity > 0:
                 target_note = calculate_current_note()
@@ -487,7 +491,7 @@ def start_flute(chosen_instrument, mouth_peak=0.01, mouth_max=0.05, hole_radius=
                     last_note = -1
                     last_sent_velocity = 0
 
-            draw_flute_ui_pygame(main_surface, LOGICAL_W, LOGICAL_H, last_sent_velocity, face_landmarks_data, font, dragging_flute)            
+            draw_flute_ui_pygame(main_surface, LOGICAL_W, LOGICAL_H, last_sent_velocity, face_landmarks_data, font, dragging_flute, show_trackers=tracker_visible)            
             
             if show_gui:
                 instructions = [
@@ -496,6 +500,7 @@ def start_flute(chosen_instrument, mouth_peak=0.01, mouth_max=0.05, hole_radius=
                     "2 -> encerrar gravacao",
                     "3 -> iniciar/interromper playback",
                     "5 -> resetar posicao da flauta",
+                    "9 -> ocultar/mostrar trackers",
                     "0 -> ocultar/mostrar menu"
                 ]
 

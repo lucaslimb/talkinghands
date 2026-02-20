@@ -470,6 +470,7 @@ def start_drums(args, rec_opts):
         rec_options=rec_opts,
         touch_velocity=touch_velocity,
         resolution_profile=args.resolution,
+        show_trackers=args.trackers,
     )
 
 
@@ -500,6 +501,7 @@ def start_flute(args, rec_opts):
         invert_blow=args.flute_invert,
         rec_options=rec_opts,
         resolution_profile=args.resolution,
+        show_trackers=args.trackers,
     )
 
 
@@ -525,6 +527,7 @@ def start_keyboard(args, rec_opts):
         touch_tolerance=tolerance,
         rec_options=rec_opts,
         resolution_profile=args.resolution,
+        show_trackers=args.trackers,
     )
 
 
