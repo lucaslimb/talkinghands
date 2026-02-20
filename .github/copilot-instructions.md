@@ -1,39 +1,42 @@
-# Copilot Instructions for Talking Hands
+# Talking Hands — Copilot Instructions
 
-## Project Overview
-- **Talking Hands** is a Python-based virtual instrument platform using computer vision and real-time audio synthesis.
-- The system tracks hand and face positions via webcam, mapping gestures to musical actions for keyboard, drums, and flute.
-- Audio synthesis is handled by FluidSynth soundfonts, with a focus on low-latency performance.
+## Project architecture (read this first)
+- CLI entrypoint is `src/main.py`; it parses args, selects instrument type from `settings.INSTRUMENTS`, and dispatches to one of:
+	- `src/instruments/keyboard.py` (`start_piano`)
+	- `src/instruments/drums.py` (`start_drums`)
+	- `src/instruments/flute.py` (`start_flute`)
+- Core shared helpers live in `src/instruments/common.py` (FluidSynth init/load, pygame/camera setup, UI helpers).
+- Recording/export pipeline is centralized in `src/engines/recorder.py` (`MidiRecorder`): captures note/CC events, writes MIDI, optionally renders WAV, optionally converts to MP3.
+- Global configuration is in `src/config/settings.py` (soundfont paths, instrument map, thresholds, recording defaults, OS-specific recordings path).
 
-## Architecture & Key Components
-- **src/main.py**: Entry point; launches the main application and instrument selection UI.
-- **src/instruments/**: Contains instrument logic for keyboard, drums, and flute. Each instrument is modular and can be calibrated for user/environment.
-- **src/engines/recorder.py**: Handles audio/MIDI recording and export (WAV, MP3, MID).
-- **src/config/settings.py**: Stores configuration and calibration logic for instruments and user preferences.
-- **src/utils/utils.py**: Shared utility functions (e.g., hand/face landmark processing, file management).
-- **assets/soundfonts/**: Soundfont files for each instrument (drums, flute, keyboard).
+## Runtime and dependency rules (critical)
+- This repo assumes bundled FluidSynth under `assets/fluidsynth-v2.5.1`; do not hardcode other install paths.
+- Preserve `_MEIPASS` + env setup patterns used in `src/main.py`, `src/instruments/common.py`, and `src/engines/recorder.py`.
+- Keep `FLUIDSYNTH_PATH` and `PATH` adjustments before importing `fluidsynth`.
+- On Windows, audio driver is expected as `driver="dsound"`.
 
-## Developer Workflows
-- **Run the app**: `python src/main.py` (ensure webcam and soundfont files are available)
-- **Dependencies**: Install via `pip install -r requirements.txt` (uses OpenCV, MediaPipe, pyFluidSynth, CustomTkinter, PyGame)
-- **Recording/Export**: Use the instrument GUI to record and export audio/MIDI. Files are saved in the `recordings/` directory.
-- **Instrument Calibration**: Each instrument supports calibration via the GUI for hand/face position and sensitivity.
+## Data flow and interaction patterns
+- CV loop pattern in instrument modules: `cv2.VideoCapture` -> MediaPipe inference -> normalized gesture logic -> enqueue audio events -> pygame render.
+- Instruments use normalized coordinates and thresholds (0..1 space); tune via settings/CLI flags instead of pixel constants.
+- Audio playback is asynchronous via `queue.Queue` + background threads; avoid blocking operations in frame loops.
+- Recording/playback controls are keyboard-driven inside pygame loops (`1` start rec, `2` stop rec, `3` playback toggle, `ESC` exit; `0` hide/show menu).
 
-## Project Conventions
-- Instrument modules follow a pattern: input (vision/gesture) → mapping → sound trigger.
-- Soundfont paths and instrument configs are managed in `settings.py`.
-- UI logic is split: launcher (CustomTkinter) vs. instrument GUIs (PyGame).
-- Use descriptive, English-named functions and classes, even if comments/UI are in Portuguese.
-- All persistent data (recordings, configs) is stored in project subfolders, not user home.
+## Developer workflows
+- Create env and install deps: `pip install -r requirements.txt`
+- Run CLI help/docs: `python src/main.py -h`
+- Quick camera profile test: `python src/main.py --test-cam`
+- Run an instrument: `python src/main.py -i "Piano"` (or any key from `settings.INSTRUMENTS`)
+- Build Windows executable: `python builders/build.py`
+- Force FluidSynth asset setup (if missing): `python builders/setup_fluidsynth.py`
 
-## Integration & Extensibility
-- To add a new instrument: create a new module in `src/instruments/`, update the launcher UI, and add soundfonts to `assets/soundfonts/`.
-- For new vision models, extend `utils.py` and update instrument modules as needed.
-- External soundfonts must be in `.sf2` format and referenced in `settings.py`.
+## Project-specific conventions
+- Prefer extending shared utilities in `src/instruments/common.py` instead of duplicating init/render helpers.
+- When adding instruments, register names in `settings.INSTRUMENTS` using `(sf_key, bank, preset)` and reuse `select_instrument` flow.
+- Keep recordings behavior aligned with `MidiRecorder.options` (`save_mid`, `save_wav`, `save_mp3`, `separate_playback`).
+- MP3 export depends on `ffmpeg` in PATH; keep fallback behavior (warn, don’t crash) consistent.
+- Comments/UI text are partly Portuguese; maintain existing language style in touched module.
 
-## Examples
-- See `src/instruments/drums.py` for gesture-to-sound mapping and velocity sensitivity.
-- See `src/engines/recorder.py` for how recordings are managed and exported.
-
----
-For more details, see the [README.md](../README.md).
+## Packaging and assets
+- Keep soundfonts under `assets/soundfonts/*` and FluidSynth binaries under `assets/fluidsynth-v2.5.1/*`.
+- Do not break PyInstaller data collection in `builders/build.py` (`--add-data`, `--add-binary`, `--collect-submodules mediapipe`).
+- `*.sf2` are expected in repo/LFS workflow; avoid changing `.gitattributes` behavior during feature work.

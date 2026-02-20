@@ -18,7 +18,7 @@ from src.config import settings
 from src.engines.recorder import MidiRecorder
 from src.instruments.common import (
     init_fluidsynth, load_single_soundfont, select_instrument,
-    setup_video_capture, setup_pygame,
+    setup_video_capture, setup_pygame_with_scaling, fit_resolution_to_screen,
     draw_text, draw_recording_indicator, draw_playback_indicator
 )
 
@@ -140,6 +140,26 @@ def audio_thread():
                 pass
 
 threading.Thread(target=audio_thread, daemon=True).start()
+
+
+class FPSTracker:
+    def __init__(self, update_interval=10):
+        self.frame_count = 0
+        self.start_time = time.time()
+        self.current_fps = 0.0
+        self.update_interval = update_interval
+
+    def update(self):
+        self.frame_count += 1
+        if self.frame_count % self.update_interval == 0:
+            elapsed = time.time() - self.start_time
+            self.current_fps = self.frame_count / elapsed if elapsed > 0 else 0
+
+    def get_fps(self):
+        return self.current_fps
+
+
+fps_tracker = FPSTracker(update_interval=10)
 
 class FluteHole:
     def __init__(self, index, x_rel, y_rel):
@@ -282,7 +302,7 @@ def draw_flute_ui_pygame(screen, w, h, velocity, face_landmarks, font, is_draggi
 # ------------------------
 # FUNÇÃO PRINCIPAL
 # ------------------------
-def start_flute(chosen_instrument, mouth_peak=0.01, mouth_max=0.05, hole_radius=0.019, hole_spacing=0.068, invert_blow=False, rec_options=None):
+def start_flute(chosen_instrument, mouth_peak=0.01, mouth_max=0.05, hole_radius=0.019, hole_spacing=0.068, invert_blow=False, rec_options=None, resolution_profile=None):
     
     global MOUTH_PEAK_OPEN, MOUTH_MAX_OPEN, HOLE_RADIUS, HOLE_SPACING, INVERT_BLOW_LOGIC
     MOUTH_PEAK_OPEN = mouth_peak
@@ -303,10 +323,29 @@ def start_flute(chosen_instrument, mouth_peak=0.01, mouth_max=0.05, hole_radius=
     face_mesh = mp_face.FaceMesh(max_num_faces=1, refine_landmarks=True)
     
     # PYGAME & CAPTURE SETUP
-    LOGICAL_W, LOGICAL_H = 1280, 720
-    cap = setup_video_capture(width=LOGICAL_W, height=LOGICAL_H, fps=60)
-    
-    screen, font = setup_pygame(window_width=LOGICAL_W, window_height=LOGICAL_H, title="Talking Hands - Flauta")
+    if resolution_profile:
+        DISPLAY_W = int(resolution_profile["display_width"])
+        DISPLAY_H = int(resolution_profile["display_height"])
+        TARGET_FPS = int(resolution_profile["fps"])
+    else:
+        DISPLAY_W, DISPLAY_H = 1280, 720
+        TARGET_FPS = 60
+
+    DISPLAY_W, DISPLAY_H, adjusted, screen_w, screen_h = fit_resolution_to_screen(DISPLAY_W, DISPLAY_H)
+    if adjusted:
+        print(f">>> Resolução ajustada para caber na tela: {DISPLAY_W}x{DISPLAY_H} (monitor {screen_w}x{screen_h})")
+
+    LOGICAL_W, LOGICAL_H = DISPLAY_W, DISPLAY_H
+
+    cap = setup_video_capture(width=LOGICAL_W, height=LOGICAL_H, fps=TARGET_FPS)
+
+    window_display, main_surface, font = setup_pygame_with_scaling(
+        logical_width=LOGICAL_W,
+        logical_height=LOGICAL_H,
+        display_width=DISPLAY_W,
+        display_height=DISPLAY_H,
+        title="Talking Hands - Flauta"
+    )
 
     print(f">>> FLAUTA INICIADA: {chosen_instrument}")
     print(f"    Peak: {mouth_peak}, Max: {mouth_max}, Inv: {invert_blow}")
@@ -325,7 +364,7 @@ def start_flute(chosen_instrument, mouth_peak=0.01, mouth_max=0.05, hole_radius=
     
     avg_mouth_dist = 0.0
     last_sent_velocity = 0
-    show_gui = True
+    show_gui = False
     manual_blow = False
 
     running = True
@@ -389,6 +428,8 @@ def start_flute(chosen_instrument, mouth_peak=0.01, mouth_max=0.05, hole_radius=
             ret, frame = cap.read()
             if not ret: break
 
+            fps_tracker.update()
+
             frame = cv2.resize(frame, (LOGICAL_W, LOGICAL_H))
             frame = cv2.flip(frame, 1)
             frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
@@ -422,10 +463,10 @@ def start_flute(chosen_instrument, mouth_peak=0.01, mouth_max=0.05, hole_radius=
                 velocity = int(max(0.0, min(ratio, 1.0)) * 127)
 
             frame_surface = pygame.image.frombuffer(frame_rgb.tobytes(), (LOGICAL_W, LOGICAL_H), 'RGB')
-            screen.blit(frame_surface, (0, 0))
+            main_surface.blit(frame_surface, (0, 0))
 
             res_hands = hands.process(frame_rgb)
-            process_interaction(res_hands.multi_hand_landmarks, LOGICAL_W, LOGICAL_H, screen)
+            process_interaction(res_hands.multi_hand_landmarks, LOGICAL_W, LOGICAL_H, main_surface)
             
             if velocity > 0:
                 target_note = calculate_current_note()
@@ -446,7 +487,7 @@ def start_flute(chosen_instrument, mouth_peak=0.01, mouth_max=0.05, hole_radius=
                     last_note = -1
                     last_sent_velocity = 0
 
-            draw_flute_ui_pygame(screen, LOGICAL_W, LOGICAL_H, last_sent_velocity, face_landmarks_data, font, dragging_flute)            
+            draw_flute_ui_pygame(main_surface, LOGICAL_W, LOGICAL_H, last_sent_velocity, face_landmarks_data, font, dragging_flute)            
             
             if show_gui:
                 instructions = [
@@ -460,7 +501,12 @@ def start_flute(chosen_instrument, mouth_peak=0.01, mouth_max=0.05, hole_radius=
 
                 y0 = 30
                 for i, txt in enumerate(instructions):
-                    draw_text(screen, txt, (20, y0 + i * 25), font)
+                    draw_text(main_surface, txt, (20, y0 + i * 25), font)
+
+                fps_text = f"FPS: {fps_tracker.get_fps():.1f}"
+                draw_text(main_surface, fps_text, (LOGICAL_W - 120, 30), font)
+
+            window_display.blit(main_surface, (0, 0))
             
             pygame.display.flip()
 

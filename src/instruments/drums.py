@@ -16,7 +16,7 @@ sys.path.append(str(PROJECT_ROOT))
 from src.engines.recorder import MidiRecorder
 from src.instruments.common import (
     init_fluidsynth, load_single_soundfont, select_instrument,
-    setup_video_capture, setup_pygame,
+    setup_video_capture, setup_pygame_with_scaling, fit_resolution_to_screen,
     draw_text, draw_recording_indicator, draw_playback_indicator
 )
 
@@ -42,7 +42,27 @@ COLOR_IDLE = (100, 100, 100)   # Cinza
 COLOR_TEXT = (255, 255, 255)   # Branco
 COLOR_GREEN = (0, 255, 0)      # Verde
 
-show_menu = True
+show_menu = False
+
+
+class FPSTracker:
+    def __init__(self, update_interval=10):
+        self.frame_count = 0
+        self.start_time = time.time()
+        self.current_fps = 0.0
+        self.update_interval = update_interval
+
+    def update(self):
+        self.frame_count += 1
+        if self.frame_count % self.update_interval == 0:
+            elapsed = time.time() - self.start_time
+            self.current_fps = self.frame_count / elapsed if elapsed > 0 else 0
+
+    def get_fps(self):
+        return self.current_fps
+
+
+fps_tracker = FPSTracker(update_interval=10)
 
 # ------------------------
 # MAPEAMENTO DA BATERIA
@@ -286,8 +306,11 @@ def draw_drums_pygame(screen, w, h, font, dragging_drum=None):
         for i, txt in enumerate(instructions):
             draw_text(screen, txt, (20, y0 + i * 25), font)
 
+        fps_text = f"FPS: {fps_tracker.get_fps():.1f}"
+        draw_text(screen, fps_text, (w - 120, 30), font)
+
  # Loop principal
-def start_drums(chosen_instrument=None, user_tolerance=None, rec_options=None, touch_velocity=None):
+def start_drums(chosen_instrument=None, user_tolerance=None, rec_options=None, touch_velocity=None, resolution_profile=None):
     print(">>> INICIANDO BATERIA (Pygame)")
     
     if user_tolerance:
@@ -316,11 +339,29 @@ def start_drums(chosen_instrument=None, user_tolerance=None, rec_options=None, t
     reset_hands_state()
 
     # --- SETUP VÍDEO E PYGAME ---
-    LOGICAL_W, LOGICAL_H = 1280, 720
-    
-    cap = setup_video_capture(width=LOGICAL_W, height=LOGICAL_H, fps=60)
-    
-    screen, font = setup_pygame(window_width=LOGICAL_W, window_height=LOGICAL_H, title="Talking Hands - Bateria")
+    if resolution_profile:
+        DISPLAY_W = int(resolution_profile["display_width"])
+        DISPLAY_H = int(resolution_profile["display_height"])
+        TARGET_FPS = int(resolution_profile["fps"])
+    else:
+        DISPLAY_W, DISPLAY_H = 1280, 720
+        TARGET_FPS = 60
+
+    DISPLAY_W, DISPLAY_H, adjusted, screen_w, screen_h = fit_resolution_to_screen(DISPLAY_W, DISPLAY_H)
+    if adjusted:
+        print(f">>> Resolução ajustada para caber na tela: {DISPLAY_W}x{DISPLAY_H} (monitor {screen_w}x{screen_h})")
+
+    LOGICAL_W, LOGICAL_H = DISPLAY_W, DISPLAY_H
+
+    cap = setup_video_capture(width=LOGICAL_W, height=LOGICAL_H, fps=TARGET_FPS)
+
+    window_display, main_surface, font = setup_pygame_with_scaling(
+        logical_width=LOGICAL_W,
+        logical_height=LOGICAL_H,
+        display_width=DISPLAY_W,
+        display_height=DISPLAY_H,
+        title="Talking Hands - Bateria"
+    )
     
     hands = mp.solutions.hands.Hands(max_num_hands=2, model_complexity=1, min_detection_confidence=0.3, min_tracking_confidence=0.3)
         
@@ -386,22 +427,26 @@ def start_drums(chosen_instrument=None, user_tolerance=None, rec_options=None, t
 
             ret, frame = cap.read()
             if not ret: break
+
+            fps_tracker.update()
             
             frame = cv2.resize(frame, (LOGICAL_W, LOGICAL_H))
             frame = cv2.flip(frame, 1)
             frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             
             frame_surface = pygame.image.frombuffer(frame_rgb.tobytes(), (LOGICAL_W, LOGICAL_H), 'RGB')
-            screen.blit(frame_surface, (0, 0))
+            main_surface.blit(frame_surface, (0, 0))
             
-            draw_drums_pygame(screen, LOGICAL_W, LOGICAL_H, font, dragging_drum)
+            draw_drums_pygame(main_surface, LOGICAL_W, LOGICAL_H, font, dragging_drum)
             
             results = hands.process(frame_rgb)
             
             if results.multi_hand_landmarks:
                 for idx, landmarks in enumerate(results.multi_hand_landmarks):
                     lbl = results.multi_handedness[idx].classification[0].label
-                    process_hand(lbl, landmarks.landmark, LOGICAL_W, LOGICAL_H, screen, font)
+                    process_hand(lbl, landmarks.landmark, LOGICAL_W, LOGICAL_H, main_surface, font)
+
+            window_display.blit(main_surface, (0, 0))
             
             pygame.display.flip()
                 

@@ -5,6 +5,7 @@ import cv2
 import pygame
 import sys
 import os
+import ctypes
 from pathlib import Path
 
 from src.config import settings
@@ -41,6 +42,79 @@ def _setup_fluidsynth_path():
 _setup_fluidsynth_path()
 
 import fluidsynth
+
+_DPI_AWARENESS_SET = False
+
+
+def _ensure_windows_dpi_awareness():
+    """Set process DPI awareness on Windows so window/screen sizes are accurate."""
+    global _DPI_AWARENESS_SET
+    if _DPI_AWARENESS_SET or not sys.platform.startswith("win"):
+        return
+
+    try:
+        ctypes.windll.shcore.SetProcessDpiAwareness(1)
+    except Exception:
+        try:
+            ctypes.windll.user32.SetProcessDPIAware()
+        except Exception:
+            pass
+
+    _DPI_AWARENESS_SET = True
+
+
+def get_primary_screen_size(default=(1280, 720)):
+    """Return primary screen size as (width, height)."""
+    if sys.platform.startswith("win"):
+        try:
+            _ensure_windows_dpi_awareness()
+            user32 = ctypes.windll.user32
+            width = int(user32.GetSystemMetrics(0))
+            height = int(user32.GetSystemMetrics(1))
+            if width > 0 and height > 0:
+                return width, height
+        except Exception:
+            pass
+
+    try:
+        if not pygame.display.get_init():
+            pygame.display.init()
+        info = pygame.display.Info()
+        width = int(getattr(info, "current_w", 0))
+        height = int(getattr(info, "current_h", 0))
+        if width > 0 and height > 0:
+            return width, height
+    except Exception:
+        pass
+
+    return default
+
+
+def fit_resolution_to_screen(width, height, min_width=640, min_height=360):
+    """
+    Fit requested resolution to current screen while preserving aspect ratio.
+    Returns: (fit_w, fit_h, adjusted, screen_w, screen_h)
+    """
+    req_w = max(1, int(width))
+    req_h = max(1, int(height))
+    screen_w, screen_h = get_primary_screen_size()
+
+    if req_w <= screen_w and req_h <= screen_h:
+        return req_w, req_h, False, screen_w, screen_h
+
+    scale = min(screen_w / req_w, screen_h / req_h)
+    fit_w = max(min_width, int(req_w * scale))
+    fit_h = max(min_height, int(req_h * scale))
+
+    fit_w = min(fit_w, screen_w)
+    fit_h = min(fit_h, screen_h)
+
+    if fit_w % 2 != 0 and fit_w > 1:
+        fit_w -= 1
+    if fit_h % 2 != 0 and fit_h > 1:
+        fit_h -= 1
+
+    return fit_w, fit_h, True, screen_w, screen_h
 
 
 # ========================

@@ -18,7 +18,7 @@ from src.config import settings
 from src.engines.recorder import MidiRecorder
 from src.instruments.common import (
     init_fluidsynth, load_all_soundfonts, select_instrument,
-    setup_video_capture, setup_pygame_with_scaling,
+    setup_video_capture, setup_pygame_with_scaling, fit_resolution_to_screen,
     draw_text, draw_recording_indicator, draw_playback_indicator,
     process_frame_to_pygame
 )
@@ -36,7 +36,7 @@ MAX_MISSING_TIME = 0.1
 
 NUM_KEYS = 30
 ACTIVE_FINGERS = [4, 8, 12, 16, 20]
-show_menu = True
+show_menu = False
 
 COLOR_TABLE_LINE = (0, 255, 0)
 COLOR_TABLE_FRONT = (30, 30, 30)
@@ -289,14 +289,13 @@ def draw_ui_fast_pygame(screen, table_y, w, h, font):
         for i, txt in enumerate(instructions):
             draw_text(screen, txt, (20, y0 + i * 25), font)
     
-    # Draw FPS tracker
-    fps_text = f"FPS: {fps_tracker.get_fps():.1f}"
-    draw_text(screen, fps_text, (w - 120, 30), font)
+        fps_text = f"FPS: {fps_tracker.get_fps():.1f}"
+        draw_text(screen, fps_text, (w - 120, 30), font)
 
 # ------------------------
 # START
 # ------------------------
-def start_piano(chosen_instrument, user_sustain=None, lift_threshold=None, touch_tolerance=None, rec_options=None):
+def start_piano(chosen_instrument, user_sustain=None, lift_threshold=None, touch_tolerance=None, rec_options=None, resolution_profile=None):
 
     if user_sustain is not None and user_sustain > 0:
         global SUSTAIN_DECAY
@@ -325,14 +324,25 @@ def start_piano(chosen_instrument, user_sustain=None, lift_threshold=None, touch
     hands = mp.solutions.hands.Hands(max_num_hands=2, model_complexity=1,
                                      min_detection_confidence=0.3, min_tracking_confidence=0.3)
     
-    # Câmera Setup - Performance
-    LOGICAL_W, LOGICAL_H = 480, 270
-    DISPLAY_W, DISPLAY_H = 1280, 720
+    if resolution_profile:
+        DISPLAY_W = int(resolution_profile["display_width"])
+        DISPLAY_H = int(resolution_profile["display_height"])
+        TARGET_FPS = int(resolution_profile["fps"])
+    else:
+        DISPLAY_W, DISPLAY_H = 1920, 1080
+        TARGET_FPS = 30
+
+    DISPLAY_W, DISPLAY_H, adjusted, screen_w, screen_h = fit_resolution_to_screen(DISPLAY_W, DISPLAY_H)
+    if adjusted:
+        print(f">>> Resolução ajustada para caber na tela: {DISPLAY_W}x{DISPLAY_H} (monitor {screen_w}x{screen_h})")
+
+    LOGICAL_W, LOGICAL_H = DISPLAY_W, DISPLAY_H
+
     # Câmera Setup - Quality
     # LOGICAL_W, LOGICAL_H = 854, 480
     # DISPLAY_W, DISPLAY_H = 1920, 1080
     
-    cap = setup_video_capture(width=LOGICAL_W, height=LOGICAL_H, fps=30)
+    cap = setup_video_capture(width=LOGICAL_W, height=LOGICAL_H, fps=TARGET_FPS)
     
     window_display, main_surface, main_font = setup_pygame_with_scaling(
         logical_width=LOGICAL_W, logical_height=LOGICAL_H,
@@ -401,8 +411,7 @@ def start_piano(chosen_instrument, user_sustain=None, lift_threshold=None, touch
             check_lost_fingers()
             check_active_keys_integrity()
             
-            scaled_surface = pygame.transform.scale(main_surface, (DISPLAY_W, DISPLAY_H))
-            window_display.blit(scaled_surface, (0, 0))
+            window_display.blit(main_surface, (0, 0))
             
             pygame.display.flip()
             # pygame.time.Clock().tick(60) limitar FPS se necessário

@@ -6,6 +6,7 @@ Command-line interface for Talking Hands computer vision instruments platform.
 import argparse
 import sys
 import os
+import re
 from importlib import import_module, reload
 import importlib.util
 from pathlib import Path
@@ -103,6 +104,59 @@ def validate_instrument(value):
         )
     return value
 
+
+def parse_resolution_arg(value):
+    """
+    Parse resolution profile string.
+    Examples:
+      108030 -> 1080p @ 30fps
+      72060  -> 720p @ 60fps
+      720120 -> 720p @ 120fps
+    Returns a dict with runtime dimensions and fps.
+    """
+    raw = str(value).strip()
+    if not re.fullmatch(r"\d{5,7}", raw):
+        raise argparse.ArgumentTypeError(
+            "Invalid -r format. Use numeric profile like 108030 (1080p 30fps)."
+        )
+
+    parsed = None
+    for fps_digits in (3, 2):
+        if len(raw) <= fps_digits:
+            continue
+        h_part = raw[:-fps_digits]
+        fps_part = raw[-fps_digits:]
+        height = int(h_part)
+        fps = int(fps_part)
+
+        if 240 <= height <= 4320 and 1 <= fps <= 240:
+            parsed = (height, fps)
+            break
+
+    if parsed is None:
+        raise argparse.ArgumentTypeError(
+            "Could not parse -r. Use profiles like 108030, 72060, 720120."
+        )
+
+    display_h, fps = parsed
+    display_w = int(round(display_h * (16 / 9)))
+    if display_w % 2 != 0:
+        display_w += 1
+    if display_h % 2 != 0:
+        display_h += 1
+
+    logical_w = display_w
+    logical_h = display_h
+
+    return {
+        "raw": raw,
+        "display_width": display_w,
+        "display_height": display_h,
+        "logical_width": logical_w,
+        "logical_height": logical_h,
+        "fps": fps,
+    }
+
 def get_instrument_type(instrument_name):
     """Determine instrument type from name"""
     catalog = get_available_instruments()
@@ -132,6 +186,7 @@ STANDALONE OPTIONS:
 GLOBAL OPTIONS:
   -h, --help                         Show help message and exit
   -i, --instrument INSTRUMENT_NAME   Instrument name to start (e.g., 'Perfect Drums 1', 'Grand Piano', 'Recorder')
+  -r, --resolution PROFILE           Resolution/FPS profile string (default: 108030; e.g., 108030 => 1080p @ 30fps)
   -t, --trackers                     Show hand/face trackers on screen (default: off)
   -f, --separate-folders             Keep playback and recordings in different folders (default: all in recordings)
 
@@ -158,6 +213,7 @@ FLUTE OPTIONS:
 
 EXAMPLES:
   python main.py -i "Perfect Drums 1" -tf
+    python main.py -i "Piano" -r 108030
   python main.py -i "Grand Piano" --keyboard-sd 0.5 --keyboard-lf 0.025
   python main.py -i "Recorder" --flute-max 0.06 --flute-p medium
   python main.py -i "Quality Flute" --flute-invert
@@ -202,6 +258,14 @@ def create_argparse():
         type=validate_instrument,
         required=False,  # Made optional to allow help without instrument
         help="Instrument name to start (e.g., 'Perfect Drums 1', 'Grand Piano', 'Recorder')"
+    )
+
+    parser.add_argument(
+        "-r", "--resolution",
+        type=parse_resolution_arg,
+        default=parse_resolution_arg("108030"),
+        metavar="PROFILE",
+        help="Display/FPS profile (default: 108030, e.g., 108030 = 1080p 30fps, 72060 = 720p 60fps)"
     )
     
     parser.add_argument(
@@ -405,6 +469,7 @@ def start_drums(args, rec_opts):
         user_tolerance=tolerance,
         rec_options=rec_opts,
         touch_velocity=touch_velocity,
+        resolution_profile=args.resolution,
     )
 
 
@@ -433,7 +498,8 @@ def start_flute(args, rec_opts):
         hole_radius=hole_radius,
         hole_spacing=hole_spacing,
         invert_blow=args.flute_invert,
-        rec_options=rec_opts
+        rec_options=rec_opts,
+        resolution_profile=args.resolution,
     )
 
 
@@ -457,7 +523,8 @@ def start_keyboard(args, rec_opts):
         user_sustain=sustain,
         lift_threshold=lift,
         touch_tolerance=tolerance,
-        rec_options=rec_opts
+        rec_options=rec_opts,
+        resolution_profile=args.resolution,
     )
 
 
@@ -496,6 +563,12 @@ def main():
         print(f"    .MP3: {rec_opts['save_mp3']}")
         print(f"    .WAV: {rec_opts['save_wav']}")
         print(f"    Separate folders: {rec_opts['separate_playback']}")
+
+        if args.resolution:
+            print(f">>> Resolution profile: {args.resolution['raw']}")
+            print(f"    Display: {args.resolution['display_width']}x{args.resolution['display_height']}")
+            print(f"    Logical: {args.resolution['logical_width']}x{args.resolution['logical_height']}")
+            print(f"    FPS: {args.resolution['fps']}")
         
         # Determine instrument type and start
         instrument_type = get_instrument_type(args.instrument)
