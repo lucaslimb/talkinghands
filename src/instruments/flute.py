@@ -41,6 +41,9 @@ INVERT_BLOW_LOGIC = False
 
 MOUTH_SMOOTHING_FACTOR = 0.3 
 VELOCITY_CHANGE_THRESHOLD = 4
+MOUTH_FOLLOW_SENSITIVITY = float(getattr(settings, 'FLUTE_MOUTH_FOLLOW_SENSITIVITY', 0.22))
+MOUTH_FOLLOW_OFFSET_Y = float(getattr(settings, 'FLUTE_MOUTH_FOLLOW_OFFSET_Y', 0.09))
+MOUTH_ANGLE_SENSITIVITY = float(getattr(settings, 'FLUTE_MOUTH_ANGLE_SENSITIVITY', 0.8))
 
 PLAYBACK_CHANNEL = 0
 LIVE_CHANNEL = 1
@@ -171,9 +174,15 @@ class FluteHole:
 holes = []
 
 def update_hole_positions(start_x, start_y):
+    update_hole_positions_with_angle(start_x, start_y, 0.0)
+
+def update_hole_positions_with_angle(start_x, start_y, angle_rad=0.0):
     holes.clear()
     for i in range(NUM_HOLES):
-        h = FluteHole(i, start_x, start_y + (i * HOLE_SPACING))
+        offset = i * HOLE_SPACING
+        x = start_x + math.sin(angle_rad) * offset
+        y = start_y + math.cos(angle_rad) * offset
+        h = FluteHole(i, x, y)
         holes.append(h)
 
 def get_mouth_distance(face_landmarks):
@@ -181,6 +190,38 @@ def get_mouth_distance(face_landmarks):
     upper = face_landmarks.landmark[13]
     lower = face_landmarks.landmark[14]
     return abs(upper.y - lower.y)
+
+def get_mouth_center(face_landmarks):
+    if not face_landmarks:
+        return None
+    upper = face_landmarks.landmark[13]
+    lower = face_landmarks.landmark[14]
+    return ((upper.x + lower.x) * 0.5, (upper.y + lower.y) * 0.5)
+
+def get_mouth_tilt_angle(face_landmarks):
+    if not face_landmarks:
+        return 0.0
+
+    left_corner = face_landmarks.landmark[61]
+    right_corner = face_landmarks.landmark[291]
+    mouth_line_angle = math.atan2((right_corner.y - left_corner.y), (right_corner.x - left_corner.x))
+    tilted = mouth_line_angle * MOUTH_ANGLE_SENSITIVITY
+    return max(-0.7, min(0.7, tilted))
+
+def update_flute_position_from_mouth(flute_x, flute_y, mouth_center, sensitivity):
+    if mouth_center is None:
+        return flute_x, flute_y
+
+    sens = max(0.0, min(float(sensitivity), 1.0))
+    target_x = mouth_center[0]
+    target_y = mouth_center[1] + MOUTH_FOLLOW_OFFSET_Y
+
+    next_x = flute_x + (target_x - flute_x) * sens
+    next_y = flute_y + (target_y - flute_y) * sens
+
+    next_x = max(0.05, min(next_x, 0.95))
+    next_y = max(0.05, min(next_y, 0.8))
+    return next_x, next_y
 
 def process_interaction(hand_landmarks, w, h, screen, show_trackers=False):
     for hole in holes: hole.is_covered = False
@@ -242,31 +283,42 @@ def draw_flute_ui_pygame(screen, w, h, velocity, face_landmarks, font, is_draggi
     start_hole = holes[0]
     end_hole = holes[-1]
     
-    x_center = int(start_hole.x_rel * w)
-    
-    y_start = int((start_hole.y_rel - 0.08) * h)
-    y_end = int((end_hole.y_rel + 0.08) * h)
-    flute_height = y_end - y_start
-    
-    tube_width = 25 
-    
-    body_rect = pygame.Rect(x_center - tube_width//2, y_start, tube_width, flute_height)
-    
-    body_color = (*COLOR_FLUTE_BODY_EMPTY, 200)
+    sx = start_hole.x_rel * w
+    sy = start_hole.y_rel * h
+    ex = end_hole.x_rel * w
+    ey = end_hole.y_rel * h
+
+    dx = ex - sx
+    dy = ey - sy
+    length = max(1.0, math.hypot(dx, dy))
+    ux = dx / length
+    uy = dy / length
+
+    extension_px = int(0.08 * h)
+    x_start = int(sx - ux * extension_px)
+    y_start = int(sy - uy * extension_px)
+    x_end = int(ex + ux * extension_px)
+    y_end = int(ey + uy * extension_px)
+
+    tube_width = 25
+
+    body_color = (*COLOR_FLUTE_BODY_EMPTY, 110)
     border_color = (100, 100, 100)
-    
+
     if is_dragging:
-        body_color = (255, 165, 0, 150) # Laranja transparente
+        body_color = (255, 165, 0, 150)
         border_color = (255, 255, 255)
-    pygame.draw.rect(overlay, (*COLOR_FLUTE_BODY_EMPTY, 200), body_rect)
-    
+
+    pygame.draw.line(overlay, border_color, (x_start, y_start), (x_end, y_end), tube_width + 4)
+    pygame.draw.line(overlay, body_color, (x_start, y_start), (x_end, y_end), tube_width)
+
     if velocity > 0:
         fill_ratio = velocity / 127.0
-        fill_height = int(flute_height * fill_ratio)
-        fill_rect = pygame.Rect(x_center - tube_width//2, y_start, tube_width, fill_height)
-        pygame.draw.rect(overlay, (*COLOR_BLOW_ACTIVE, 200), fill_rect)
+        x_fill = int(x_start + (x_end - x_start) * fill_ratio)
+        y_fill = int(y_start + (y_end - y_start) * fill_ratio)
+        pygame.draw.line(overlay, (*COLOR_BLOW_ACTIVE, 200), (x_start, y_start), (x_fill, y_fill), tube_width)
 
-    pygame.draw.rect(overlay, (100, 100, 100), body_rect, 2)
+    pygame.draw.line(overlay, border_color, (x_start, y_start), (x_end, y_end), 2)
     
     # 4. Furos
     hole_alpha = 180 
@@ -303,7 +355,7 @@ def draw_flute_ui_pygame(screen, w, h, velocity, face_landmarks, font, is_draggi
 # ------------------------
 # FUNÇÃO PRINCIPAL
 # ------------------------
-def start_flute(chosen_instrument, mouth_peak=0.01, mouth_max=0.05, hole_radius=0.019, hole_spacing=0.068, invert_blow=False, rec_options=None, resolution_profile=None, show_trackers=False):
+def start_flute(chosen_instrument, mouth_peak=0.01, mouth_max=0.05, hole_radius=0.019, hole_spacing=0.068, invert_blow=False, follow_sensitivity=0.22, rec_options=None, resolution_profile=None, show_trackers=False):
     
     global MOUTH_PEAK_OPEN, MOUTH_MAX_OPEN, HOLE_RADIUS, HOLE_SPACING, INVERT_BLOW_LOGIC
     MOUTH_PEAK_OPEN = mouth_peak
@@ -351,12 +403,14 @@ def start_flute(chosen_instrument, mouth_peak=0.01, mouth_max=0.05, hole_radius=
 
     print(f">>> FLAUTA INICIADA: {chosen_instrument}")
     print(f"    Peak: {mouth_peak}, Max: {mouth_max}, Inv: {invert_blow}")
+    print(f"    Follow Sensitivity: {follow_sensitivity}")
     
 # --- VARIÁVEIS DE ESTADO E POSIÇÃO ---
     flute_x = DEFAULT_FLUTE_X
     flute_y = DEFAULT_FLUTE_Y
+    flute_angle = 0.0
     
-    update_hole_positions(flute_x, flute_y)
+    update_hole_positions_with_angle(flute_x, flute_y, flute_angle)
 
     dragging_flute = False
     drag_offset = (0, 0)
@@ -404,7 +458,7 @@ def start_flute(chosen_instrument, mouth_peak=0.01, mouth_max=0.05, hole_radius=
                         flute_x = max(0.05, min(flute_x, 0.95))
                         flute_y = max(0.05, min(flute_y, 0.8))
                         
-                        update_hole_positions(flute_x, flute_y)
+                        update_hole_positions_with_angle(flute_x, flute_y, flute_angle)
 
                 elif event.type == pygame.KEYDOWN:
                     if event.key == pygame.K_ESCAPE:
@@ -418,7 +472,8 @@ def start_flute(chosen_instrument, mouth_peak=0.01, mouth_max=0.05, hole_radius=
                     elif event.key == pygame.K_5:
                         flute_x = DEFAULT_FLUTE_X
                         flute_y = DEFAULT_FLUTE_Y
-                        update_hole_positions(flute_x, flute_y)
+                        flute_angle = 0.0
+                        update_hole_positions_with_angle(flute_x, flute_y, flute_angle)
                         print(">>> Posição da flauta resetada.")
                     elif event.key == pygame.K_9:
                         tracker_visible = not tracker_visible
@@ -446,6 +501,18 @@ def start_flute(chosen_instrument, mouth_peak=0.01, mouth_max=0.05, hole_radius=
             if res_face.multi_face_landmarks:
                 face_landmarks_data = res_face.multi_face_landmarks[0]
                 current_mouth_dist = get_mouth_distance(face_landmarks_data)
+
+                if not dragging_flute:
+                    mouth_center = get_mouth_center(face_landmarks_data)
+                    target_angle = get_mouth_tilt_angle(face_landmarks_data)
+                    flute_angle = flute_angle + (target_angle - flute_angle) * max(0.0, min(follow_sensitivity, 1.0))
+                    flute_x, flute_y = update_flute_position_from_mouth(
+                        flute_x,
+                        flute_y,
+                        mouth_center,
+                        follow_sensitivity,
+                    )
+                    update_hole_positions_with_angle(flute_x, flute_y, flute_angle)
             
             avg_mouth_dist = (current_mouth_dist * MOUTH_SMOOTHING_FACTOR) + (avg_mouth_dist * (1.0 - MOUTH_SMOOTHING_FACTOR))
                 
@@ -491,7 +558,7 @@ def start_flute(chosen_instrument, mouth_peak=0.01, mouth_max=0.05, hole_radius=
                     last_note = -1
                     last_sent_velocity = 0
 
-            draw_flute_ui_pygame(main_surface, LOGICAL_W, LOGICAL_H, last_sent_velocity, face_landmarks_data, font, dragging_flute, show_trackers=tracker_visible)            
+            draw_flute_ui_pygame(main_surface, LOGICAL_W, LOGICAL_H, velocity, face_landmarks_data, font, dragging_flute, show_trackers=tracker_visible)
             
             if show_gui:
                 instructions = [

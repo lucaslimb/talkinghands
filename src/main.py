@@ -202,6 +202,7 @@ KEYBOARD OPTIONS:
   --keyboard-ts TOUCH_TOLERANCE      Touch sensitivity/tolerance in normalized units (default: 0.005). Quanto maior o valor, mais permissivo é o sistema para reconhecer um toque, quanto menor, mais preciso e exigente será o reconhecimento do toque.
 
 DRUMS OPTIONS:
+    --drums-model {default,complete}   Drum layout model (default: default). default = sem elementos de pés; complete = com bumbo/pedal via pés.
   --drums-tt TOUCH_TOLERANCE         Touch tolerance as normalized value (default: 0.01). Quanto maior a porcentagem, maior será a área de contato com os tambores, pratos, bumbo.
   --drums-tv TOUCH_VELOCITY          Touch velocity threshold (default: 0.012). Quanto maior, mais rápido você precisa mover a mão para gerar um som mais alto.
 
@@ -209,6 +210,7 @@ FLUTE OPTIONS:
   --flute-inv                        Invert blow logic (higher mouth opening = louder) (default: lower mouth opening = louder)
   --flute-max MOUTH_MAX              Maximum mouth opening threshold (default: 0.05)
   --flute-min MOUTH_MIN              Minimum mouth opening threshold / peak (default: 0.01)
+    --flute-follow-sens VALUE          Sensibilidade de seguimento da flauta pela boca (0.0 a 1.0, default: 0.22)
   --flute-p {small,medium,large}     Hole size and spacing (default: medium)
 
 EXAMPLES:
@@ -332,6 +334,13 @@ def create_argparse():
     # Drums arguments
     drums_group = parser.add_argument_group("Drums Options")
     drums_group.add_argument(
+        "--drums-model",
+        choices=["default", "complete"],
+        default="default",
+        dest="drums_model",
+        help="Drum layout model (default: default). default = sem elementos de pés; complete = com rastreio de pés"
+    )
+    drums_group.add_argument(
         "--drums-tt",
         type=float,
         default=None,
@@ -368,6 +377,14 @@ def create_argparse():
         default=None,
         metavar="MOUTH_MIN",
         help="Minimum mouth opening threshold / peak (default: 0.01)"
+    )
+    flute_group.add_argument(
+        "--flute-follow-sens",
+        type=float,
+        default=0.22,
+        metavar="VALUE",
+        dest="flute_follow_sens",
+        help="Sensibilidade de seguimento da flauta pela boca (0.0 a 1.0, default: 0.22)"
     )
     flute_group.add_argument(
         "--flute-p",
@@ -460,6 +477,7 @@ def start_drums(args, rec_opts):
     touch_velocity = args.drums_tv if args.drums_tv is not None else defaults["drums"]["touch_velocity"]
     
     print(f"\n>>> STARTING DRUMS: {args.instrument}")
+    print(f"    Drum Model: {args.drums_model}")
     print(f"    Tolerance: {tolerance}")
     print(f"    Touch Velocity: {touch_velocity}")
     
@@ -471,6 +489,7 @@ def start_drums(args, rec_opts):
         touch_velocity=touch_velocity,
         resolution_profile=args.resolution,
         show_trackers=args.trackers,
+        drum_model=args.drums_model,
     )
 
 
@@ -488,6 +507,7 @@ def start_flute(args, rec_opts):
     print(f"    Mouth Max: {mouth_max}")
     print(f"    Precision: {args.flute_precision}")
     print(f"    Invert Blow: {args.flute_invert}")
+    print(f"    Follow Sensitivity: {args.flute_follow_sens}")
     
     flute = safe_import_module("src.instruments.flute")
     reload(flute)
@@ -499,6 +519,7 @@ def start_flute(args, rec_opts):
         hole_radius=hole_radius,
         hole_spacing=hole_spacing,
         invert_blow=args.flute_invert,
+        follow_sensitivity=args.flute_follow_sens,
         rec_options=rec_opts,
         resolution_profile=args.resolution,
         show_trackers=args.trackers,

@@ -37,6 +37,7 @@ ELLIPSE_THRESHOLD = 1.0 - TOUCH_TOLERANCE
 DRUM_SYNTH_GAIN = 1.8
 DRUM_MIN_VELOCITY = 50
 MIN_REHIT_PIXELS = 32
+FOOT_REHIT_PIXELS = 36
 
 COLOR_RED = (255, 0, 0)        # Vermelho
 COLOR_HIT_FILL = (255, 0, 0)  
@@ -70,7 +71,7 @@ fps_tracker = FPSTracker(update_interval=10)
 # ------------------------
 # MAPEAMENTO DA BATERIA
 # ------------------------
-DRUM_KIT = [
+BASE_DRUM_KIT = [
     # --- LINHA SUPERIOR (PRATOS) ---
     {"id": 0, "pos": (0.20, 0.40), "axes": (0.13, 0.045), "note": 49, "name": "CRASH", "shape": "ellipse"},
     {"id": 1, "pos": (0.80, 0.40), "axes": (0.13, 0.045), "note": 51, "name": "RIDE",  "shape": "ellipse"},
@@ -83,16 +84,47 @@ DRUM_KIT = [
     {"id": 4, "pos": (0.20, 0.85), "axes": (0.12, 0.055), "note": 42, "name": "HI-HAT", "shape": "ellipse"},
     {"id": 5, "pos": (0.50, 0.80), "axes": (0.14, 0.060), "note": 38, "name": "SNARE",  "shape": "ellipse"},
     {"id": 6, "pos": (0.80, 0.85), "axes": (0.12, 0.055), "note": 41, "name": "FLOOR",  "shape": "ellipse"},
-    
-    # --- BUMBO (KICK) ---
-    {"id": 7, "pos": (0.50, 0.96), "axes": (0.16, 0.025), "note": 36, "name": "KICK",   "shape": "rect"},
+
+    # --- BUMBO PADRÃO (MÃO) ---
+    {"id": 7, "pos": (0.50, 0.96), "axes": (0.16, 0.025), "note": 36, "name": "KICK", "shape": "rect", "foot_only": False},
 ]
 
-INITIAL_POSITIONS = {d["id"]: d["pos"] for d in DRUM_KIT}
+COMPLETE_FOOT_ELEMENTS = [
+    # --- BUMBO REALISTA + PEDAL DO CHIMBAL (PÉS) ---
+    {"id": 7, "pos": (0.50, 0.92), "axes": (0.16, 0.025), "note": 36, "name": "KICK",      "shape": "rect",    "foot_only": True},
+    {"id": 8, "pos": (0.32, 0.93), "axes": (0.07, 0.020), "note": 44, "name": "HH-PEDAL", "shape": "rect",    "foot_only": True},
+]
 
-for drum in DRUM_KIT:
-    drum["last_hit"] = 0
-    drum["color"] = COLOR_RED 
+DRUM_KIT = []
+INITIAL_POSITIONS = {}
+current_drum_model = "default"
+
+def _clone_kit(source):
+    return [dict(item) for item in source]
+
+def configure_drum_kit(drum_model="default"):
+    global DRUM_KIT, INITIAL_POSITIONS, current_drum_model
+
+    normalized_model = (drum_model or "default").strip().lower()
+    if normalized_model not in ("default", "complete"):
+        normalized_model = "default"
+
+    if normalized_model == "complete":
+        kit_data = _clone_kit(BASE_DRUM_KIT[:-1]) + _clone_kit(COMPLETE_FOOT_ELEMENTS)
+    else:
+        kit_data = _clone_kit(BASE_DRUM_KIT)
+
+    for drum in kit_data:
+        drum["last_hit"] = 0
+        drum["color"] = COLOR_RED
+        drum.setdefault("foot_only", False)
+
+    DRUM_KIT = kit_data
+    INITIAL_POSITIONS = {d["id"]: d["pos"] for d in DRUM_KIT}
+    current_drum_model = normalized_model
+
+
+configure_drum_kit("default")
 
 # ------------------------
 # AUDIO SETUP
@@ -167,9 +199,18 @@ hands_state = {
     "Right": {"prev_y": 0.0, "can_hit": True, "last_hit_pos": None, "last_hit_drum": None}
 }
 
+feet_state = {
+    "LeftFoot":  {"prev_y": 0.0, "can_hit": True, "last_hit_pos": None, "last_hit_drum": None},
+    "RightFoot": {"prev_y": 0.0, "can_hit": True, "last_hit_pos": None, "last_hit_drum": None}
+}
+
 def reset_hands_state():
     hands_state["Left"] = {"prev_y": 0.0, "can_hit": True, "last_hit_pos": None, "last_hit_drum": None}
     hands_state["Right"] = {"prev_y": 0.0, "can_hit": True, "last_hit_pos": None, "last_hit_drum": None}
+
+def reset_feet_state():
+    feet_state["LeftFoot"] = {"prev_y": 0.0, "can_hit": True, "last_hit_pos": None, "last_hit_drum": None}
+    feet_state["RightFoot"] = {"prev_y": 0.0, "can_hit": True, "last_hit_pos": None, "last_hit_drum": None}
 
 def reset_drum_positions():
     for drum in DRUM_KIT:
@@ -190,6 +231,32 @@ def check_collision(x, y, drum):
         val = ((x - h)**2 / rx**2) + ((y - k)**2 / ry**2)
         return val <= ELLIPSE_THRESHOLD
 
+def try_trigger_hit(state, hit_drum_id, dy, cursor_pos, min_rehit_pixels=MIN_REHIT_PIXELS):
+    if hit_drum_id is None:
+        return False
+
+    can_hit = state["can_hit"]
+    is_moving_down = dy > VELOCITY_THRESHOLD
+    moved_enough_after_last_hit = True
+
+    if state["last_hit_pos"] is not None and state["last_hit_drum"] == hit_drum_id:
+        last_x, last_y = state["last_hit_pos"]
+        dx_px = cursor_pos[0] - last_x
+        dy_px = cursor_pos[1] - last_y
+        moved_enough_after_last_hit = (dx_px * dx_px + dy_px * dy_px) >= (min_rehit_pixels * min_rehit_pixels)
+
+    if can_hit and is_moving_down and moved_enough_after_last_hit:
+        target_drum = next((d for d in DRUM_KIT if d["id"] == hit_drum_id), None)
+        if target_drum:
+            velocity = int(min(max((dy - TOUCH_VELOCITY) * 10000, DRUM_MIN_VELOCITY), 127))
+            audio_queue.put((target_drum["note"], velocity))
+            target_drum["last_hit"] = time.time()
+            state["last_hit_pos"] = cursor_pos
+            state["last_hit_drum"] = hit_drum_id
+            state["can_hit"] = False
+            return True
+    return False
+
 def process_hand(label, landmarks, w, h, screen, font, show_trackers=False):
     ref_point = landmarks[4] 
     ref_x, ref_y = ref_point.x, ref_point.y
@@ -202,6 +269,8 @@ def process_hand(label, landmarks, w, h, screen, font, show_trackers=False):
     
     hit_drum_id = None
     for drum in DRUM_KIT:
+        if drum.get("foot_only", False):
+            continue
         if check_collision(ref_x, ref_y, drum):
             hit_drum_id = drum["id"]
             break
@@ -227,37 +296,55 @@ def process_hand(label, landmarks, w, h, screen, font, show_trackers=False):
     cursor_color = COLOR_IDLE 
 
     if hit_drum_id is not None:
-        is_moving_down = dy > VELOCITY_THRESHOLD
-
-        moved_enough_after_last_hit = True
-        if state["last_hit_pos"] is not None and state["last_hit_drum"] == hit_drum_id:
-            last_x, last_y = state["last_hit_pos"]
-            dx_px = cursor_pos[0] - last_x
-            dy_px = cursor_pos[1] - last_y
-            moved_enough_after_last_hit = (dx_px * dx_px + dy_px * dy_px) >= (MIN_REHIT_PIXELS * MIN_REHIT_PIXELS)
-        
         if can_hit:
             cursor_color = COLOR_READY
-            
-        if can_hit and is_moving_down and moved_enough_after_last_hit:
-            target_drum = next((d for d in DRUM_KIT if d["id"] == hit_drum_id), None)
-            if target_drum:
-                velocity = int(min(max((dy - TOUCH_VELOCITY) * 10000, DRUM_MIN_VELOCITY), 127))
-                audio_queue.put((target_drum["note"], velocity))
-                target_drum["last_hit"] = time.time()
-                state["last_hit_pos"] = cursor_pos
-                state["last_hit_drum"] = hit_drum_id
-                
-                # PYGAME: Texto de Hit
-                # hit_surf = font.render("HIT!", True, COLOR_GREEN)
-                # screen.blit(hit_surf, (cursor_pos[0], cursor_pos[1] - 35))
-            
-            can_hit = False 
+
+        if try_trigger_hit(state, hit_drum_id, dy, cursor_pos, min_rehit_pixels=MIN_REHIT_PIXELS):
+            can_hit = False
             cursor_color = COLOR_GREEN
             radius = 15
 
     state["prev_y"] = ref_y
     state["can_hit"] = can_hit
+
+    if show_trackers:
+        pygame.draw.circle(screen, cursor_color, cursor_pos, radius)
+        pygame.draw.circle(screen, (255, 255, 255), cursor_pos, radius + 2, 2)
+
+def process_foot(label, landmark, w, h, screen, show_trackers=False):
+    if landmark is None:
+        return
+
+    ref_x, ref_y = landmark.x, landmark.y
+    state = feet_state[label]
+    prev_y = state["prev_y"]
+    can_hit = state["can_hit"]
+    dy = ref_y - prev_y
+
+    hit_drum_id = None
+    foot_targets = [7, 8]
+    for drum_id in foot_targets:
+        drum = next((d for d in DRUM_KIT if d["id"] == drum_id), None)
+        if drum and check_collision(ref_x, ref_y, drum):
+            hit_drum_id = drum_id
+            break
+
+    if hit_drum_id is None or dy < -VELOCITY_THRESHOLD:
+        can_hit = True
+
+    state["can_hit"] = can_hit
+    cursor_pos = (int(ref_x * w), int(ref_y * h))
+    cursor_color = (80, 170, 255)
+    radius = 9
+
+    if state["can_hit"]:
+        cursor_color = (0, 230, 255)
+
+    if try_trigger_hit(state, hit_drum_id, dy, cursor_pos, min_rehit_pixels=FOOT_REHIT_PIXELS):
+        cursor_color = (0, 255, 0)
+        radius = 13
+
+    state["prev_y"] = ref_y
 
     if show_trackers:
         pygame.draw.circle(screen, cursor_color, cursor_pos, radius)
@@ -296,9 +383,11 @@ def draw_drums_pygame(screen, w, h, font, dragging_drum=None):
         color_with_alpha = (*color, fill_alpha)
         
         if drum["shape"] == "rect":
-
-            pygame.draw.rect(overlay, color_with_alpha, drum_rect)
-            pygame.draw.rect(overlay, color, drum_rect, 2)
+            if drum["id"] == 7:
+                pygame.draw.rect(overlay, color, drum_rect, 2)
+            else:
+                pygame.draw.rect(overlay, color_with_alpha, drum_rect)
+                pygame.draw.rect(overlay, color, drum_rect, 2)
         else:
             pygame.draw.ellipse(overlay, color_with_alpha, drum_rect)
             pygame.draw.ellipse(overlay, color, drum_rect, 2)
@@ -333,9 +422,12 @@ def draw_drums_pygame(screen, w, h, font, dragging_drum=None):
         draw_text(screen, fps_text, (w - 120, 30), font)
 
  # Loop principal
-def start_drums(chosen_instrument=None, user_tolerance=None, rec_options=None, touch_velocity=None, resolution_profile=None, show_trackers=False):
+def start_drums(chosen_instrument=None, user_tolerance=None, rec_options=None, touch_velocity=None, resolution_profile=None, show_trackers=False, drum_model="default"):
     print(">>> INICIANDO BATERIA (Pygame)")
     tracker_visible = bool(show_trackers)
+    use_feet_model = str(drum_model).strip().lower() == "complete"
+    configure_drum_kit("complete" if use_feet_model else "default")
+    print(f">>> Modelo de bateria: {current_drum_model}")
     
     if user_tolerance:
         global ELLIPSE_THRESHOLD
@@ -361,6 +453,8 @@ def start_drums(chosen_instrument=None, user_tolerance=None, rec_options=None, t
     audio_t.start()
     
     reset_hands_state()
+    if use_feet_model:
+        reset_feet_state()
 
     # --- SETUP VÍDEO E PYGAME ---
     if resolution_profile:
@@ -388,6 +482,9 @@ def start_drums(chosen_instrument=None, user_tolerance=None, rec_options=None, t
     )
     
     hands = mp.solutions.hands.Hands(max_num_hands=2, model_complexity=1, min_detection_confidence=0.3, min_tracking_confidence=0.3)
+    pose = None
+    if use_feet_model:
+        pose = mp.solutions.pose.Pose(model_complexity=0, min_detection_confidence=0.3, min_tracking_confidence=0.3)
         
     dragging_drum = None
     drag_offset = (0, 0)
@@ -466,11 +563,17 @@ def start_drums(chosen_instrument=None, user_tolerance=None, rec_options=None, t
             draw_drums_pygame(main_surface, LOGICAL_W, LOGICAL_H, font, dragging_drum)
             
             results = hands.process(frame_rgb)
+            pose_results = pose.process(frame_rgb) if pose is not None else None
             
             if results.multi_hand_landmarks:
                 for idx, landmarks in enumerate(results.multi_hand_landmarks):
                     lbl = results.multi_handedness[idx].classification[0].label
                     process_hand(lbl, landmarks.landmark, LOGICAL_W, LOGICAL_H, main_surface, font, show_trackers=tracker_visible)
+
+            if pose_results and pose_results.pose_landmarks:
+                foot_lm = pose_results.pose_landmarks.landmark
+                process_foot("LeftFoot", foot_lm[31], LOGICAL_W, LOGICAL_H, main_surface, show_trackers=tracker_visible)
+                process_foot("RightFoot", foot_lm[32], LOGICAL_W, LOGICAL_H, main_surface, show_trackers=tracker_visible)
 
             window_display.blit(main_surface, (0, 0))
             
@@ -481,6 +584,12 @@ def start_drums(chosen_instrument=None, user_tolerance=None, rec_options=None, t
         import traceback
         traceback.print_exc()
     finally:
+        try:
+            hands.close()
+            if pose is not None:
+                pose.close()
+        except Exception:
+            pass
         cap.release()
         pygame.quit()
         audio_queue.put(None)
