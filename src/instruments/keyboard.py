@@ -231,6 +231,25 @@ def check_lost_fingers():
 
 # draw_text is imported from src.instruments.common
 
+# FPS Tracker
+class FPSTracker:
+    def __init__(self, update_interval=10):
+        self.frame_count = 0
+        self.start_time = time.time()
+        self.current_fps = 0.0
+        self.update_interval = update_interval
+    
+    def update(self):
+        self.frame_count += 1
+        if self.frame_count % self.update_interval == 0:
+            elapsed = time.time() - self.start_time
+            self.current_fps = self.frame_count / elapsed if elapsed > 0 else 0
+    
+    def get_fps(self):
+        return self.current_fps
+
+fps_tracker = FPSTracker(update_interval=10)
+
 def draw_ui_fast_pygame(screen, table_y, w, h, font):
     table_px = int(table_y * h)
     key_width = w / NUM_KEYS
@@ -269,6 +288,10 @@ def draw_ui_fast_pygame(screen, table_y, w, h, font):
         y0 = 30
         for i, txt in enumerate(instructions):
             draw_text(screen, txt, (20, y0 + i * 25), font)
+    
+    # Draw FPS tracker
+    fps_text = f"FPS: {fps_tracker.get_fps():.1f}"
+    draw_text(screen, fps_text, (w - 120, 30), font)
 
 # ------------------------
 # START
@@ -302,13 +325,15 @@ def start_piano(chosen_instrument, user_sustain=None, lift_threshold=None, touch
     hands = mp.solutions.hands.Hands(max_num_hands=2, model_complexity=1,
                                      min_detection_confidence=0.3, min_tracking_confidence=0.3)
     
-    # Câmera Setup
-    LOGICAL_W, LOGICAL_H = 1280, 720
+    # Câmera Setup - Performance
+    LOGICAL_W, LOGICAL_H = 480, 270
     DISPLAY_W, DISPLAY_H = 1280, 720
+    # Câmera Setup - Quality
+    # LOGICAL_W, LOGICAL_H = 854, 480
+    # DISPLAY_W, DISPLAY_H = 1920, 1080
     
-    cap = setup_video_capture(width=LOGICAL_W, height=LOGICAL_H, fps=60)
+    cap = setup_video_capture(width=LOGICAL_W, height=LOGICAL_H, fps=30)
     
-    DISPLAY_W, DISPLAY_H = 1280, 720
     window_display, main_surface, main_font = setup_pygame_with_scaling(
         logical_width=LOGICAL_W, logical_height=LOGICAL_H,
         display_width=DISPLAY_W, display_height=DISPLAY_H,
@@ -347,6 +372,8 @@ def start_piano(chosen_instrument, user_sustain=None, lift_threshold=None, touch
             ret, frame = cap.read()
             if not ret:
                 break
+
+            fps_tracker.update()
 
             frame = cv2.resize(frame, (LOGICAL_W, LOGICAL_H))
             frame = cv2.flip(frame, 1)
