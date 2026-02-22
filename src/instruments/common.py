@@ -240,6 +240,18 @@ def setup_video_capture(width=1280, height=720, fps=60):
 # PYGAME INITIALIZATION
 # ========================
 
+def _focus_window():
+    """Traz a janela pygame para o foco no Windows."""
+    try:
+        import ctypes
+        hwnd = pygame.display.get_wm_info().get("window")
+        if hwnd:
+            ctypes.windll.user32.SetForegroundWindow(hwnd)
+            ctypes.windll.user32.BringWindowToTop(hwnd)
+    except Exception:
+        pass
+
+
 def setup_pygame(window_width=1280, window_height=720, title="Talking Hands", borderless=True):
     """
     Initialize pygame, create display window, and setup font.
@@ -254,7 +266,7 @@ def setup_pygame(window_width=1280, window_height=720, title="Talking Hands", bo
     screen = pygame.display.set_mode((window_width, window_height), flags)
     pygame.display.set_caption(title)
     font = pygame.font.SysFont("Arial", 18, bold=True)
-    
+    _focus_window()
     return screen, font
 
 
@@ -273,7 +285,7 @@ def setup_pygame_with_scaling(logical_width=1280, logical_height=720,
     
     logical_surface = pygame.Surface((logical_width, logical_height))
     font = pygame.font.SysFont("Arial", 18, bold=True)
-    
+    _focus_window()
     return display_screen, logical_surface, font
 
 

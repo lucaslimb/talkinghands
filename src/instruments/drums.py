@@ -178,8 +178,8 @@ FIXED_BASE_LAYOUT_COMPLETE = [
     {"element_key": "hihat",    "pos": (0.20, 0.85), "axes": (0.12, 0.055)},
     {"element_key": "snare",    "pos": (0.50, 0.80), "axes": (0.14, 0.060)},
     {"element_key": "floor",    "pos": (0.80, 0.85), "axes": (0.12, 0.055)},
-    {"element_key": "kick",     "pos": (0.50, 0.92), "axes": (0.16, 0.025), "foot_only": True},
-    {"element_key": "hh_pedal", "pos": (0.32, 0.93), "axes": (0.07, 0.020), "foot_only": True},
+    {"element_key": "kick",     "pos": (0.50, 0.96), "axes": (0.16, 0.033), "foot_only": True},
+    {"element_key": "hh_pedal", "pos": (0.25, 0.96), "axes": (0.07, 0.030), "foot_only": True},
 ]
 
 EXTRA_SLOTS = [

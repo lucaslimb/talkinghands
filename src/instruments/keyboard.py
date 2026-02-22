@@ -155,19 +155,31 @@ def apply_volume_level(level):
     return safe_level
 
 
-def vol_to_y_norm(level):
+def _bar_bottom(table_y=None):
+    """Retorna o limite inferior efetivo da barra, sempre acima da linha da mesa."""
+    bottom = VOLUME_BAR_Y_BOTTOM
+    if table_y is not None:
+        bottom = min(bottom, table_y - 0.05)
+    return max(VOLUME_BAR_Y_TOP + 0.05, bottom)
+
+
+def vol_to_y_norm(level, bar_y_bottom=None):
     """Converte nível de volume (-50..+50) em coordenada y normalizada na barra."""
-    center = (VOLUME_BAR_Y_TOP + VOLUME_BAR_Y_BOTTOM) / 2.0
-    half_range = (VOLUME_BAR_Y_BOTTOM - VOLUME_BAR_Y_TOP) / 2.0
+    if bar_y_bottom is None:
+        bar_y_bottom = VOLUME_BAR_Y_BOTTOM
+    center = (VOLUME_BAR_Y_TOP + bar_y_bottom) / 2.0
+    half_range = (bar_y_bottom - VOLUME_BAR_Y_TOP) / 2.0
     # +50 -> topo (y menor), -50 -> base (y maior)
     ratio = -float(level) / 50.0
     return center + ratio * half_range
 
 
-def y_norm_to_vol(y_norm):
+def y_norm_to_vol(y_norm, bar_y_bottom=None):
     """Converte coordenada y normalizada em nível de volume (-50..+50)."""
-    center = (VOLUME_BAR_Y_TOP + VOLUME_BAR_Y_BOTTOM) / 2.0
-    half_range = (VOLUME_BAR_Y_BOTTOM - VOLUME_BAR_Y_TOP) / 2.0
+    if bar_y_bottom is None:
+        bar_y_bottom = VOLUME_BAR_Y_BOTTOM
+    center = (VOLUME_BAR_Y_TOP + bar_y_bottom) / 2.0
+    half_range = (bar_y_bottom - VOLUME_BAR_Y_TOP) / 2.0
     if half_range == 0:
         return 0
     ratio = (y_norm - center) / half_range
@@ -563,7 +575,7 @@ def check_lost_fingers():
                     state["finger_status"][fid] = "IDLE"
 
 
-def update_index_volume_for_hand(label, landmarks, volume_state):
+def update_index_volume_for_hand(label, landmarks, volume_state, table_y=None):
     """Controla o volume pela posição do indicador sobre a barra lateral.
     O indicador 'gruda' na risca quando está sobre ela e dentro da barra;
     solta imediatamente ao sair da faixa horizontal da barra."""
@@ -571,12 +583,13 @@ def update_index_volume_for_hand(label, landmarks, volume_state):
     ix = index_tip.x
     iy = index_tip.y
 
+    effective_bottom = _bar_bottom(table_y)
     in_bar_x = (VOLUME_BAR_X_LEFT - INDEX_GRAB_X_MARGIN) <= ix <= (VOLUME_BAR_X_RIGHT + INDEX_GRAB_X_MARGIN)
 
     # Se esta mão já está com grab ativo
     if volume_state["is_grabbed"] and volume_state["grab_hand"] == label:
         if in_bar_x:
-            new_level = y_norm_to_vol(iy)
+            new_level = y_norm_to_vol(iy, effective_bottom)
             if new_level != volume_state["level"]:
                 volume_state["level"] = apply_volume_level(new_level)
             return True
@@ -588,7 +601,7 @@ def update_index_volume_for_hand(label, landmarks, volume_state):
 
     # Tenta iniciar grab: dedo dentro da barra perto da risca do nível atual
     if in_bar_x:
-        current_vol_y = vol_to_y_norm(volume_state["level"])
+        current_vol_y = vol_to_y_norm(volume_state["level"], effective_bottom)
         if abs(iy - current_vol_y) <= INDEX_GRAB_Y_MARGIN:
             volume_state["is_grabbed"] = True
             volume_state["grab_hand"] = label
@@ -599,12 +612,13 @@ def update_index_volume_for_hand(label, landmarks, volume_state):
 # draw_text is imported from src.instruments.common
 
 
-def draw_volume_bar(screen, w, h, font, volume_state):
+def draw_volume_bar(screen, w, h, font, volume_state, table_y=None):
     """Desenha a barra de volume vertical no lado direito da tela (sem borda)."""
+    effective_bottom = _bar_bottom(table_y)
     x1 = int(VOLUME_BAR_X_LEFT * w)
     x2 = int(VOLUME_BAR_X_RIGHT * w)
     y1 = int(VOLUME_BAR_Y_TOP * h)
-    y2 = int(VOLUME_BAR_Y_BOTTOM * h)
+    y2 = int(effective_bottom * h)
     bar_w = max(1, x2 - x1)
     bar_h = max(1, y2 - y1)
 
@@ -614,12 +628,12 @@ def draw_volume_bar(screen, w, h, font, volume_state):
     screen.blit(bg, (x1, y1))
 
     # Risca central (volume 0 = padrão do soundfont)
-    zero_y = int(vol_to_y_norm(0) * h)
+    zero_y = int(vol_to_y_norm(0, effective_bottom) * h)
     pygame.draw.line(screen, (70, 70, 70), (x1, zero_y), (x2, zero_y), 1)
 
     # Risca do nível atual
     level = volume_state["level"]
-    vol_y = int(vol_to_y_norm(level) * h)
+    vol_y = int(vol_to_y_norm(level, effective_bottom) * h)
     if level > 0:
         line_color = (60, 160, 60)
     elif level < 0:
@@ -753,7 +767,7 @@ def draw_ui_fast_pygame(screen, table_y, w, h, font, show_note_names=False, name
         draw_text(screen, f"Teclas: {NUM_KEYS}", (w // 2 - 60, 58), font, (255, 220, 0))
 
     if volume_state is not None:
-        draw_volume_bar(screen, w, h, font, volume_state)
+        draw_volume_bar(screen, w, h, font, volume_state, table_y)
 
 
 def draw_hand_trackers(results, w, h, screen):
@@ -924,7 +938,7 @@ def start_piano(chosen_instrument, user_sustain=None, lift_threshold=None, touch
                 for idx, lm in enumerate(results.multi_hand_landmarks):
                     lbl = results.multi_handedness[idx].classification[0].label
 
-                    is_volume_control = update_index_volume_for_hand(lbl, lm, volume_state)
+                    is_volume_control = update_index_volume_for_hand(lbl, lm, volume_state, global_state["table_y"])
 
                     for fid in ACTIVE_FINGERS:
                         finger = lm.landmark[fid]
