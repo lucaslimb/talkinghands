@@ -15,12 +15,6 @@ TEST_DURATION = 3
 FPS_TOLERANCE = 0.9
 READ_TIMEOUT = 2.0 
 
-cap = cv2.VideoCapture(0)
-
-if not cap.isOpened():
-    print("Error opening webcam")
-    exit()
-
 def read_frame_with_timeout(cap, timeout=READ_TIMEOUT):
     """Read a frame with timeout to prevent hanging"""
     frame_data = {'ret': None, 'frame': None}
@@ -42,7 +36,7 @@ def read_frame_with_timeout(cap, timeout=READ_TIMEOUT):
     
     return frame_data['ret'], frame_data['frame']
 
-def test_profile(name, width, height, target_fps):
+def test_profile(cap, name, width, height, target_fps):
     cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
     cap.set(cv2.CAP_PROP_FPS, target_fps)
@@ -66,19 +60,46 @@ def test_profile(name, width, height, target_fps):
     return success, measured_fps
 
 
-best = None
+def run_camera_profile_test(print_output=True):
+    cap = cv2.VideoCapture(0)
+    if not cap.isOpened():
+        if print_output:
+            print("Error opening webcam")
+        return None
 
-for name, w, h, fps in profiles:
-    ok, real_fps = test_profile(name, w, h, fps)
-    if ok:
-        best = (name, w, h, fps, real_fps)
-        break
+    best = None
+    try:
+        for name, w, h, fps in profiles:
+            ok, real_fps = test_profile(cap, name, w, h, fps)
+            if ok:
+                best = (name, w, h, fps, real_fps)
+                break
+    finally:
+        cap.release()
 
-cap.release()
+    if print_output:
+        if best:
+            name, _, _, _, real_fps = best
+            print(f"{name}")
+            print("Actual: {:.2f}fps".format(real_fps))
+        else:
+            print("Nenhum resultado esperado foi antingido (< 720p, < 30 FPS).")
 
-if best:
+    if not best:
+        return None
+
     name, w, h, fps, real_fps = best
-    print(f"{name}")
-    print("Actual: {:.2f}fps".format(real_fps))
-else:
-    print("Nenhum resultado esperado foi antingido (< 720p, < 30 FPS).")
+    return {
+        "name": name,
+        "display_width": int(w),
+        "display_height": int(h),
+        "logical_width": int(w),
+        "logical_height": int(h),
+        "fps": int(fps),
+        "raw": f"{int(h)}{int(fps):02d}" if fps < 100 else f"{int(h)}{int(fps)}",
+        "actual_fps": float(real_fps),
+    }
+
+
+if __name__ == "__main__":
+    run_camera_profile_test(print_output=True)

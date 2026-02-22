@@ -7,6 +7,7 @@ import argparse
 import sys
 import os
 import re
+import time
 from importlib import import_module, reload
 import importlib.util
 from pathlib import Path
@@ -158,6 +159,30 @@ def parse_resolution_arg(value):
     }
 
 
+def parse_hands_model_complexity(value):
+    """Parse MediaPipe Hands model complexity (allowed: 0 or 1)."""
+    try:
+        parsed = int(value)
+    except Exception:
+        raise argparse.ArgumentTypeError("Invalid --hands-mc. Use 0 or 1.")
+
+    if parsed not in (0, 1):
+        raise argparse.ArgumentTypeError("Invalid --hands-mc. Use 0 or 1.")
+    return parsed
+
+
+def parse_pose_model_complexity(value):
+    """Parse MediaPipe Pose model complexity (allowed: 0, 1 or 2)."""
+    try:
+        parsed = int(value)
+    except Exception:
+        raise argparse.ArgumentTypeError("Invalid --pose-mc. Use 0, 1 or 2.")
+
+    if parsed not in (0, 1, 2):
+        raise argparse.ArgumentTypeError("Invalid --pose-mc. Use 0, 1 or 2.")
+    return parsed
+
+
 def parse_drums_elements_arg(value):
     """Parse comma-separated drums elements and validate against predefined list."""
     raw = str(value).strip()
@@ -214,6 +239,8 @@ GLOBAL OPTIONS:
   -h, --help                         Show help message and exit
     -i, --instrument INSTRUMENT_NAME   Instrument name to start (e.g., 'Classic', 'Power', 'Grand Piano', 'Recorder')
     -r, --resolution PROFILE           Resolution/FPS profile (HEIGHT+FPS). HEIGHT min/max: 240..4320, FPS min/max: 1..240 (default: 108030)
+        --hands-mc {0,1}                   Hands model complexity (default: 1)
+        --pose-mc {0,1,2}                  Pose model complexity for drums feet tracking (default: 1)
     -t, --trackers                     Show hand/face trackers on screen (boolean flag: False|True, default: False)
     -f, --separate-folders             Keep playback and recordings in different folders (boolean flag: False|True, default: False)
 
@@ -297,6 +324,24 @@ def create_argparse():
         default=parse_resolution_arg("108030"),
         metavar="PROFILE",
         help="Display/FPS profile HEIGHT+FPS (HEIGHT 240..4320, FPS 1..240). Ex: 108030 = 1080p 30fps"
+    )
+
+    parser.add_argument(
+        "--hands-mc",
+        type=parse_hands_model_complexity,
+        default=1,
+        metavar="VALUE",
+        dest="hands_mc",
+        help="Hands model complexity (0 or 1, default: 1)."
+    )
+
+    parser.add_argument(
+        "--pose-mc",
+        type=parse_pose_model_complexity,
+        default=1,
+        metavar="VALUE",
+        dest="pose_mc",
+        help="Pose model complexity for drums feet model (0..2, default: 1)."
     )
     
     parser.add_argument(
@@ -514,7 +559,126 @@ def get_flute_hole_params(precision):
     return params.get(precision, params["medium"])
 
 
-def start_drums(args, rec_opts):
+def detect_auto_model_complexity(resolution_profile):
+    """Probe runtime capability and choose model complexities for AUTO mode."""
+    hand_complexity = 0
+    pose_complexity = 0
+
+    try:
+        import cv2
+        import mediapipe as mp
+
+        target_fps = int((resolution_profile or {}).get("fps", 30))
+        sample_count = 24
+        min_ratio = 0.70
+
+        width = int((resolution_profile or {}).get("display_width", 1280))
+        height = int((resolution_profile or {}).get("display_height", 720))
+
+        cap = cv2.VideoCapture(0, cv2.CAP_DSHOW)
+        if not cap.isOpened():
+            cap = cv2.VideoCapture(0)
+
+        frames_rgb = []
+        if cap.isOpened():
+            cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
+            cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
+            cap.set(cv2.CAP_PROP_FPS, target_fps)
+            time.sleep(0.35)
+
+            while len(frames_rgb) < sample_count:
+                ok, frame = cap.read()
+                if not ok:
+                    break
+                frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                frames_rgb.append(frame_rgb)
+
+            cap.release()
+
+        if not frames_rgb:
+            print(">>> AUTO probe: sem frames da câmera; fallback para complexidade mínima.")
+            return {
+                "hand_model_complexity": hand_complexity,
+                "drums_pose_model_complexity": pose_complexity,
+            }
+
+        def benchmark_hands(level):
+            start_t = time.perf_counter()
+            model = mp.solutions.hands.Hands(
+                max_num_hands=2,
+                model_complexity=level,
+                min_detection_confidence=0.3,
+                min_tracking_confidence=0.3,
+            )
+            try:
+                for frame_rgb in frames_rgb:
+                    model.process(frame_rgb)
+            finally:
+                model.close()
+            elapsed = max(1e-6, time.perf_counter() - start_t)
+            return len(frames_rgb) / elapsed
+
+        def benchmark_pose(level):
+            start_t = time.perf_counter()
+            model = mp.solutions.pose.Pose(
+                model_complexity=level,
+                min_detection_confidence=0.3,
+                min_tracking_confidence=0.3,
+            )
+            try:
+                for frame_rgb in frames_rgb:
+                    model.process(frame_rgb)
+            finally:
+                model.close()
+            elapsed = max(1e-6, time.perf_counter() - start_t)
+            return len(frames_rgb) / elapsed
+
+        hand_candidate = 0
+        for level in (1, 0):
+            try:
+                measured = benchmark_hands(level)
+                if measured >= (target_fps * min_ratio):
+                    hand_candidate = level
+                    break
+            except Exception:
+                continue
+        hand_complexity = hand_candidate
+
+        pose_candidate = 0
+        for level in (2, 1, 0):
+            try:
+                measured = benchmark_pose(level)
+                if measured >= (target_fps * min_ratio):
+                    pose_candidate = level
+                    break
+            except Exception:
+                continue
+        pose_complexity = pose_candidate
+
+        print(
+            f">>> AUTO probe: hands={hand_complexity}, drums_pose={pose_complexity} (target fps={target_fps})"
+        )
+
+    except Exception as exc:
+        print(f">>> AUTO probe falhou ({exc}); usando fallback seguro.")
+
+    return {
+        "hand_model_complexity": hand_complexity,
+        "drums_pose_model_complexity": pose_complexity,
+    }
+
+
+def resolve_execution_runtime(args):
+    """Resolve effective runtime profile and model complexities from CLI parameters."""
+    runtime_config = {
+        "hand_model_complexity": int(getattr(args, "hands_mc", 1)),
+        "drums_pose_model_complexity": int(getattr(args, "pose_mc", 1)),
+    }
+    resolution = args.resolution
+    return resolution, runtime_config
+
+
+def start_drums(args, rec_opts, resolution_profile, runtime_config):
     """Start drums instrument"""
     defaults = get_defaults()
     
@@ -534,14 +698,16 @@ def start_drums(args, rec_opts):
         user_tolerance=tolerance,
         rec_options=rec_opts,
         touch_velocity=touch_velocity,
-        resolution_profile=args.resolution,
+        resolution_profile=resolution_profile,
         show_trackers=args.trackers,
         drum_model=args.drums_model,
         drums_elements=args.drm_elems,
+        hand_model_complexity=runtime_config["hand_model_complexity"],
+        pose_model_complexity=runtime_config["drums_pose_model_complexity"],
     )
 
 
-def start_flute(args, rec_opts):
+def start_flute(args, rec_opts, resolution_profile, runtime_config):
     """Start flute instrument"""
     defaults = get_defaults()
 
@@ -576,12 +742,12 @@ def start_flute(args, rec_opts):
         invert_angle=invert_angle,
         follow_sensitivity=follow_sensitivity,
         rec_options=rec_opts,
-        resolution_profile=args.resolution,
+        resolution_profile=resolution_profile,
         show_trackers=args.trackers,
+        hand_model_complexity=runtime_config["hand_model_complexity"],
     )
 
-
-def start_keyboard(args, rec_opts):
+def start_keyboard(args, rec_opts, resolution_profile, runtime_config):
     """Start keyboard/piano instrument"""
     defaults = get_defaults()
     
@@ -602,8 +768,9 @@ def start_keyboard(args, rec_opts):
         lift_threshold=lift,
         touch_tolerance=tolerance,
         rec_options=rec_opts,
-        resolution_profile=args.resolution,
+        resolution_profile=resolution_profile,
         show_trackers=args.trackers,
+        hand_model_complexity=runtime_config["hand_model_complexity"],
     )
 
 
@@ -618,15 +785,32 @@ def main():
         
         args = parse_args()
         
-        # Handle --test-fps early and exit
+        # Handle --test-cam early and exit
         if args.test_cam:
-            print("\n>>> Running FPS test...\n")
+            print("\n>>> Running camera + model complexity test...\n")
             # Load test-fps.py module by spec (handles hyphen in filename)
             test_fps_path = PROJECT_ROOT / "src" / "utils" / "test-fps.py"
             spec = importlib.util.spec_from_file_location("test_fps", test_fps_path)
             test_fps_module = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(test_fps_module)
-            # The module runs the test automatically and prints results
+
+            best_profile = None
+            if hasattr(test_fps_module, "run_camera_profile_test"):
+                best_profile = test_fps_module.run_camera_profile_test(print_output=True)
+
+            if best_profile is None:
+                best_profile = parse_resolution_arg("72030")
+
+            selected_complexities = detect_auto_model_complexity(best_profile)
+            print("\n>>> Suggested standalone runtime config:")
+            print(f"    Resolution profile: {best_profile['raw']}")
+            print(f"    Hands complexity: {selected_complexities['hand_model_complexity']}")
+            print(f"    Pose complexity: {selected_complexities['drums_pose_model_complexity']}")
+            print(
+                f"    CLI: -r {best_profile['raw']} "
+                f"--hands-mc {selected_complexities['hand_model_complexity']} "
+                f"--pose-mc {selected_complexities['drums_pose_model_complexity']}"
+            )
             sys.exit(0)
         
         # Validate settings
@@ -636,28 +820,33 @@ def main():
         
         # Build recording options
         rec_opts = build_recording_options(args)
+        effective_resolution, runtime_config = resolve_execution_runtime(args)
         
         print(f">>> Recording options:")
         print(f"    .MID: {rec_opts['save_mid']}")
         print(f"    .MP3: {rec_opts['save_mp3']}")
         print(f"    .WAV: {rec_opts['save_wav']}")
         print(f"    Separate folders: {rec_opts['separate_playback']}")
+        print(
+            f">>> Model complexity: hands={runtime_config['hand_model_complexity']}, "
+            f"drums_pose={runtime_config['drums_pose_model_complexity']}"
+        )
 
-        if args.resolution:
-            print(f">>> Resolution profile: {args.resolution['raw']}")
-            print(f"    Display: {args.resolution['display_width']}x{args.resolution['display_height']}")
-            print(f"    Logical: {args.resolution['logical_width']}x{args.resolution['logical_height']}")
-            print(f"    FPS: {args.resolution['fps']}")
+        if effective_resolution:
+            print(f">>> Resolution profile: {effective_resolution['raw']}")
+            print(f"    Display: {effective_resolution['display_width']}x{effective_resolution['display_height']}")
+            print(f"    Logical: {effective_resolution['logical_width']}x{effective_resolution['logical_height']}")
+            print(f"    FPS: {effective_resolution['fps']}")
         
         # Determine instrument type and start
         instrument_type = get_instrument_type(args.instrument)
         
         if instrument_type == "drums":
-            start_drums(args, rec_opts)
+            start_drums(args, rec_opts, effective_resolution, runtime_config)
         elif instrument_type == "flute":
-            start_flute(args, rec_opts)
+            start_flute(args, rec_opts, effective_resolution, runtime_config)
         else:  # keyboard
-            start_keyboard(args, rec_opts)
+            start_keyboard(args, rec_opts, effective_resolution, runtime_config)
         
         print(">>> Returning to menu...")
         

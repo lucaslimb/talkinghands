@@ -372,7 +372,7 @@ def draw_flute_ui_pygame(screen, w, h, velocity, face_landmarks, font, is_draggi
 # ------------------------
 # FUNÇÃO PRINCIPAL
 # ------------------------
-def start_flute(chosen_instrument, mouth_peak=0.01, mouth_max=0.05, hole_radius=0.019, hole_spacing=0.068, invert_blow=False, invert_angle=False, follow_sensitivity=0.22, rec_options=None, resolution_profile=None, show_trackers=False):
+def start_flute(chosen_instrument, mouth_peak=0.01, mouth_max=0.05, hole_radius=0.019, hole_spacing=0.068, invert_blow=False, invert_angle=False, follow_sensitivity=0.22, rec_options=None, resolution_profile=None, show_trackers=False, hand_model_complexity=1):
     
     global MOUTH_PEAK_OPEN, MOUTH_MAX_OPEN, HOLE_RADIUS, HOLE_SPACING, INVERT_BLOW_LOGIC, INVERT_ANGLE_LOGIC
     MOUTH_PEAK_OPEN = mouth_peak
@@ -391,7 +391,8 @@ def start_flute(chosen_instrument, mouth_peak=0.01, mouth_max=0.05, hole_radius=
     mp_hands = mp.solutions.hands
     mp_face = mp.solutions.face_mesh
     
-    hands = mp_hands.Hands(max_num_hands=2, model_complexity=1, min_detection_confidence=0.5)
+    model_complexity = max(0, min(1, int(hand_model_complexity)))
+    hands = mp_hands.Hands(max_num_hands=2, model_complexity=model_complexity, min_detection_confidence=0.5)
     face_mesh = mp_face.FaceMesh(max_num_faces=1, refine_landmarks=True)
     
     # PYGAME & CAPTURE SETUP

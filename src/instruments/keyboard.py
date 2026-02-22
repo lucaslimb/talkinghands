@@ -408,7 +408,7 @@ def draw_ui_fast_pygame(screen, table_y, w, h, font):
 # ------------------------
 # START
 # ------------------------
-def start_piano(chosen_instrument, user_sustain=None, lift_threshold=None, touch_tolerance=None, rec_options=None, resolution_profile=None, show_trackers=False):
+def start_piano(chosen_instrument, user_sustain=None, lift_threshold=None, touch_tolerance=None, rec_options=None, resolution_profile=None, show_trackers=False, hand_model_complexity=1):
 
     if user_sustain is not None and user_sustain > 0:
         global SUSTAIN_DECAY
@@ -435,7 +435,8 @@ def start_piano(chosen_instrument, user_sustain=None, lift_threshold=None, touch
     
     reset_hands_state()
 
-    hands = mp.solutions.hands.Hands(max_num_hands=2, model_complexity=1,
+    model_complexity = max(0, min(1, int(hand_model_complexity)))
+    hands = mp.solutions.hands.Hands(max_num_hands=2, model_complexity=model_complexity,
                                      min_detection_confidence=0.3, min_tracking_confidence=0.3)
     
     if resolution_profile:

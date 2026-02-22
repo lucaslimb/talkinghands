@@ -766,7 +766,7 @@ def draw_drums_pygame(screen, w, h, font, dragging_drum=None, show_names=False, 
         draw_text(screen, fps_text, (w - 120, 30), font)
 
  # Loop principal
-def start_drums(chosen_instrument=None, user_tolerance=None, rec_options=None, touch_velocity=None, resolution_profile=None, show_trackers=False, drum_model="default", drums_elements=None):
+def start_drums(chosen_instrument=None, user_tolerance=None, rec_options=None, touch_velocity=None, resolution_profile=None, show_trackers=False, drum_model="default", drums_elements=None, hand_model_complexity=1, pose_model_complexity=0):
     print(">>> INICIANDO BATERIA (Pygame)")
     tracker_visible = bool(show_trackers)
     use_feet_model = str(drum_model).strip().lower() == "complete"
@@ -843,10 +843,13 @@ def start_drums(chosen_instrument=None, user_tolerance=None, rec_options=None, t
         title="Talking Hands - Bateria"
     )
     
-    hands = mp.solutions.hands.Hands(max_num_hands=2, model_complexity=1, min_detection_confidence=0.3, min_tracking_confidence=0.3)
+    hand_complexity = max(0, min(1, int(hand_model_complexity)))
+    pose_complexity = max(0, min(2, int(pose_model_complexity)))
+
+    hands = mp.solutions.hands.Hands(max_num_hands=2, model_complexity=hand_complexity, min_detection_confidence=0.3, min_tracking_confidence=0.3)
     pose = None
     if use_feet_model:
-        pose = mp.solutions.pose.Pose(model_complexity=0, min_detection_confidence=0.3, min_tracking_confidence=0.3)
+        pose = mp.solutions.pose.Pose(model_complexity=pose_complexity, min_detection_confidence=0.3, min_tracking_confidence=0.3)
         
     dragging_drum = None
     resizing_drum = None
