@@ -13,6 +13,25 @@ Use o arg -h para exibir a documentação da CLI
 
 ## Engine team
 
+### Instalações 
+
+1) Instale Python 3.11.9 !!
+2) Crie um virtual environment no VSCode com o Python 3.11.9
+3) Ative o virtual environment no terminal cmd:
+```cmd
+"C:\...\talkinghands\.venv\Scripts\activate.bat"
+```
+4) Instale o requirements.txt:
+```cmd
+pip install -r requirements.txt
+```
+5) Instale o openCV e Mediapipe separadamente, caso não instalados no passo 4:
+```cmd
+pip install opencv-python mediapipe==0.10.21
+```
+
+Se faltou informação da preparação do ambiente, pode adicionar aqui :)
+
 ### Testando
 
 Com o virtual environment ativo, rode:
@@ -54,6 +73,6 @@ signtool sign /f mycert.pfx /p password /d "Talking Hands" dist/THEngine.exe
 
 ### FYI
 
-Se necessário, use o Github Copilot no VSCode com preferencia pelo modelo Claude Haiku 4.5
+Se necessário, use o Github Copilot no VSCode com preferencia pelo modelo Claude Haiku 4.5 (se for copilot free) ou GPT-5.3-Codex (se for Pro)
 
-Arquivos .sf2 (soundfonts) são enviados para o git com lfs, não mexa no .gitattributes!!
+Arquivos .sf2 (soundfonts) são enviados para o git com lfs, definido no .gitattributes

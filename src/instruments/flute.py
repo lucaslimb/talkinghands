@@ -38,12 +38,16 @@ MOUTH_MAX_OPEN = getattr(settings, 'MOUTH_MAX_OPEN', 0.05)
 BLOW_KEY = 32
 
 INVERT_BLOW_LOGIC = False
+INVERT_ANGLE_LOGIC = False
 
 MOUTH_SMOOTHING_FACTOR = 0.3 
 VELOCITY_CHANGE_THRESHOLD = 4
 MOUTH_FOLLOW_SENSITIVITY = float(getattr(settings, 'FLUTE_MOUTH_FOLLOW_SENSITIVITY', 0.22))
 MOUTH_FOLLOW_OFFSET_Y = float(getattr(settings, 'FLUTE_MOUTH_FOLLOW_OFFSET_Y', 0.09))
-MOUTH_ANGLE_SENSITIVITY = float(getattr(settings, 'FLUTE_MOUTH_ANGLE_SENSITIVITY', 0.8))
+MOUTH_ANGLE_SENSITIVITY = float(getattr(settings, 'FLUTE_MOUTH_ANGLE_SENSITIVITY', 1.0))
+FLUTE_VERTICAL_BASE_ANGLE = math.pi * 0.5
+MOUTH_CLOSE_STOP_THRESHOLD = float(getattr(settings, 'MOUTH_CLOSE_STOP_THRESHOLD', 0.0006))
+MOUTH_PEAK_NEAR_CLOSE_FACTOR = float(getattr(settings, 'MOUTH_PEAK_NEAR_CLOSE_FACTOR', 0.25))
 
 PLAYBACK_CHANNEL = 0
 LIVE_CHANNEL = 1
@@ -95,7 +99,6 @@ def select_instrument_by_name(name):
         sf_path = settings.SF2_PATHS.get(sf_key)
         recorder.set_instrument(sf_path, bank, preset, is_drum=False)
         print(f">>> FLUTE: {name} (B:{bank} P:{preset})")
-
 
 def audio_thread():
     current_note = None
@@ -180,8 +183,8 @@ def update_hole_positions_with_angle(start_x, start_y, angle_rad=0.0):
     holes.clear()
     for i in range(NUM_HOLES):
         offset = i * HOLE_SPACING
-        x = start_x + math.sin(angle_rad) * offset
-        y = start_y + math.cos(angle_rad) * offset
+        x = start_x + math.cos(angle_rad) * offset
+        y = start_y + math.sin(angle_rad) * offset
         h = FluteHole(i, x, y)
         holes.append(h)
 
@@ -200,13 +203,21 @@ def get_mouth_center(face_landmarks):
 
 def get_mouth_tilt_angle(face_landmarks):
     if not face_landmarks:
-        return 0.0
+        return FLUTE_VERTICAL_BASE_ANGLE
 
     left_corner = face_landmarks.landmark[61]
     right_corner = face_landmarks.landmark[291]
-    mouth_line_angle = math.atan2((right_corner.y - left_corner.y), (right_corner.x - left_corner.x))
-    tilted = mouth_line_angle * MOUTH_ANGLE_SENSITIVITY
-    return max(-0.7, min(0.7, tilted))
+    mouth_line_angle = math.atan2(
+        (right_corner.y - left_corner.y),
+        (right_corner.x - left_corner.x),
+    )
+    if INVERT_ANGLE_LOGIC:
+        mouth_line_angle = -mouth_line_angle
+
+    flute_angle = FLUTE_VERTICAL_BASE_ANGLE + (mouth_line_angle * MOUTH_ANGLE_SENSITIVITY)
+    min_angle = FLUTE_VERTICAL_BASE_ANGLE - 1.2
+    max_angle = FLUTE_VERTICAL_BASE_ANGLE + 1.2
+    return max(min_angle, min(max_angle, flute_angle))
 
 def update_flute_position_from_mouth(flute_x, flute_y, mouth_center, sensitivity):
     if mouth_center is None:
@@ -355,14 +366,15 @@ def draw_flute_ui_pygame(screen, w, h, velocity, face_landmarks, font, is_draggi
 # ------------------------
 # FUNÇÃO PRINCIPAL
 # ------------------------
-def start_flute(chosen_instrument, mouth_peak=0.01, mouth_max=0.05, hole_radius=0.019, hole_spacing=0.068, invert_blow=False, follow_sensitivity=0.22, rec_options=None, resolution_profile=None, show_trackers=False):
+def start_flute(chosen_instrument, mouth_peak=0.01, mouth_max=0.05, hole_radius=0.019, hole_spacing=0.068, invert_blow=False, invert_angle=False, follow_sensitivity=0.22, rec_options=None, resolution_profile=None, show_trackers=False):
     
-    global MOUTH_PEAK_OPEN, MOUTH_MAX_OPEN, HOLE_RADIUS, HOLE_SPACING, INVERT_BLOW_LOGIC
+    global MOUTH_PEAK_OPEN, MOUTH_MAX_OPEN, HOLE_RADIUS, HOLE_SPACING, INVERT_BLOW_LOGIC, INVERT_ANGLE_LOGIC
     MOUTH_PEAK_OPEN = mouth_peak
     MOUTH_MAX_OPEN = mouth_max
     HOLE_RADIUS = hole_radius
     HOLE_SPACING = hole_spacing
     INVERT_BLOW_LOGIC = invert_blow
+    INVERT_ANGLE_LOGIC = bool(invert_angle)
     tracker_visible = bool(show_trackers)
     
     if rec_options:
@@ -403,12 +415,13 @@ def start_flute(chosen_instrument, mouth_peak=0.01, mouth_max=0.05, hole_radius=
 
     print(f">>> FLAUTA INICIADA: {chosen_instrument}")
     print(f"    Peak: {mouth_peak}, Max: {mouth_max}, Inv: {invert_blow}")
+    print(f"    Angle Invert: {invert_angle}")
     print(f"    Follow Sensitivity: {follow_sensitivity}")
     
 # --- VARIÁVEIS DE ESTADO E POSIÇÃO ---
     flute_x = DEFAULT_FLUTE_X
     flute_y = DEFAULT_FLUTE_Y
-    flute_angle = 0.0
+    flute_angle = FLUTE_VERTICAL_BASE_ANGLE
     
     update_hole_positions_with_angle(flute_x, flute_y, flute_angle)
 
@@ -472,7 +485,7 @@ def start_flute(chosen_instrument, mouth_peak=0.01, mouth_max=0.05, hole_radius=
                     elif event.key == pygame.K_5:
                         flute_x = DEFAULT_FLUTE_X
                         flute_y = DEFAULT_FLUTE_Y
-                        flute_angle = 0.0
+                        flute_angle = FLUTE_VERTICAL_BASE_ANGLE
                         update_hole_positions_with_angle(flute_x, flute_y, flute_angle)
                         print(">>> Posição da flauta resetada.")
                     elif event.key == pygame.K_9:
@@ -519,17 +532,20 @@ def start_flute(chosen_instrument, mouth_peak=0.01, mouth_max=0.05, hole_radius=
             velocity = 0
             if manual_blow:
                 velocity = 127
-            elif avg_mouth_dist >= MOUTH_MIN_OPEN:
+            elif avg_mouth_dist > MOUTH_CLOSE_STOP_THRESHOLD:
                 
                 ratio = 0.0
                 
                 if INVERT_BLOW_LOGIC:
                     ratio = (avg_mouth_dist - MOUTH_MIN_OPEN) / (MOUTH_MAX_OPEN - MOUTH_MIN_OPEN)
                 else:
-                    if avg_mouth_dist <= MOUTH_PEAK_OPEN:
-                        ratio = (avg_mouth_dist - MOUTH_MIN_OPEN) / (MOUTH_PEAK_OPEN - MOUTH_MIN_OPEN)
+                    peak_near_close = MOUTH_CLOSE_STOP_THRESHOLD + ((MOUTH_PEAK_OPEN - MOUTH_CLOSE_STOP_THRESHOLD) * MOUTH_PEAK_NEAR_CLOSE_FACTOR)
+                    peak_near_close = max(MOUTH_CLOSE_STOP_THRESHOLD + 1e-6, peak_near_close)
+
+                    if avg_mouth_dist <= peak_near_close:
+                        ratio = (avg_mouth_dist - MOUTH_CLOSE_STOP_THRESHOLD) / (peak_near_close - MOUTH_CLOSE_STOP_THRESHOLD)
                     elif avg_mouth_dist < MOUTH_MAX_OPEN:
-                        ratio = 1.0 - ((avg_mouth_dist - MOUTH_PEAK_OPEN) / (MOUTH_MAX_OPEN - MOUTH_PEAK_OPEN))
+                        ratio = 1.0 - ((avg_mouth_dist - peak_near_close) / (MOUTH_MAX_OPEN - peak_near_close))
                 
                 velocity = int(max(0.0, min(ratio, 1.0)) * 127)
 

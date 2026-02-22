@@ -208,6 +208,7 @@ DRUMS OPTIONS:
 
 FLUTE OPTIONS:
   --flute-inv                        Invert blow logic (higher mouth opening = louder) (default: lower mouth opening = louder)
+    --flute-angle-inv                  Invert flute angle follow (inclina para o lado oposto dos lábios)
   --flute-max MOUTH_MAX              Maximum mouth opening threshold (default: 0.05)
   --flute-min MOUTH_MIN              Minimum mouth opening threshold / peak (default: 0.01)
     --flute-follow-sens VALUE          Sensibilidade de seguimento da flauta pela boca (0.0 a 1.0, default: 0.22)
@@ -365,6 +366,13 @@ def create_argparse():
     )
 
     flute_group.add_argument(
+        "--flute-angle-inv",
+        action="store_true",
+        dest="flute_angle_invert",
+        help="Invert flute angle follow (inclina para o lado oposto dos lábios)"
+    )
+
+    flute_group.add_argument(
         "--flute-max",
         type=float,
         default=None,
@@ -507,6 +515,7 @@ def start_flute(args, rec_opts):
     print(f"    Mouth Max: {mouth_max}")
     print(f"    Precision: {args.flute_precision}")
     print(f"    Invert Blow: {args.flute_invert}")
+    print(f"    Invert Angle: {args.flute_angle_invert}")
     print(f"    Follow Sensitivity: {args.flute_follow_sens}")
     
     flute = safe_import_module("src.instruments.flute")
@@ -519,6 +528,7 @@ def start_flute(args, rec_opts):
         hole_radius=hole_radius,
         hole_spacing=hole_spacing,
         invert_blow=args.flute_invert,
+        invert_angle=args.flute_angle_invert,
         follow_sensitivity=args.flute_follow_sens,
         rec_options=rec_opts,
         resolution_profile=args.resolution,
