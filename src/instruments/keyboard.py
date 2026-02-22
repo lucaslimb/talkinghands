@@ -51,6 +51,10 @@ COLOR_KEY_DIVIDER = (100, 100, 100)
 COLOR_HIT = (255, 255, 0)     # Amarelo (RGB)
 COLOR_ARMED = (255, 165, 0)   # Laranja (RGB)
 COLOR_HOLD = (0, 200, 0)      # Verde Escuro
+COLOR_KEY_WHITE_BG = (0, 0, 0, 30)
+COLOR_KEY_BLACK_BG = (0, 0, 0, 72)
+BLACK_KEY_HEIGHT_RATIO = 0.62
+BLACK_KEY_WIDTH_RATIO = 0.44
 
 # ------------------------
 # AUDIO SETUP
@@ -90,8 +94,12 @@ def audio_thread_target():
 # ------------------------
 # ESTADOS
 # ------------------------
-SCALE_INTERVALS = [0, 2, 4, 5, 7, 9, 11]
+SCALE_INTERVALS = list(range(12))
 BASE_NOTE = 48  # C3
+BLACK_KEY_NOTE_CLASSES = {1, 3, 6, 8, 10}
+WHITE_KEY_NOTE_CLASSES = {0, 2, 4, 5, 7, 9, 11}
+WHITE_CLASS_TO_OFFSET = {0: 0.0, 2: 1.0, 4: 2.0, 5: 3.0, 7: 4.0, 9: 5.0, 11: 6.0}
+BLACK_CLASS_TO_CENTER_OFFSET = {1: 0.5, 3: 1.5, 6: 3.5, 8: 4.5, 10: 5.5}
 
 NOTE_LABELS_PT = {
     0: "Dó",
@@ -143,6 +151,107 @@ def get_note_label(note, key_width):
 
     return f"{pt_name}{octave} - {en_name}{octave}"
 
+
+def is_black_key(midi_note):
+    return (int(midi_note) % 12) in BLACK_KEY_NOTE_CLASSES
+
+
+def _compute_raw_key_units(midi_note):
+    note = int(midi_note)
+    note_class = note % 12
+    octave = note // 12
+
+    if note_class in WHITE_KEY_NOTE_CLASSES:
+        left = (octave * 7.0) + WHITE_CLASS_TO_OFFSET[note_class]
+        right = left + 1.0
+        return left, right, False
+
+    center = (octave * 7.0) + BLACK_CLASS_TO_CENTER_OFFSET[note_class]
+    half_width = BLACK_KEY_WIDTH_RATIO * 0.5
+    return center - half_width, center + half_width, True
+
+
+def apply_piano_geometry(keys):
+    if not keys:
+        return
+
+    sorted_keys = sorted(keys, key=lambda item: int(item["note"]))
+    white_keys = [key for key in sorted_keys if not is_black_key(key["note"])]
+
+    if not white_keys:
+        n = len(sorted_keys)
+        width = 1.0 / max(1, n)
+        for idx, key in enumerate(sorted_keys):
+            key["is_black"] = bool(is_black_key(key["note"]))
+            key["x_start_norm"] = idx * width
+            key["x_end_norm"] = min(1.0, (idx + 1) * width)
+        return
+
+    white_count = len(white_keys)
+    white_width = 1.0 / max(1, white_count)
+
+    for idx, key in enumerate(white_keys):
+        key["is_black"] = False
+        key["x_start_norm"] = idx * white_width
+        key["x_end_norm"] = min(1.0, (idx + 1) * white_width)
+
+    white_by_note = {int(key["note"]): key for key in white_keys}
+    white_notes = sorted(white_by_note.keys())
+
+    for key in sorted_keys:
+        note = int(key["note"])
+        if not is_black_key(note):
+            continue
+
+        key["is_black"] = True
+        prev_candidates = [n for n in white_notes if n < note]
+        next_candidates = [n for n in white_notes if n > note]
+
+        prev_note = prev_candidates[-1] if prev_candidates else None
+        next_note = next_candidates[0] if next_candidates else None
+
+        if prev_note is not None and next_note is not None:
+            prev_white = white_by_note[prev_note]
+            next_white = white_by_note[next_note]
+            center = (prev_white["x_end_norm"] + next_white["x_start_norm"]) * 0.5
+        elif prev_note is not None:
+            prev_white = white_by_note[prev_note]
+            center = prev_white["x_end_norm"] - (white_width * 0.5)
+        elif next_note is not None:
+            next_white = white_by_note[next_note]
+            center = next_white["x_start_norm"] + (white_width * 0.5)
+        else:
+            center = 0.5
+
+        black_width = white_width * BLACK_KEY_WIDTH_RATIO
+        key["x_start_norm"] = max(0.0, center - (black_width * 0.5))
+        key["x_end_norm"] = min(1.0, center + (black_width * 0.5))
+
+
+def get_key_index_from_x(x_norm):
+    if not PIANO_KEYS:
+        return 0
+
+    x = max(0.0, min(1.0, float(x_norm)))
+
+    for idx, key in enumerate(PIANO_KEYS):
+        if key.get("is_black") and key["x_start_norm"] <= x <= key["x_end_norm"]:
+            return idx
+
+    for idx, key in enumerate(PIANO_KEYS):
+        if (not key.get("is_black")) and key["x_start_norm"] <= x <= key["x_end_norm"]:
+            return idx
+
+    best_idx = 0
+    best_dist = float("inf")
+    for idx, key in enumerate(PIANO_KEYS):
+        center = (key["x_start_norm"] + key["x_end_norm"]) * 0.5
+        dist = abs(center - x)
+        if dist < best_dist:
+            best_dist = dist
+            best_idx = idx
+    return best_idx
+
 def build_note_pool():
     pool = []
     octave = 0
@@ -178,26 +287,15 @@ def select_notes_for_key_count(num_keys):
     if num_keys >= available:
         return NOTE_POOL.copy()
 
-    step = (available - 1) / (num_keys - 1)
-    indices = []
-    prev_idx = -1
-
-    for i in range(num_keys):
-        raw_idx = int(round(i * step))
-        min_idx = prev_idx + 1
-        max_idx = (available - 1) - ((num_keys - 1) - i)
-        idx = max(min_idx, min(raw_idx, max_idx))
-        indices.append(idx)
-        prev_idx = idx
-
-    return [NOTE_POOL[i] for i in indices]
+    return NOTE_POOL[:num_keys]
 
 
 def build_piano_keys(num_keys):
     keys = []
     selected_notes = select_notes_for_key_count(num_keys)
     for note_val in selected_notes:
-        keys.append({"note": note_val, "last_hit": 0, "is_active": False, "off_timer": 0})
+        keys.append({"note": note_val, "last_hit": 0, "is_active": False, "off_timer": 0, "is_black": is_black_key(note_val), "x_start_norm": 0.0, "x_end_norm": 1.0})
+    apply_piano_geometry(keys)
     return keys
 
 
@@ -312,8 +410,7 @@ def processar_dedo(label, fid, y_current, x_current, table_y, cx, cy, screen, h_
         if (current_time - last_action_time) > ARMED_TIMEOUT:
             state["finger_status"][fid] = "IDLE"
         elif y_current >= (table_y - TOUCH_TOLERANCE):
-            key_idx = int(x_current * NUM_KEYS)
-            key_idx = max(0, min(key_idx, NUM_KEYS - 1))
+            key_idx = get_key_index_from_x(x_current)
             key_data = PIANO_KEYS[key_idx]
             note = key_data["note"]
             audio_queue.put(("on", note))
@@ -334,8 +431,7 @@ def processar_dedo(label, fid, y_current, x_current, table_y, cx, cy, screen, h_
             state["finger_timers"][fid] = current_time
             return
 
-        current_key_idx = int(x_current * NUM_KEYS)
-        current_key_idx = max(0, min(current_key_idx, NUM_KEYS - 1))
+        current_key_idx = get_key_index_from_x(x_current)
         new_note = PIANO_KEYS[current_key_idx]["note"]
 
         if new_note != active_note:
@@ -405,29 +501,60 @@ fps_tracker = FPSTracker(update_interval=10)
 
 def draw_ui_fast_pygame(screen, table_y, w, h, font, show_note_names=False, names_font=None):
     table_px = int(table_y * h)
-    key_width = w / NUM_KEYS
+    total_h = h - table_px
+    black_h = int(total_h * BLACK_KEY_HEIGHT_RATIO)
     
     pygame.draw.line(screen, COLOR_TABLE_LINE, (0, table_px), (w, table_px), 2)
     
     overlay = pygame.Surface((w, h), pygame.SRCALPHA)
     
-    for i, key in enumerate(PIANO_KEYS):
-        x1 = int(i * key_width)
+    white_keys = [key for key in PIANO_KEYS if not key.get("is_black")]
+    black_keys = [key for key in PIANO_KEYS if key.get("is_black")]
+
+    for key in white_keys:
+        x1 = int(key["x_start_norm"] * w)
+        x2 = int(key["x_end_norm"] * w)
+        key_w = max(1, x2 - x1)
+
+        pygame.draw.rect(overlay, COLOR_KEY_WHITE_BG, (x1, table_px, key_w, total_h))
         pygame.draw.line(screen, COLOR_KEY_DIVIDER, (x1, table_px), (x1, h), 1)
-        
+
         if key["is_active"] or (time.time() - key["last_hit"]) < 0.15:
-            x2 = int((i + 1) * key_width)
-            rect_h = h - table_px
-            # (R, G, B, Alpha) -> Alpha 76 é aprox 0.3 do OpenCV (255 * 0.3)
-            pygame.draw.rect(overlay, (*COLOR_HIT, 76), (x1, table_px, x2-x1, rect_h))
+            pygame.draw.rect(overlay, (*COLOR_HIT, 76), (x1, table_px, key_w, total_h))
 
         if show_note_names:
             draw_font = names_font if names_font is not None else font
-            label = get_note_label(key["note"], key_width)
+            label = get_note_label(key["note"], key_w)
             if label:
                 text_surface = draw_font.render(label, True, (245, 245, 245))
-                text_x = x1 + max(2, int((key_width - text_surface.get_width()) / 2))
+                text_x = x1 + max(2, int((key_w - text_surface.get_width()) / 2))
                 text_y = table_px + 8
+                shadow_surface = draw_font.render(label, True, (20, 20, 20))
+                screen.blit(shadow_surface, (text_x + 1, text_y + 1))
+                screen.blit(text_surface, (text_x, text_y))
+
+    if white_keys:
+        last_white_x = int(white_keys[-1]["x_end_norm"] * w)
+        pygame.draw.line(screen, COLOR_KEY_DIVIDER, (last_white_x, table_px), (last_white_x, h), 1)
+
+    for key in black_keys:
+        x1 = int(key["x_start_norm"] * w)
+        x2 = int(key["x_end_norm"] * w)
+        key_w = max(1, x2 - x1)
+
+        pygame.draw.rect(overlay, COLOR_KEY_BLACK_BG, (x1, table_px, key_w, black_h))
+        pygame.draw.rect(screen, (70, 70, 70), (x1, table_px, key_w, black_h), 1)
+
+        if key["is_active"] or (time.time() - key["last_hit"]) < 0.15:
+            pygame.draw.rect(overlay, (*COLOR_HIT, 90), (x1, table_px, key_w, black_h))
+
+        if show_note_names:
+            draw_font = names_font if names_font is not None else font
+            label = get_note_label(key["note"], key_w)
+            if label:
+                text_surface = draw_font.render(label, True, (245, 245, 245))
+                text_x = x1 + max(1, int((key_w - text_surface.get_width()) / 2))
+                text_y = table_px + 6
                 shadow_surface = draw_font.render(label, True, (20, 20, 20))
                 screen.blit(shadow_surface, (text_x + 1, text_y + 1))
                 screen.blit(text_surface, (text_x, text_y))
