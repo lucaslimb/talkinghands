@@ -103,7 +103,7 @@ def select_instrument_by_name(name):
         fs.cc(LIVE_CHANNEL, 11, 127) # Reseta volume inicial
         
         sf_path = settings.SF2_PATHS.get(sf_key)
-        recorder.set_instrument(sf_path, bank, preset, is_drum=False)
+        recorder.set_instrument(sf_path, bank, preset, is_drum=False, instrument_name=name)
         print(f">>> FLUTE: {name} (B:{bank} P:{preset})")
 
 def audio_thread():

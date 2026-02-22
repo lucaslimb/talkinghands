@@ -18,11 +18,16 @@ SOUNDFONTS_DIR = ASSETS_DIR / "soundfonts"
 
 # Recordings directory: use ~/Documents on Linux, project folder on Windows
 if sys.platform.startswith('linux'):
-    RECORDINGS_DIR = Path.home() / "Documents" / "TalkingHands Recordings"
+    RECORDINGS_ROOT = Path.home() / "Documents" / "TalkingHands Recordings"
 else:
-    RECORDINGS_DIR = BASE_DIR / "recordings"
+    RECORDINGS_ROOT = BASE_DIR / "recordings"
 
-os.makedirs(RECORDINGS_DIR, exist_ok=True)
+MIDS_DIR = RECORDINGS_ROOT / "mids"
+WAV_DIR = RECORDINGS_ROOT / "wav"
+RECORDINGS_DIR = RECORDINGS_ROOT  # compat
+
+os.makedirs(MIDS_DIR, exist_ok=True)
+os.makedirs(WAV_DIR, exist_ok=True)
 
 SF2_PATHS = {
     "master": str(SOUNDFONTS_DIR / "keyboard" / "module_master.sf2"),
@@ -31,7 +36,7 @@ SF2_PATHS = {
     "flute_alt":     str(SOUNDFONTS_DIR / "flute" / "Flutes.sf2"),
 }
 
-RECORDINGS_FOLDER = str(RECORDINGS_DIR)
+RECORDINGS_FOLDER = str(RECORDINGS_ROOT)
 
 INSTRUMENTS = {
     # Sound name: (file key, bank, preset)
@@ -218,8 +223,6 @@ MOUTH_MAX_OPEN = FLUTE_MOUTH_MAX_OPEN
 HOLE_RADIUS = FLUTE_HOLE_RADIUS
 HOLE_SPACING = FLUTE_HOLE_SPACING
 
-# Gravação
-RECORD_SAVE_MID = True              
-RECORD_SAVE_MP3 = False             
-RECORD_SAVE_WAV = False             
-RECORD_SEPARATE_PLAYBACK_FOLDER = False
+# Gravação (sempre ativa para MID e WAV)
+RECORD_SAVE_MID = True
+RECORD_SAVE_WAV = True

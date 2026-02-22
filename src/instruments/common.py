@@ -207,7 +207,7 @@ def select_instrument(fs, instrument_name, loaded_sfids, recorder, channel=0, is
         
         sf_path = settings.SF2_PATHS.get(sf_key)
         if sf_path:
-            recorder.set_instrument(sf_path, bank, preset, is_drum=is_drum)
+            recorder.set_instrument(sf_path, bank, preset, is_drum=is_drum, instrument_name=instrument_name)
         
         return True
     except Exception as e:
@@ -301,8 +301,9 @@ def draw_recording_indicator(screen, width, height, font):
     Draw a red recording indicator (circle + "REC" text) in top-right corner.
     Typical usage: if recorder.is_recording: draw_recording_indicator(...)
     """
-    pygame.draw.circle(screen, (255, 0, 0), (width - 90, 30), 10)
-    draw_text(screen, "REC", (width - 75, 20), font, (255, 0, 0))
+    indicator_y = 68
+    pygame.draw.circle(screen, (255, 0, 0), (width - 120, indicator_y), 10)
+    draw_text(screen, "REC", (width - 105, indicator_y - 10), font, (255, 0, 0))
 
 
 def draw_playback_indicator(screen, width, font):
@@ -310,7 +311,7 @@ def draw_playback_indicator(screen, width, font):
     Draw a playback indicator ("PLAYBACK" text) in top-right area.
     Typical usage: if recorder.is_playing: draw_playback_indicator(...)
     """
-    draw_text(screen, "PLAYBACK", (width - 200, 30), font, (255, 0, 0))
+    draw_text(screen, "PLAYBACK", (width - 220, 92), font, (255, 0, 0))
 
 
 def draw_menu_instructions(screen, width, height, font, instructions_list):

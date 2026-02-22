@@ -407,7 +407,7 @@ def select_kit_by_name(name):
     
     for i in range(POLYPHONY_CHANNELS):
         fs.program_select(i, drum_sfid, bank, preset)
-    recorder.set_instrument(FIXED_SF2_PATH, bank, preset, is_drum=True)
+    recorder.set_instrument(FIXED_SF2_PATH, bank, preset, is_drum=True, instrument_name=name)
 
     return True
 

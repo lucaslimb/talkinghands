@@ -23,7 +23,7 @@
 - flute bell
 - kotola
 - honky tonk
-- softep
+- soft ep
 - ep2
 - synth piano
 - rotary organ
@@ -54,8 +54,8 @@
 - power
 - vintage
 - bright
-- powertight
-- powerwide
+- power tight
+- power wide
 - latin
 
 #### Elementos adicionais da bateria:

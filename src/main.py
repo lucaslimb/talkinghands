@@ -241,14 +241,12 @@ GLOBAL OPTIONS:
     -r, --resolution PROFILE           Resolution/FPS profile (HEIGHT+FPS). HEIGHT min/max: 240..4320, FPS min/max: 1..240 (default: 108030)
         --hands-mc {0,1}                   Hands model complexity (default: 1)
         --pose-mc {0,1,2}                  Pose model complexity for drums feet tracking (default: 1)
-    -t, --trackers                     Show hand/face trackers on screen (boolean flag: False|True, default: False)
-    -f, --separate-folders             Keep playback and recordings in different folders (boolean flag: False|True, default: False)
+    -t, --trackers                     Show hand/face trackers on screen (default: False)
 
-RECORDING FORMATS OPTIONS:
-    --mid                              Save .MID files (boolean flag: False|True, default: True)
-    --no-mid                           Disable .MID file saving (sets --mid=False)
-    --mp3                              Save .MP3 files (boolean flag: False|True, default: False)
-    --wav                              Save .WAV files (boolean flag: False|True, default: False)
+RECORDING BEHAVIOR:
+    - MID e WAV são sempre gerados por padrão
+    - Saída de notas MIDI: recordings/mids/
+    - Saída de áudio final (gravações/mesclas): recordings/wav/
 
 KEYBOARD OPTIONS:
     --kbd-lf LIFT_THRESHOLD            Lift threshold (float > 0, default: 0.02; suggested: 0.005..0.10)
@@ -257,7 +255,7 @@ KEYBOARD OPTIONS:
 
 DRUMS OPTIONS:
     --drm-model {default,complete}      Drum layout model (string values: default|complete, default: default)
-    --drm-elems a,b,c                    Drums elements list (comma-separated). Allowed: crash,ride,splash,china,tom_hi,tom_mid,tom_low,hihat,open_hh,snare,snare_alt,rimshot,floor,kick,kick_alt,hh_pedal,cowbell,clap,tamb,ride_bell,crash2,ride2,vibra_slap,shaker,cabasa,maracas,guiro_s,guiro_l,agogo_hi,agogo_lo,clave,wood_hi,wood_lo,tri_mute,tri_open,bongo_hi,bongo_mid,bongo_lo,bongo_deep,conga_hi,conga_mid,conga_lo,timbale_hi,timbale_lo
+    --drm-elems a,b,c                   Drums elements list (comma-separated). Allowed: crash,ride,splash,china,tom_hi,tom_mid,tom_low,hihat,open_hh,snare,snare_alt,rimshot,floor,kick,kick_alt,hh_pedal,cowbell,clap,tamb,ride_bell,crash2,ride2,vibra_slap,shaker,cabasa,maracas,guiro_s,guiro_l,agogo_hi,agogo_lo,clave,wood_hi,wood_lo,tri_mute,tri_open,bongo_hi,bongo_mid,bongo_lo,bongo_deep,conga_hi,conga_mid,conga_lo,timbale_hi,timbale_lo
     --drm-tt TOUCH_TOLERANCE            Touch tolerance (float > 0, default: 0.01; suggested: 0.001..0.10)
     --drm-tv TOUCH_VELOCITY             Touch velocity threshold (float > 0, default: 0.012; suggested: 0.001..0.10)
 
@@ -270,11 +268,11 @@ FLUTE OPTIONS:
     --flt-p {small,medium,large}        Hole size preset (string values: small|medium|large, default: medium)
 
 EXAMPLES:
-    python main.py -i "Classic" -tf
-    python main.py -i "Piano" -r 108030
-    python main.py -i "Grand Piano" --kbd-sd 0.5 --kbd-lf 0.025
-    python main.py -i "Recorder" --flt-max 0.06 --flt-p medium
-    python main.py -i "TinWhistle" --flt-inv --flt-ang-inv
+    python src/main.py -i "Classic" -tf
+    python src/main.py -i "Piano" -r 108030
+    THEngine.exe -i "Grand Piano" --kbd-sd 0.5 --kbd-lf 0.025
+    THEngine.exe -i "Recorder" --flt-max 0.06 --flt-p medium
+    THEngine.exe -i "TinWhistle" --flt-inv --flt-ang-inv
 """
     print(doc)
     sys.exit(0)
@@ -287,13 +285,6 @@ def create_argparse():
         description="Virtual instrument platform using computer vision",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         add_help=False,  # Disable default help to prevent automatic exit
-        epilog="""
-    Examples:
-    python main.py -i "Classic" -tf
-    python main.py -i "Grand Piano" --kbd-sd 0.5 --kbd-lf 0.025
-    python main.py -i "Recorder" --flt-max 0.06 --flt-p medium
-    python main.py -i "TinWhistle" --flt-inv --flt-ang-inv
-        """
     )
     
     # Add custom help argument
@@ -314,7 +305,7 @@ def create_argparse():
     parser.add_argument(
         "-i", "--instrument",
         type=validate_instrument,
-        required=False,  # Made optional to allow help without instrument
+        required=False,  
         help="Instrument name to start (e.g., 'Classic', 'Power', 'Grand Piano', 'Recorder')"
     )
 
@@ -350,36 +341,7 @@ def create_argparse():
         help="Show hand/face trackers on screen (bool flag, default: False)"
     )
     
-    parser.add_argument(
-        "-f", "--separate-folders",
-        action="store_true",
-        help="Keep playback and recordings in different folders (bool flag, default: False)"
-    )
-    
-    # Recording format options
-    rec_group = parser.add_argument_group("Recording Formats")
-    rec_group.add_argument(
-        "--mid",
-        action="store_true",
-        default=True,
-        help="Save .MID files (bool flag, default: True)"
-    )
-    rec_group.add_argument(
-        "--no-mid",
-        action="store_false",
-        dest="mid",
-        help="Disable .MID file saving"
-    )
-    rec_group.add_argument(
-        "--mp3",
-        action="store_true",
-        help="Save .MP3 files (bool flag, default: False)"
-    )
-    rec_group.add_argument(
-        "--wav",
-        action="store_true",
-        help="Save .WAV files (bool flag, default: False)"
-    )
+    # Recording format options are fixed by design (MID + WAV always on)
     
     # Keyboard arguments
     kbd_group = parser.add_argument_group("Keyboard Options")
@@ -526,9 +488,7 @@ def get_defaults():
         },
         "recording": {
             "mid": bool(getattr(settings, 'RECORD_SAVE_MID', True)),
-            "mp3": bool(getattr(settings, 'RECORD_SAVE_MP3', False)),
-            "wav": bool(getattr(settings, 'RECORD_SAVE_WAV', False)),
-            "separate_playback": bool(getattr(settings, 'RECORD_SEPARATE_PLAYBACK_FOLDER', False)),
+            "wav": bool(getattr(settings, 'RECORD_SAVE_WAV', True)),
         }
     }
     return defaults
@@ -536,13 +496,9 @@ def get_defaults():
 
 def build_recording_options(args):
     """Build recording options dict from args"""
-    defaults = get_defaults()
-    
     return {
-        "save_mid": args.mid,
-        "save_mp3": args.mp3,
-        "save_wav": args.wav,
-        "separate_playback": args.separate_folders or defaults["recording"]["separate_playback"]
+        "save_mid": True,
+        "save_wav": True,
     }
 
 
@@ -824,9 +780,9 @@ def main():
         
         print(f">>> Recording options:")
         print(f"    .MID: {rec_opts['save_mid']}")
-        print(f"    .MP3: {rec_opts['save_mp3']}")
         print(f"    .WAV: {rec_opts['save_wav']}")
-        print(f"    Separate folders: {rec_opts['separate_playback']}")
+        print(f"    MIDs folder: {getattr(settings, 'MIDS_DIR', 'recordings/mids')}")
+        print(f"    WAV folder: {getattr(settings, 'WAV_DIR', 'recordings/wav')}")
         print(
             f">>> Model complexity: hands={runtime_config['hand_model_complexity']}, "
             f"drums_pose={runtime_config['drums_pose_model_complexity']}"
