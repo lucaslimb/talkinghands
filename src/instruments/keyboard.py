@@ -93,6 +93,56 @@ def audio_thread_target():
 SCALE_INTERVALS = [0, 2, 4, 5, 7, 9, 11]
 BASE_NOTE = 48  # C3
 
+NOTE_LABELS_PT = {
+    0: "Dó",
+    1: "Dó#/Réb",
+    2: "Ré",
+    3: "Ré#/Mib",
+    4: "Mi",
+    5: "Fá",
+    6: "Fá#/Solb",
+    7: "Sol",
+    8: "Sol#/Láb",
+    9: "Lá",
+    10: "Lá#/Sib",
+    11: "Si",
+}
+
+NOTE_LABELS_EN = {
+    0: "C",
+    1: "C#/Db",
+    2: "D",
+    3: "D#/Eb",
+    4: "E",
+    5: "F",
+    6: "F#/Gb",
+    7: "G",
+    8: "G#/Ab",
+    9: "A",
+    10: "A#/Bb",
+    11: "B",
+}
+
+
+def get_note_label(note, key_width):
+    midi_note = int(note)
+    note_class = midi_note % 12
+    octave = (midi_note // 12) - 1
+
+    pt_name = NOTE_LABELS_PT.get(note_class, "")
+    en_name = NOTE_LABELS_EN.get(note_class, "")
+
+    if key_width < 56:
+        primary_en = en_name.split('/')[0]
+        return f"{primary_en}{octave}"
+
+    if key_width < 92:
+        primary_pt = pt_name.split('/')[0]
+        primary_en = en_name.split('/')[0]
+        return f"{primary_pt}{octave}-{primary_en}{octave}"
+
+    return f"{pt_name}{octave} - {en_name}{octave}"
+
 def build_note_pool():
     pool = []
     octave = 0
@@ -353,7 +403,7 @@ class FPSTracker:
 
 fps_tracker = FPSTracker(update_interval=10)
 
-def draw_ui_fast_pygame(screen, table_y, w, h, font):
+def draw_ui_fast_pygame(screen, table_y, w, h, font, show_note_names=False, names_font=None):
     table_px = int(table_y * h)
     key_width = w / NUM_KEYS
     
@@ -370,6 +420,17 @@ def draw_ui_fast_pygame(screen, table_y, w, h, font):
             rect_h = h - table_px
             # (R, G, B, Alpha) -> Alpha 76 é aprox 0.3 do OpenCV (255 * 0.3)
             pygame.draw.rect(overlay, (*COLOR_HIT, 76), (x1, table_px, x2-x1, rect_h))
+
+        if show_note_names:
+            draw_font = names_font if names_font is not None else font
+            label = get_note_label(key["note"], key_width)
+            if label:
+                text_surface = draw_font.render(label, True, (245, 245, 245))
+                text_x = x1 + max(2, int((key_width - text_surface.get_width()) / 2))
+                text_y = table_px + 8
+                shadow_surface = draw_font.render(label, True, (20, 20, 20))
+                screen.blit(shadow_surface, (text_x + 1, text_y + 1))
+                screen.blit(text_surface, (text_x, text_y))
     
     screen.blit(overlay, (0,0))
 
@@ -388,6 +449,7 @@ def draw_ui_fast_pygame(screen, table_y, w, h, font):
             "1 -> iniciar gravacao",
             "2 -> encerrar gravacao",
             "3 -> iniciar/interromper playback",
+            "8 -> ocultar/mostrar nomes das notas",
             "9 -> ocultar/mostrar trackers",
             "0 -> ocultar/mostrar menu"
         ]
@@ -424,6 +486,7 @@ def start_piano(chosen_instrument, user_sustain=None, lift_threshold=None, touch
 
     global show_menu
     tracker_visible = bool(show_trackers)
+    names_visible = False
 
     if rec_options:
         recorder.set_options(rec_options)
@@ -464,6 +527,7 @@ def start_piano(chosen_instrument, user_sustain=None, lift_threshold=None, touch
         display_width=DISPLAY_W, display_height=DISPLAY_H,
         title="Talking Hands - Teclado"
     )
+    names_font = pygame.font.SysFont("Arial", 12, bold=False)
 
     print(">>> TECLADO INICIADO (Pygame)")
     running = True
@@ -520,6 +584,8 @@ def start_piano(chosen_instrument, user_sustain=None, lift_threshold=None, touch
                         recorder.stop_playback()
                     elif event.key == pygame.K_9:
                         tracker_visible = not tracker_visible
+                    elif event.key == pygame.K_8:
+                        names_visible = not names_visible
                     elif event.key == pygame.K_0:
                         show_menu = not show_menu
 
@@ -538,7 +604,15 @@ def start_piano(chosen_instrument, user_sustain=None, lift_threshold=None, touch
             
             main_surface.blit(frame_surface, (0, 0))
 
-            draw_ui_fast_pygame(main_surface, global_state["table_y"], LOGICAL_W, LOGICAL_H, main_font)
+            draw_ui_fast_pygame(
+                main_surface,
+                global_state["table_y"],
+                LOGICAL_W,
+                LOGICAL_H,
+                main_font,
+                show_note_names=names_visible,
+                names_font=names_font,
+            )
 
             # Aqui a IA processa os resultados do MediaPipe para cada mão e dedo, atualizando os estados, com o processar_dedo()
             if results.multi_hand_landmarks:

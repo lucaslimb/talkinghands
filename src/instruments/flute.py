@@ -62,6 +62,51 @@ COLOR_TEXT = (255, 255, 255)
 BASE_NOTE = 60 # C4
 SCALE_FLUTE = [0, 2, 4, 5, 7, 9, 11, 12] 
 
+NOTE_LABELS_PT = {
+    0: "Dó",
+    1: "Dó#/Réb",
+    2: "Ré",
+    3: "Ré#/Mib",
+    4: "Mi",
+    5: "Fá",
+    6: "Fá#/Solb",
+    7: "Sol",
+    8: "Sol#/Láb",
+    9: "Lá",
+    10: "Lá#/Sib",
+    11: "Si",
+}
+
+NOTE_LABELS_EN = {
+    0: "C",
+    1: "C#/Db",
+    2: "D",
+    3: "D#/Eb",
+    4: "E",
+    5: "F",
+    6: "F#/Gb",
+    7: "G",
+    8: "G#/Ab",
+    9: "A",
+    10: "A#/Bb",
+    11: "B",
+}
+
+
+def get_midi_note_label(note):
+    midi_note = int(note)
+    note_class = midi_note % 12
+    octave = (midi_note // 12) - 1
+    pt_name = NOTE_LABELS_PT.get(note_class, "")
+    en_name = NOTE_LABELS_EN.get(note_class, "")
+    return f"{pt_name}{octave} - {en_name}{octave}"
+
+
+def get_flute_note_for_first_open_index(first_open_index):
+    scale_index = NUM_HOLES - int(first_open_index)
+    scale_index = max(0, min(scale_index, len(SCALE_FLUTE) - 1))
+    return BASE_NOTE + SCALE_FLUTE[scale_index]
+
 # ------------------------
 # SETUP DE ÁUDIO
 # ------------------------
@@ -292,7 +337,7 @@ def is_mouse_over_flute(mx, my, w, h):
 
 # draw_text is imported from src.instruments.common
 
-def draw_flute_ui_pygame(screen, w, h, velocity, face_landmarks, font, is_dragging=False, show_trackers=False):
+def draw_flute_ui_pygame(screen, w, h, velocity, face_landmarks, font, is_dragging=False, show_trackers=False, show_note_name=False, current_note=None, note_font=None):
     overlay = pygame.Surface((w, h), pygame.SRCALPHA)
     
     if not holes: return
@@ -352,6 +397,46 @@ def draw_flute_ui_pygame(screen, w, h, velocity, face_landmarks, font, is_draggi
         
         pygame.draw.circle(overlay, color_with_alpha, (cx, cy), radius)
         pygame.draw.circle(overlay, (50, 50, 50), (cx, cy), radius, 1)
+
+    if show_note_name:
+        draw_font = note_font if note_font is not None else font
+
+        for hole in holes:
+            cx = int(hole.x_rel * w)
+            cy = int(hole.y_rel * h)
+            radius = int(HOLE_RADIUS * w)
+
+            hole_note = get_flute_note_for_first_open_index(hole.index)
+            note_label = get_midi_note_label(hole_note)
+            is_current = (current_note is not None and int(current_note) == int(hole_note))
+            label_color = (255, 240, 80) if is_current else (245, 245, 245)
+
+            label_surface = draw_font.render(note_label, True, label_color)
+            shadow_surface = draw_font.render(note_label, True, (20, 20, 20))
+
+            label_x = cx + radius + 8
+            label_y = cy - (label_surface.get_height() // 2)
+
+            if label_x + label_surface.get_width() > (w - 6):
+                label_x = cx - radius - 8 - label_surface.get_width()
+            label_x = max(6, label_x)
+            label_y = max(6, min(h - label_surface.get_height() - 6, label_y))
+
+            screen.blit(shadow_surface, (label_x + 1, label_y + 1))
+            screen.blit(label_surface, (label_x, label_y))
+
+        closed_note = BASE_NOTE + SCALE_FLUTE[0]
+        closed_label = f"{get_midi_note_label(closed_note)}"
+        closed_color = (255, 240, 80) if (current_note is not None and int(current_note) == int(closed_note)) else (230, 230, 230)
+        closed_surface = draw_font.render(closed_label, True, closed_color)
+        closed_shadow = draw_font.render(closed_label, True, (20, 20, 20))
+
+        closed_x = max(8, int(x_start - (closed_surface.get_width() // 2)))
+        closed_x = min(w - closed_surface.get_width() - 8, closed_x)
+        closed_y = max(8, min(h - closed_surface.get_height() - 8, int(y_start - 30)))
+
+        screen.blit(closed_shadow, (closed_x + 1, closed_y + 1))
+        screen.blit(closed_surface, (closed_x, closed_y))
 
     # 5. Pontos da Boca (Face Mesh)
     if show_trackers and face_landmarks:
@@ -442,6 +527,8 @@ def start_flute(chosen_instrument, mouth_peak=0.01, mouth_max=0.05, hole_radius=
     last_sent_velocity = 0
     show_gui = False
     manual_blow = False
+    note_names_visible = False
+    note_font = pygame.font.SysFont("Arial", 14, bold=False)
 
     running = True
 
@@ -495,6 +582,8 @@ def start_flute(chosen_instrument, mouth_peak=0.01, mouth_max=0.05, hole_radius=
                         flute_angle = FLUTE_VERTICAL_BASE_ANGLE
                         update_hole_positions_with_angle(flute_x, flute_y, flute_angle)
                         print(">>> Posição da flauta resetada.")
+                    elif event.key == pygame.K_8:
+                        note_names_visible = not note_names_visible
                     elif event.key == pygame.K_9:
                         tracker_visible = not tracker_visible
                     elif event.key == pygame.K_0: show_gui = not show_gui
@@ -561,10 +650,9 @@ def start_flute(chosen_instrument, mouth_peak=0.01, mouth_max=0.05, hole_radius=
 
             res_hands = hands.process(frame_rgb)
             process_interaction(res_hands.multi_hand_landmarks, LOGICAL_W, LOGICAL_H, main_surface, show_trackers=tracker_visible)
+            target_note = calculate_current_note()
             
             if velocity > 0:
-                target_note = calculate_current_note()
-                
                 if abs(velocity - last_sent_velocity) > VELOCITY_CHANGE_THRESHOLD or velocity == 127:
                     audio_queue.put(("cc", 11, velocity))
                     last_sent_velocity = velocity
@@ -581,7 +669,19 @@ def start_flute(chosen_instrument, mouth_peak=0.01, mouth_max=0.05, hole_radius=
                     last_note = -1
                     last_sent_velocity = 0
 
-            draw_flute_ui_pygame(main_surface, LOGICAL_W, LOGICAL_H, velocity, face_landmarks_data, font, dragging_flute, show_trackers=tracker_visible)
+            draw_flute_ui_pygame(
+                main_surface,
+                LOGICAL_W,
+                LOGICAL_H,
+                velocity,
+                face_landmarks_data,
+                font,
+                dragging_flute,
+                show_trackers=tracker_visible,
+                show_note_name=note_names_visible,
+                current_note=target_note,
+                note_font=note_font,
+            )
             
             if show_gui:
                 instructions = [
@@ -590,6 +690,7 @@ def start_flute(chosen_instrument, mouth_peak=0.01, mouth_max=0.05, hole_radius=
                     "2 -> encerrar gravacao",
                     "3 -> iniciar/interromper playback",
                     "5 -> resetar posicao da flauta",
+                    "8 -> ocultar/mostrar nomes das notas",
                     "9 -> ocultar/mostrar trackers",
                     "0 -> ocultar/mostrar menu"
                 ]

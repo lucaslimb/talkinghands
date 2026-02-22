@@ -4,12 +4,18 @@
 
 #### COM BUILDED .EXE
 
-Apenas execute o exe a partir do seu path com o args desejeados
+Descompacte o arquivo .zip baixado. Vai haver uma pasta _internal e o THEngine.exe
+
+Abra o terminal de comandos no endereço da pasta descompactada.
+
+Apenas execute o exe com o args desejeados
 ```bash
 THEngine.exe <args>
 ```
 
 Use o arg -h para exibir a documentação da CLI
+
+Isso é o que o Launcher faz por baixo dos panos: executa a Engine passando os argumentos de configuração de acordo com o que o usuário definiu. Quando a Engine é encerrada, o Launcher retorna.
 
 ## Engine team
 
