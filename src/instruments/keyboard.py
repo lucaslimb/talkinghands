@@ -34,7 +34,14 @@ TOUCH_TOLERANCE = getattr(settings, 'TOUCH_TOLERANCE', 0.005)
 LIFT_THRESHOLD = getattr(settings, 'LIFT_THRESHOLD', 0.02)
 MAX_MISSING_TIME = 0.1
 
-NUM_KEYS = 30
+DEFAULT_NUM_KEYS = 30
+MIN_NUM_KEYS = 12
+MAX_NUM_KEYS = 72
+NUM_KEYS = DEFAULT_NUM_KEYS
+DEFAULT_TABLE_Y = 0.80
+MIN_TABLE_Y = 0.45
+MAX_TABLE_Y = 0.93
+TABLE_LINE_HITBOX_PX = 14
 ACTIVE_FINGERS = [4, 8, 12, 16, 20]
 show_menu = False
 
@@ -86,14 +93,108 @@ def audio_thread_target():
 SCALE_INTERVALS = [0, 2, 4, 5, 7, 9, 11]
 BASE_NOTE = 48  # C3
 
-PIANO_KEYS = []
-for i in range(NUM_KEYS):
-    octave = i // 7
-    note_idx = i % 7
-    note_val = BASE_NOTE + (octave * 12) + SCALE_INTERVALS[note_idx]
-    PIANO_KEYS.append({"note": note_val, "last_hit": 0, "is_active": False, "off_timer": 0})
+def build_note_pool():
+    pool = []
+    octave = 0
 
-global_state = {"table_y": 0.80, "calibrated": False}
+    while True:
+        octave_has_note = False
+        for note_offset in SCALE_INTERVALS:
+            note_value = BASE_NOTE + (octave * 12) + note_offset
+            if note_value > 127:
+                continue
+            pool.append(note_value)
+            octave_has_note = True
+
+        if not octave_has_note:
+            break
+        octave += 1
+
+    return sorted(set(pool))
+
+
+NOTE_POOL = build_note_pool()
+MAX_NUM_KEYS = len(NOTE_POOL)
+
+
+def select_notes_for_key_count(num_keys):
+    available = len(NOTE_POOL)
+    if available == 0:
+        return []
+
+    if num_keys <= 1:
+        return [NOTE_POOL[0]]
+
+    if num_keys >= available:
+        return NOTE_POOL.copy()
+
+    step = (available - 1) / (num_keys - 1)
+    indices = []
+    prev_idx = -1
+
+    for i in range(num_keys):
+        raw_idx = int(round(i * step))
+        min_idx = prev_idx + 1
+        max_idx = (available - 1) - ((num_keys - 1) - i)
+        idx = max(min_idx, min(raw_idx, max_idx))
+        indices.append(idx)
+        prev_idx = idx
+
+    return [NOTE_POOL[i] for i in indices]
+
+
+def build_piano_keys(num_keys):
+    keys = []
+    selected_notes = select_notes_for_key_count(num_keys)
+    for note_val in selected_notes:
+        keys.append({"note": note_val, "last_hit": 0, "is_active": False, "off_timer": 0})
+    return keys
+
+
+PIANO_KEYS = build_piano_keys(NUM_KEYS)
+
+
+def stop_all_active_notes():
+    for key in PIANO_KEYS:
+        if key["is_active"]:
+            audio_queue.put(("off", key["note"]))
+            key["is_active"] = False
+            key["off_timer"] = 0
+
+
+def set_num_keys(new_num_keys):
+    global NUM_KEYS, PIANO_KEYS
+    safe_num = max(MIN_NUM_KEYS, min(MAX_NUM_KEYS, int(new_num_keys)))
+    if safe_num == NUM_KEYS:
+        return
+
+    stop_all_active_notes()
+    reset_hands_state()
+    NUM_KEYS = safe_num
+    PIANO_KEYS = build_piano_keys(NUM_KEYS)
+
+
+def clamp_table_y(y_value):
+    return max(MIN_TABLE_Y, min(MAX_TABLE_Y, float(y_value)))
+
+
+def keys_from_table_y(table_y):
+    default_height = max(0.05, 1.0 - DEFAULT_TABLE_Y)
+    current_height = max(0.05, 1.0 - table_y)
+    estimate = round(DEFAULT_NUM_KEYS * (default_height / current_height))
+    return max(MIN_NUM_KEYS, min(MAX_NUM_KEYS, int(estimate)))
+
+global_state = {
+    "table_y": DEFAULT_TABLE_Y,
+    "calibrated": False,
+    "resize_mode": None,
+    "resize_active": False,
+    "resize_start_mouse_y": 0,
+    "resize_start_table_y": DEFAULT_TABLE_Y,
+    "calibration_pending": False,
+    "calibration_end_ts": 0.0,
+    "last_lowest_finger_y": None,
+}
 
 hands_state = {
     "Left":  {"finger_status": {}, "finger_timers": {}, "active_notes": {}, "last_seen": {}},
@@ -281,7 +382,9 @@ def draw_ui_fast_pygame(screen, table_y, w, h, font):
     if show_menu:
         instructions = [
             "ESC   -> sair",
-            "ESPACO -> calibrar",
+            "ESPACO -> calibrar (3s)",
+            "Mouse Esq. na linha -> redimensionar + ajustar teclas",
+            "Mouse Dir. na linha -> redimensionar altura",
             "1 -> iniciar gravacao",
             "2 -> encerrar gravacao",
             "3 -> iniciar/interromper playback",
@@ -294,6 +397,13 @@ def draw_ui_fast_pygame(screen, table_y, w, h, font):
     
         fps_text = f"FPS: {fps_tracker.get_fps():.1f}"
         draw_text(screen, fps_text, (w - 120, 30), font)
+
+    if global_state["calibration_pending"]:
+        remaining = max(0.0, global_state["calibration_end_ts"] - time.time())
+        draw_text(screen, f"Calibrando em {remaining:.1f}s", (w // 2 - 110, 30), font, (255, 220, 0))
+
+    if global_state["resize_active"]:
+        draw_text(screen, f"Teclas: {NUM_KEYS}", (w // 2 - 60, 58), font, (255, 220, 0))
 
 # ------------------------
 # START
@@ -363,13 +473,40 @@ def start_piano(chosen_instrument, user_sustain=None, lift_threshold=None, touch
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     running = False
+                elif event.type == pygame.MOUSEBUTTONDOWN:
+                    table_px = int(global_state["table_y"] * LOGICAL_H)
+                    mx, my = event.pos
+                    near_line = abs(my - table_px) <= TABLE_LINE_HITBOX_PX
+
+                    if near_line and event.button in (1, 3):
+                        global_state["resize_active"] = True
+                        global_state["resize_mode"] = "left" if event.button == 1 else "right"
+                        global_state["resize_start_mouse_y"] = my
+                        global_state["resize_start_table_y"] = global_state["table_y"]
+
+                elif event.type == pygame.MOUSEBUTTONUP:
+                    if event.button in (1, 3):
+                        global_state["resize_active"] = False
+                        global_state["resize_mode"] = None
+
+                elif event.type == pygame.MOUSEMOTION:
+                    if global_state["resize_active"] and global_state["resize_mode"] in ("left", "right"):
+                        _, my = event.pos
+                        delta_norm = (my - global_state["resize_start_mouse_y"]) / max(1, LOGICAL_H)
+                        new_table_y = clamp_table_y(global_state["resize_start_table_y"] + delta_norm)
+                        global_state["table_y"] = new_table_y
+
+                        if global_state["resize_mode"] == "left":
+                            set_num_keys(keys_from_table_y(new_table_y))
+
                 elif event.type == pygame.KEYDOWN:
                     if event.key == pygame.K_ESCAPE:
                         recorder.stop_playback()
                         running = False
                     elif event.key == pygame.K_SPACE:
-                        # Aqui recalibramos a posição da mesa, resetamos os estados dos dedos e desligamos todas as notas ativas para evitar que fiquem presas
-                        reset_hands_state()
+                        global_state["calibration_pending"] = True
+                        global_state["calibration_end_ts"] = time.time() + 3.0
+                        global_state["last_lowest_finger_y"] = None
                     elif event.key == pygame.K_1:
                         recorder.start()
                     elif event.key == pygame.K_2:
@@ -404,15 +541,30 @@ def start_piano(chosen_instrument, user_sustain=None, lift_threshold=None, touch
 
             # Aqui a IA processa os resultados do MediaPipe para cada mão e dedo, atualizando os estados, com o processar_dedo()
             if results.multi_hand_landmarks:
+                current_lowest = None
                 for idx, lm in enumerate(results.multi_hand_landmarks):
                     lbl = results.multi_handedness[idx].classification[0].label
 
                     for fid in ACTIVE_FINGERS:
                         finger = lm.landmark[fid]
+                        if current_lowest is None or finger.y > current_lowest:
+                            current_lowest = finger.y
                         
                         cx, cy = int(finger.x * LOGICAL_W), int(finger.y * LOGICAL_H)
                         
                         processar_dedo(lbl, fid, finger.y, finger.x, global_state["table_y"], cx, cy, main_surface, LOGICAL_H, show_trackers=tracker_visible)
+
+                global_state["last_lowest_finger_y"] = current_lowest
+
+            if global_state["calibration_pending"] and time.time() >= global_state["calibration_end_ts"]:
+                target_y = global_state["last_lowest_finger_y"]
+                if target_y is not None:
+                    stop_all_active_notes()
+                    reset_hands_state()
+                    global_state["table_y"] = max(0.0, min(0.995, float(target_y)))
+                    set_num_keys(DEFAULT_NUM_KEYS)
+                    global_state["calibrated"] = True
+                global_state["calibration_pending"] = False
 
             check_lost_fingers()
             check_active_keys_integrity()
