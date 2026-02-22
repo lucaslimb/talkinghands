@@ -79,6 +79,6 @@ signtool sign /f mycert.pfx /p password /d "Talking Hands" dist/THEngine.exe
 
 ### FYI
 
-Se necessário, use o Github Copilot no VSCode com preferencia pelo modelo Claude Haiku 4.5 (se for copilot free) ou GPT-5.3-Codex (se for Pro)
+Se necessário, use o Github Copilot no VSCode com preferencia pelo modelo Claude Haiku 4.5 (se for copilot free) ou GPT-5.3-Codex ou Claude Sonnet 4.6 (se for Pro)
 
 Arquivos .sf2 (soundfonts) são enviados para o git com lfs, definido no .gitattributes

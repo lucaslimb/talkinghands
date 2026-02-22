@@ -33,6 +33,19 @@ SUSTAIN_DECAY = float(getattr(settings, 'KEYBOARD_SUSTAIN_DECAY', getattr(settin
 TOUCH_TOLERANCE = float(getattr(settings, 'KEYBOARD_TOUCH_TOLERANCE', getattr(settings, 'TOUCH_TOLERANCE', 0.005)))
 LIFT_THRESHOLD = float(getattr(settings, 'KEYBOARD_LIFT_THRESHOLD', getattr(settings, 'LIFT_THRESHOLD', 0.02)))
 MAX_MISSING_TIME = float(getattr(settings, 'KEYBOARD_MAX_MISSING_TIME', 0.1))
+DEFAULT_EXPRESSION = int(getattr(settings, 'KEYBOARD_DEFAULT_EXPRESSION', 127))
+VOLUME_LEVEL_MIN = int(getattr(settings, 'KEYBOARD_VOLUME_LEVEL_MIN', -50))
+VOLUME_LEVEL_MAX = int(getattr(settings, 'KEYBOARD_VOLUME_LEVEL_MAX', 50))
+KEYBOARD_MAX_DIGITAL_GAIN = float(getattr(settings, 'KEYBOARD_MAX_DIGITAL_GAIN', 2.0))
+
+# Barra de volume lateral (coordenadas normalizadas)
+VOLUME_BAR_X_LEFT   = float(getattr(settings, 'KEYBOARD_VOLUME_BAR_X_LEFT',   0.944))
+VOLUME_BAR_X_RIGHT  = float(getattr(settings, 'KEYBOARD_VOLUME_BAR_X_RIGHT',  0.979))
+VOLUME_BAR_Y_TOP    = float(getattr(settings, 'KEYBOARD_VOLUME_BAR_Y_TOP',    0.15))
+VOLUME_BAR_Y_BOTTOM = float(getattr(settings, 'KEYBOARD_VOLUME_BAR_Y_BOTTOM', 0.72))
+# Gesto de índicador para controle de volume
+INDEX_GRAB_X_MARGIN = float(getattr(settings, 'KEYBOARD_INDEX_GRAB_X_MARGIN', 0.03))
+INDEX_GRAB_Y_MARGIN = float(getattr(settings, 'KEYBOARD_INDEX_GRAB_Y_MARGIN', 0.055))
 
 DEFAULT_NUM_KEYS = int(getattr(settings, 'KEYBOARD_DEFAULT_NUM_KEYS', 30))
 MIN_NUM_KEYS = int(getattr(settings, 'KEYBOARD_MIN_NUM_KEYS', 12))
@@ -45,7 +58,7 @@ TABLE_LINE_HITBOX_PX = 14
 ACTIVE_FINGERS = [4, 8, 12, 16, 20]
 show_menu = False
 
-COLOR_TABLE_LINE = (0, 255, 0)
+COLOR_TABLE_LINE = (0, 0, 0, 72)
 COLOR_TABLE_FRONT = (30, 30, 30)
 COLOR_KEY_DIVIDER = (100, 100, 100)
 COLOR_HIT = (255, 255, 0)     # Amarelo (RGB)
@@ -90,6 +103,77 @@ def audio_thread_target():
                 recorder.record_note_off(note)
         except Exception:
             pass
+
+
+def clamp_midi(value):
+    return max(0, min(127, int(value)))
+
+
+def set_keyboard_expression(expression_value):
+    safe_value = clamp_midi(expression_value)
+    try:
+        fs.cc(0, 11, safe_value)
+        if hasattr(recorder, "record_cc"):
+            recorder.record_cc(0, 11, safe_value)
+    except Exception:
+        pass
+    return safe_value
+
+
+def set_keyboard_digital_gain(gain_value):
+    safe_gain = max(1.0, float(gain_value))
+
+    try:
+        if hasattr(fs, "set_gain"):
+            fs.set_gain(float(safe_gain))
+            return safe_gain
+        if hasattr(fs, "gain") and callable(fs.gain):
+            fs.gain(float(safe_gain))
+            return safe_gain
+        if hasattr(fs, "setting"):
+            fs.setting("synth.gain", float(safe_gain))
+            return safe_gain
+    except Exception:
+        pass
+
+    return 1.0
+
+
+def apply_volume_level(level):
+    safe_level = max(VOLUME_LEVEL_MIN, min(VOLUME_LEVEL_MAX, int(level)))
+
+    if safe_level <= 0:
+        expression = int(round(((safe_level - VOLUME_LEVEL_MIN) / max(1, (0 - VOLUME_LEVEL_MIN))) * 127.0))
+        set_keyboard_expression(expression)
+        set_keyboard_digital_gain(1.0)
+    else:
+        set_keyboard_expression(127)
+        gain_ratio = safe_level / float(max(1, VOLUME_LEVEL_MAX))
+        gain_value = 1.0 + ((max(1.0, KEYBOARD_MAX_DIGITAL_GAIN) - 1.0) * gain_ratio)
+        set_keyboard_digital_gain(gain_value)
+
+    return safe_level
+
+
+def vol_to_y_norm(level):
+    """Converte nível de volume (-50..+50) em coordenada y normalizada na barra."""
+    center = (VOLUME_BAR_Y_TOP + VOLUME_BAR_Y_BOTTOM) / 2.0
+    half_range = (VOLUME_BAR_Y_BOTTOM - VOLUME_BAR_Y_TOP) / 2.0
+    # +50 -> topo (y menor), -50 -> base (y maior)
+    ratio = -float(level) / 50.0
+    return center + ratio * half_range
+
+
+def y_norm_to_vol(y_norm):
+    """Converte coordenada y normalizada em nível de volume (-50..+50)."""
+    center = (VOLUME_BAR_Y_TOP + VOLUME_BAR_Y_BOTTOM) / 2.0
+    half_range = (VOLUME_BAR_Y_BOTTOM - VOLUME_BAR_Y_TOP) / 2.0
+    if half_range == 0:
+        return 0
+    ratio = (y_norm - center) / half_range
+    level = int(round(-ratio * 50.0))
+    return max(VOLUME_LEVEL_MIN, min(VOLUME_LEVEL_MAX, level))
+
 
 # ------------------------
 # ESTADOS
@@ -478,7 +562,80 @@ def check_lost_fingers():
                     state["active_notes"][fid] = None
                     state["finger_status"][fid] = "IDLE"
 
+
+def update_index_volume_for_hand(label, landmarks, volume_state):
+    """Controla o volume pela posição do indicador sobre a barra lateral.
+    O indicador 'gruda' na risca quando está sobre ela e dentro da barra;
+    solta imediatamente ao sair da faixa horizontal da barra."""
+    index_tip = landmarks.landmark[8]
+    ix = index_tip.x
+    iy = index_tip.y
+
+    in_bar_x = (VOLUME_BAR_X_LEFT - INDEX_GRAB_X_MARGIN) <= ix <= (VOLUME_BAR_X_RIGHT + INDEX_GRAB_X_MARGIN)
+
+    # Se esta mão já está com grab ativo
+    if volume_state["is_grabbed"] and volume_state["grab_hand"] == label:
+        if in_bar_x:
+            new_level = y_norm_to_vol(iy)
+            if new_level != volume_state["level"]:
+                volume_state["level"] = apply_volume_level(new_level)
+            return True
+        else:
+            # Dedo saiu da barra - libera imediatamente
+            volume_state["is_grabbed"] = False
+            volume_state["grab_hand"] = None
+            return False
+
+    # Tenta iniciar grab: dedo dentro da barra perto da risca do nível atual
+    if in_bar_x:
+        current_vol_y = vol_to_y_norm(volume_state["level"])
+        if abs(iy - current_vol_y) <= INDEX_GRAB_Y_MARGIN:
+            volume_state["is_grabbed"] = True
+            volume_state["grab_hand"] = label
+            return True
+
+    return False
+
 # draw_text is imported from src.instruments.common
+
+
+def draw_volume_bar(screen, w, h, font, volume_state):
+    """Desenha a barra de volume vertical no lado direito da tela (sem borda)."""
+    x1 = int(VOLUME_BAR_X_LEFT * w)
+    x2 = int(VOLUME_BAR_X_RIGHT * w)
+    y1 = int(VOLUME_BAR_Y_TOP * h)
+    y2 = int(VOLUME_BAR_Y_BOTTOM * h)
+    bar_w = max(1, x2 - x1)
+    bar_h = max(1, y2 - y1)
+
+    # Fundo muito transparente, sem borda
+    bg = pygame.Surface((bar_w, bar_h), pygame.SRCALPHA)
+    bg.fill((0, 0, 0, 28))
+    screen.blit(bg, (x1, y1))
+
+    # Risca central (volume 0 = padrão do soundfont)
+    zero_y = int(vol_to_y_norm(0) * h)
+    pygame.draw.line(screen, (70, 70, 70), (x1, zero_y), (x2, zero_y), 1)
+
+    # Risca do nível atual
+    level = volume_state["level"]
+    vol_y = int(vol_to_y_norm(level) * h)
+    if level > 0:
+        line_color = (60, 160, 60)
+    elif level < 0:
+        line_color = (160, 70, 70)
+    else:
+        line_color = (140, 140, 140)
+
+    thickness = 3 if volume_state.get("is_grabbed") else 1
+    pygame.draw.line(screen, line_color, (x1 - 2, vol_y), (x2 + 2, vol_y), thickness)
+
+    # Label numérico próximo à risca
+    label_txt = f"{level:+d}" if level != 0 else "0"
+    txt_surf = font.render(label_txt, True, line_color)
+    txt_y = vol_y - txt_surf.get_height() - 2 if vol_y > y1 + 20 else vol_y + 4
+    screen.blit(txt_surf, (x1, txt_y))
+
 
 # FPS Tracker
 class FPSTracker:
@@ -499,7 +656,7 @@ class FPSTracker:
 
 fps_tracker = FPSTracker(update_interval=10)
 
-def draw_ui_fast_pygame(screen, table_y, w, h, font, show_note_names=False, names_font=None):
+def draw_ui_fast_pygame(screen, table_y, w, h, font, show_note_names=False, names_font=None, volume_state=None):
     table_px = int(table_y * h)
     total_h = h - table_px
     black_h = int(total_h * BLACK_KEY_HEIGHT_RATIO)
@@ -573,6 +730,7 @@ def draw_ui_fast_pygame(screen, table_y, w, h, font, show_note_names=False, name
             "ESPACO -> calibrar (3s)",
             "Mouse Esq. na linha -> redimensionar + ajustar teclas",
             "Mouse Dir. na linha -> redimensionar altura",
+            "Pinça (indicador+polegar) na barra direita -> volume +/-",
             "1 -> iniciar gravacao",
             "2 -> encerrar gravacao",
             "3 -> iniciar/interromper playback",
@@ -593,6 +751,28 @@ def draw_ui_fast_pygame(screen, table_y, w, h, font, show_note_names=False, name
 
     if global_state["resize_active"]:
         draw_text(screen, f"Teclas: {NUM_KEYS}", (w // 2 - 60, 58), font, (255, 220, 0))
+
+    if volume_state is not None:
+        draw_volume_bar(screen, w, h, font, volume_state)
+
+
+def draw_hand_trackers(results, w, h, screen):
+    if not results or not results.multi_hand_landmarks:
+        return
+
+    for idx, lm in enumerate(results.multi_hand_landmarks):
+        lbl = results.multi_handedness[idx].classification[0].label
+        state = hands_state.get(lbl, {})
+        finger_state = state.get("finger_status", {})
+
+        for fid in ACTIVE_FINGERS:
+            finger = lm.landmark[fid]
+            cx, cy = int(finger.x * w), int(finger.y * h)
+            status = finger_state.get(fid, "IDLE")
+            color = COLOR_ARMED if status == "ARMED" else (120, 120, 120)
+            if status == "TOUCHING":
+                color = COLOR_HOLD
+            pygame.draw.circle(screen, color, (cx, cy), 5)
 
 # ------------------------
 # START
@@ -619,6 +799,9 @@ def start_piano(chosen_instrument, user_sustain=None, lift_threshold=None, touch
         recorder.set_options(rec_options)
 
     select_instrument_by_name(chosen_instrument)
+    set_keyboard_expression(DEFAULT_EXPRESSION)
+    set_keyboard_digital_gain(1.0)
+    current_level = apply_volume_level(0)
 
     audio_t = threading.Thread(target=audio_thread_target, daemon=True)
     audio_t.start()
@@ -655,6 +838,12 @@ def start_piano(chosen_instrument, user_sustain=None, lift_threshold=None, touch
         title="Talking Hands - Teclado"
     )
     names_font = pygame.font.SysFont("Arial", 12, bold=False)
+    volume_state = {
+        "is_grabbed": False,
+        "grab_hand": None,
+        "level": current_level,
+        "display_until": 0.0,
+    }
 
     print(">>> TECLADO INICIADO (Pygame)")
     running = True
@@ -726,10 +915,35 @@ def start_piano(chosen_instrument, user_sustain=None, lift_threshold=None, touch
             frame = cv2.flip(frame, 1)
             frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             frame_surface = pygame.image.frombuffer(frame_rgb.tobytes(), (LOGICAL_W, LOGICAL_H), 'RGB')
+            main_surface.blit(frame_surface, (0, 0))
 
             results = hands.process(frame_rgb)
-            
-            main_surface.blit(frame_surface, (0, 0))
+
+            current_lowest = None
+            if results.multi_hand_landmarks:
+                for idx, lm in enumerate(results.multi_hand_landmarks):
+                    lbl = results.multi_handedness[idx].classification[0].label
+
+                    is_volume_control = update_index_volume_for_hand(lbl, lm, volume_state)
+
+                    for fid in ACTIVE_FINGERS:
+                        finger = lm.landmark[fid]
+                        if current_lowest is None or finger.y > current_lowest:
+                            current_lowest = finger.y
+
+                        if is_volume_control:
+                            continue
+
+                        cx, cy = int(finger.x * LOGICAL_W), int(finger.y * LOGICAL_H)
+                        processar_dedo(lbl, fid, finger.y, finger.x, global_state["table_y"], cx, cy, main_surface, LOGICAL_H, show_trackers=False)
+
+                global_state["last_lowest_finger_y"] = current_lowest
+            else:
+                # Sem mãos detectadas: libera grab se ativo
+                if volume_state["is_grabbed"]:
+                    volume_state["is_grabbed"] = False
+                    volume_state["grab_hand"] = None
+                    volume_state["display_until"] = time.time() + 1.0
 
             draw_ui_fast_pygame(
                 main_surface,
@@ -739,24 +953,11 @@ def start_piano(chosen_instrument, user_sustain=None, lift_threshold=None, touch
                 main_font,
                 show_note_names=names_visible,
                 names_font=names_font,
+                volume_state=volume_state,
             )
 
-            # Aqui a IA processa os resultados do MediaPipe para cada mão e dedo, atualizando os estados, com o processar_dedo()
-            if results.multi_hand_landmarks:
-                current_lowest = None
-                for idx, lm in enumerate(results.multi_hand_landmarks):
-                    lbl = results.multi_handedness[idx].classification[0].label
-
-                    for fid in ACTIVE_FINGERS:
-                        finger = lm.landmark[fid]
-                        if current_lowest is None or finger.y > current_lowest:
-                            current_lowest = finger.y
-                        
-                        cx, cy = int(finger.x * LOGICAL_W), int(finger.y * LOGICAL_H)
-                        
-                        processar_dedo(lbl, fid, finger.y, finger.x, global_state["table_y"], cx, cy, main_surface, LOGICAL_H, show_trackers=tracker_visible)
-
-                global_state["last_lowest_finger_y"] = current_lowest
+            if tracker_visible:
+                draw_hand_trackers(results, LOGICAL_W, LOGICAL_H, main_surface)
 
             if global_state["calibration_pending"] and time.time() >= global_state["calibration_end_ts"]:
                 target_y = global_state["last_lowest_finger_y"]

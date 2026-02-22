@@ -43,8 +43,8 @@ DRUM_RESIZE_EDGE_TOLERANCE_PX = int(getattr(settings, 'DRUMS_RESIZE_EDGE_TOLERAN
 DRUM_MIN_HALF_WIDTH_NORM = float(getattr(settings, 'DRUMS_MIN_HALF_WIDTH_NORM', 0.02))
 DRUM_MIN_HALF_HEIGHT_NORM = float(getattr(settings, 'DRUMS_MIN_HALF_HEIGHT_NORM', 0.015))
 
-COLOR_RED = (255, 0, 0)        # Vermelho
-COLOR_HIT_FILL = (255, 0, 0)  
+COLOR_RED = (100, 100, 100)     # Cinza claro (mesma cor das teclas brancas do piano)
+COLOR_HIT_FILL = (0, 0, 0)     # Preto (mesma cor de fundo das teclas pretas do piano)
 COLOR_READY = (255, 255, 0)    # Amarelo
 COLOR_IDLE = (100, 100, 100)   # Cinza
 COLOR_TEXT = (255, 255, 255)   # Branco
@@ -709,10 +709,10 @@ def draw_drums_pygame(screen, w, h, font, dragging_drum=None, show_names=False, 
         drum_rect = pygame.Rect(left, top, width, height)
         
         color = drum["color"]
-        fill_alpha = 50 # Transparência leve (aprox 0.4 do OpenCV)
+        fill_alpha = 30  # Transparência leve (igual alpha das teclas brancas do piano)
         
         if (time.time() - drum["last_hit"]) < 0.15:
-            fill_alpha = 200 
+            fill_alpha = 72  # Alpha das teclas pretas do piano
             color = COLOR_HIT_FILL
 
         if dragging_drum and drum["id"] == dragging_drum["id"]:
