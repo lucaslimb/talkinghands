@@ -186,40 +186,40 @@ STANDALONE OPTIONS:
 GLOBAL OPTIONS:
   -h, --help                         Show help message and exit
   -i, --instrument INSTRUMENT_NAME   Instrument name to start (e.g., 'Perfect Drums 1', 'Grand Piano', 'Recorder')
-  -r, --resolution PROFILE           Resolution/FPS profile string (default: 108030; e.g., 108030 => 1080p @ 30fps)
-  -t, --trackers                     Show hand/face trackers on screen (default: off)
-  -f, --separate-folders             Keep playback and recordings in different folders (default: all in recordings)
+    -r, --resolution PROFILE           Resolution/FPS profile (HEIGHT+FPS). HEIGHT min/max: 240..4320, FPS min/max: 1..240 (default: 108030)
+    -t, --trackers                     Show hand/face trackers on screen (boolean flag: False|True, default: False)
+    -f, --separate-folders             Keep playback and recordings in different folders (boolean flag: False|True, default: False)
 
 RECORDING FORMATS OPTIONS:
-  --mid                              Save .MID files (default: enabled)
-  --no-mid                           Disable .MID file saving
-  --mp3                              Save .MP3 files (default: disabled)
-  --wav                              Save .WAV files (default: disabled)
+    --mid                              Save .MID files (boolean flag: False|True, default: True)
+    --no-mid                           Disable .MID file saving (sets --mid=False)
+    --mp3                              Save .MP3 files (boolean flag: False|True, default: False)
+    --wav                              Save .WAV files (boolean flag: False|True, default: False)
 
 KEYBOARD OPTIONS:
-  --keyboard-lf LIFT_THRESHOLD       Lift threshold in normalized units (default: 0.02). Quanto maior o valor, mais alto é preciso levantar o dedo para tocar uma nota.
-  --keyboard-sd SUSTAIN_DECAY        Sustain decay in seconds (default: 0.8). Tempo de sustentação da nota após ser tocada. Valores menores resultam em notas mais curtas, enquanto valores maiores permitem que as notas soem por mais tempo.
-  --keyboard-ts TOUCH_TOLERANCE      Touch sensitivity/tolerance in normalized units (default: 0.005). Quanto maior o valor, mais permissivo é o sistema para reconhecer um toque, quanto menor, mais preciso e exigente será o reconhecimento do toque.
+    --kbd-lf LIFT_THRESHOLD            Lift threshold (float > 0, default: 0.02; suggested: 0.005..0.10)
+    --kbd-sd SUSTAIN_DECAY             Sustain decay seconds (float > 0, default: 0.8; suggested: 0.05..5.0)
+    --kbd-ts TOUCH_TOLERANCE           Touch tolerance (float > 0, default: 0.005; suggested: 0.001..0.05)
 
 DRUMS OPTIONS:
-    --drums-model {default,complete}   Drum layout model (default: default). default = sem elementos de pés; complete = com bumbo/pedal via pés.
-  --drums-tt TOUCH_TOLERANCE         Touch tolerance as normalized value (default: 0.01). Quanto maior a porcentagem, maior será a área de contato com os tambores, pratos, bumbo.
-  --drums-tv TOUCH_VELOCITY          Touch velocity threshold (default: 0.012). Quanto maior, mais rápido você precisa mover a mão para gerar um som mais alto.
+    --drm-model {default,complete}      Drum layout model (string values: default|complete, default: default)
+    --drm-tt TOUCH_TOLERANCE            Touch tolerance (float > 0, default: 0.01; suggested: 0.001..0.10)
+    --drm-tv TOUCH_VELOCITY             Touch velocity threshold (float > 0, default: 0.012; suggested: 0.001..0.10)
 
 FLUTE OPTIONS:
-  --flute-inv                        Invert blow logic (higher mouth opening = louder) (default: lower mouth opening = louder)
-    --flute-angle-inv                  Invert flute angle follow (inclina para o lado oposto dos lábios)
-  --flute-max MOUTH_MAX              Maximum mouth opening threshold (default: 0.05)
-  --flute-min MOUTH_MIN              Minimum mouth opening threshold / peak (default: 0.01)
-    --flute-follow-sens VALUE          Sensibilidade de seguimento da flauta pela boca (0.0 a 1.0, default: 0.22)
-  --flute-p {small,medium,large}     Hole size and spacing (default: medium)
+    --flt-inv                           Invert blow logic (boolean flag: False|True, default: False)
+    --flt-ang-inv                       Invert flute angle follow (boolean flag: False|True, default: False)
+    --flt-max MOUTH_MAX                 Maximum mouth opening threshold (float > 0, default: 0.05; suggested: 0.005..0.20)
+    --flt-min MOUTH_MIN                 Minimum/peak mouth opening threshold (float > 0, default: 0.01; suggested: 0.001..0.10)
+    --flt-fs VALUE                      Mouth-follow sensitivity (float min/max: 0.0..1.0, default: 0.22)
+    --flt-p {small,medium,large}        Hole size preset (string values: small|medium|large, default: medium)
 
 EXAMPLES:
   python main.py -i "Perfect Drums 1" -tf
     python main.py -i "Piano" -r 108030
-  python main.py -i "Grand Piano" --keyboard-sd 0.5 --keyboard-lf 0.025
-  python main.py -i "Recorder" --flute-max 0.06 --flute-p medium
-  python main.py -i "Quality Flute" --flute-invert
+    python main.py -i "Grand Piano" --kbd-sd 0.5 --kbd-lf 0.025
+    python main.py -i "Recorder" --flt-max 0.06 --flt-p medium
+    python main.py -i "Quality Flute" --flt-inv --flt-ang-inv
 """
     print(doc)
     sys.exit(0)
@@ -235,9 +235,9 @@ def create_argparse():
         epilog="""
     Examples:
     python main.py -i "Perfect Drums 1" -tf
-    python main.py -i "Grand Piano" --keyboard-sd 0.5 --keyboard-lf 0.025
-    python main.py -i "Recorder" --flute-max 0.06 --flute-p medium
-    python main.py -i "Quality Flute" --flute-invert
+    python main.py -i "Grand Piano" --kbd-sd 0.5 --kbd-lf 0.025
+    python main.py -i "Recorder" --flt-max 0.06 --flt-p medium
+    python main.py -i "Quality Flute" --flt-inv --flt-ang-inv
         """
     )
     
@@ -268,19 +268,19 @@ def create_argparse():
         type=parse_resolution_arg,
         default=parse_resolution_arg("108030"),
         metavar="PROFILE",
-        help="Display/FPS profile (default: 108030, e.g., 108030 = 1080p 30fps, 72060 = 720p 60fps)"
+        help="Display/FPS profile HEIGHT+FPS (HEIGHT 240..4320, FPS 1..240). Ex: 108030 = 1080p 30fps"
     )
     
     parser.add_argument(
         "-t", "--trackers",
         action="store_true",
-        help="Show hand/face trackers on screen (default: off)"
+        help="Show hand/face trackers on screen (bool flag, default: False)"
     )
     
     parser.add_argument(
         "-f", "--separate-folders",
         action="store_true",
-        help="Keep playback and recordings in different folders (default: all in recordings)"
+        help="Keep playback and recordings in different folders (bool flag, default: False)"
     )
     
     # Recording format options
@@ -289,7 +289,7 @@ def create_argparse():
         "--mid",
         action="store_true",
         default=True,
-        help="Save .MID files (default: enabled)"
+        help="Save .MID files (bool flag, default: True)"
     )
     rec_group.add_argument(
         "--no-mid",
@@ -300,107 +300,106 @@ def create_argparse():
     rec_group.add_argument(
         "--mp3",
         action="store_true",
-        help="Save .MP3 files (default: disabled)"
+        help="Save .MP3 files (bool flag, default: False)"
     )
     rec_group.add_argument(
         "--wav",
         action="store_true",
-        help="Save .WAV files (default: disabled)"
+        help="Save .WAV files (bool flag, default: False)"
     )
     
     # Keyboard arguments
     kbd_group = parser.add_argument_group("Keyboard Options")
     kbd_group.add_argument(
-        "--keyboard-lf",
+        "--kbd-lf", "--keyboard-lf",
         type=float,
         default=None,
         metavar="LIFT_THRESHOLD",
-        help="Lift threshold in normalized units (default: 0.02). Quanto maior o valor, mais alto é preciso levantar o dedo para tocar uma nota."
+        help="Lift threshold (float > 0, default: 0.02; suggested: 0.005..0.10)."
     )
     kbd_group.add_argument(
-        "--keyboard-sd",
+        "--kbd-sd", "--keyboard-sd",
         type=float,
         default=None,
         metavar="SUSTAIN_DECAY",
-        help="Sustain decay in seconds (default: 0.8). Tempo de sustentação da nota após ser tocada. Valores menores resultam em notas mais curtas, enquanto valores maiores permitem que as notas soem por mais tempo."
+        help="Sustain decay in seconds (float > 0, default: 0.8; suggested: 0.05..5.0)."
     )
     kbd_group.add_argument(
-        "--keyboard-ts",
+        "--kbd-ts", "--keyboard-ts",
         type=float,
         default=None,
         metavar="TOUCH_TOLERANCE",
-        help="Touch sensitivity/tolerance in normalized units (default: 0.005). Quanto maior o valor, mais permissivo é o sistema para reconhecer um toque, quanto menor, mais preciso e exigente será o reconhecimento do toque."
+        help="Touch sensitivity/tolerance (float > 0, default: 0.005; suggested: 0.001..0.05)."
     )
     
     # Drums arguments
     drums_group = parser.add_argument_group("Drums Options")
     drums_group.add_argument(
-        "--drums-model",
+        "--drm-model", "--drums-model",
         choices=["default", "complete"],
         default="default",
         dest="drums_model",
-        help="Drum layout model (default: default). default = sem elementos de pés; complete = com rastreio de pés"
+        help="Drum layout model (string: default|complete, default: default)."
     )
     drums_group.add_argument(
-        "--drums-tt",
+        "--drm-tt", "--drums-tt",
         type=float,
         default=None,
         metavar="TOUCH_TOLERANCE",
-        help="Touch tolerance as normalized value (default: 0.01). Quanto maior a porcentagem, maior será a área de contato com os tambores, pratos, bumbo."
+        help="Touch tolerance (float > 0, default: 0.01; suggested: 0.001..0.10)."
     )
     drums_group.add_argument(
-        "--drums-tv",
+        "--drm-tv", "--drums-tv",
         type=float,
         default=None,
         metavar="TOUCH_VELOCITY",
-        help="Touch velocity threshold (default: 0.012). Quanto maior, mais rápido você precisa mover a mão para gerar um som mais alto."
+        help="Touch velocity threshold (float > 0, default: 0.012; suggested: 0.001..0.10)."
     )
     
     # Flute arguments
     flute_group = parser.add_argument_group("Flute Options")
     flute_group.add_argument(
-        "--flute-inv",
+        "--flt-inv", "--flute-inv",
         action="store_true",
         dest="flute_invert",
-        help="Invert blow logic (higher mouth opening = louder) (default: lower mouth opening = louder)"
+        help="Invert blow logic (bool flag, default: False)."
     )
 
     flute_group.add_argument(
-        "--flute-angle-inv",
+        "--flt-ang-inv", "--flute-angle-inv",
         action="store_true",
         dest="flute_angle_invert",
-        help="Invert flute angle follow (inclina para o lado oposto dos lábios)"
+        help="Invert flute angle follow (bool flag, default: False)."
     )
 
     flute_group.add_argument(
-        "--flute-max",
+        "--flt-max", "--flute-max",
         type=float,
         default=None,
         metavar="MOUTH_MAX",
-        help="Maximum mouth opening threshold (default: 0.05)"
+        help="Maximum mouth opening threshold (float > 0, default: 0.05; suggested: 0.005..0.20)."
     )
     flute_group.add_argument(
-        "--flute-min",
+        "--flt-min", "--flute-min",
         type=float,
         default=None,
         metavar="MOUTH_MIN",
-        help="Minimum mouth opening threshold / peak (default: 0.01)"
+        help="Minimum/peak mouth opening threshold (float > 0, default: 0.01; suggested: 0.001..0.10)."
     )
     flute_group.add_argument(
-        "--flute-follow-sens",
+        "--flt-fs", "--flute-follow-sens",
         type=float,
         default=0.22,
         metavar="VALUE",
         dest="flute_follow_sens",
-        help="Sensibilidade de seguimento da flauta pela boca (0.0 a 1.0, default: 0.22)"
+        help="Mouth-follow sensitivity (float 0.0..1.0, default: 0.22)."
     )
     flute_group.add_argument(
-        "--flute-p",
-        "--flute-precision",
+        "--flt-p", "--flute-p", "--flute-precision",
         choices=["small", "medium", "large"],
         default="medium",
         dest="flute_precision",
-        help="Hole size and spacing (default: medium)"
+        help="Hole size preset (string: small|medium|large, default: medium)."
     )
     
     return parser
@@ -432,17 +431,17 @@ def get_defaults():
     """Load default values from settings"""
     defaults = {
         "keyboard": {
-            "sustain": float(getattr(settings, 'SUSTAIN_DECAY', 0.8)),
-            "lift": float(getattr(settings, 'LIFT_THRESHOLD', 0.02)),
-            "tolerance": float(getattr(settings, 'TOUCH_TOLERANCE', 0.005)),
+            "sustain": float(getattr(settings, 'KEYBOARD_SUSTAIN_DECAY', getattr(settings, 'SUSTAIN_DECAY', 0.8))),
+            "lift": float(getattr(settings, 'KEYBOARD_LIFT_THRESHOLD', getattr(settings, 'LIFT_THRESHOLD', 0.02))),
+            "tolerance": float(getattr(settings, 'KEYBOARD_TOUCH_TOLERANCE', getattr(settings, 'TOUCH_TOLERANCE', 0.005))),
         },
         "drums": {
-            "tolerance": float(getattr(settings, 'TOUCH_TOLERANCE', 0.01)),
-            "touch_velocity": float(getattr(settings, 'TOUCH_VELOCITY', 0.012)),
+            "tolerance": float(getattr(settings, 'DRUMS_TOUCH_TOLERANCE', 0.01)),
+            "touch_velocity": float(getattr(settings, 'DRUMS_TOUCH_VELOCITY', getattr(settings, 'TOUCH_VELOCITY', 0.012))),
         },
         "flute": {
-            "mouth_peak": float(getattr(settings, 'MOUTH_PEAK_OPEN', 0.01)),
-            "mouth_max": float(getattr(settings, 'MOUTH_MAX_OPEN', 0.05)),
+            "mouth_peak": float(getattr(settings, 'FLUTE_MOUTH_PEAK_OPEN', getattr(settings, 'MOUTH_PEAK_OPEN', 0.01))),
+            "mouth_max": float(getattr(settings, 'FLUTE_MOUTH_MAX_OPEN', getattr(settings, 'MOUTH_MAX_OPEN', 0.05))),
         },
         "recording": {
             "mid": bool(getattr(settings, 'RECORD_SAVE_MID', True)),
@@ -470,7 +469,10 @@ def get_flute_hole_params(precision):
     """Convert precision string to hole parameters"""
     params = {
         "small": (0.015, 0.058),
-        "medium": (0.019, 0.068),
+        "medium": (
+            float(getattr(settings, 'FLUTE_HOLE_RADIUS', getattr(settings, 'HOLE_RADIUS', 0.019))),
+            float(getattr(settings, 'FLUTE_HOLE_SPACING', getattr(settings, 'HOLE_SPACING', 0.068))),
+        ),
         "large": (0.023, 0.077),
     }
     return params.get(precision, params["medium"])

@@ -26,28 +26,28 @@ from src.instruments.common import (
 import fluidsynth
 
 NUM_HOLES = 7
-HOLE_RADIUS = getattr(settings, 'HOLE_RADIUS', 0.019)
-HOLE_SPACING = getattr(settings, 'HOLE_SPACING', 0.068)
+HOLE_RADIUS = float(getattr(settings, 'FLUTE_HOLE_RADIUS', getattr(settings, 'HOLE_RADIUS', 0.019)))
+HOLE_SPACING = float(getattr(settings, 'FLUTE_HOLE_SPACING', getattr(settings, 'HOLE_SPACING', 0.068)))
 
-DEFAULT_FLUTE_X = 0.6
-DEFAULT_FLUTE_Y = 0.25
+DEFAULT_FLUTE_X = float(getattr(settings, 'FLUTE_DEFAULT_X', 0.6))
+DEFAULT_FLUTE_Y = float(getattr(settings, 'FLUTE_DEFAULT_Y', 0.25))
 
-MOUTH_MIN_OPEN = 0.002
-MOUTH_PEAK_OPEN = getattr(settings, 'MOUTH_PEAK_OPEN', 0.01)
-MOUTH_MAX_OPEN = getattr(settings, 'MOUTH_MAX_OPEN', 0.05)
+MOUTH_MIN_OPEN = float(getattr(settings, 'FLUTE_MOUTH_MIN_OPEN', 0.002))
+MOUTH_PEAK_OPEN = float(getattr(settings, 'FLUTE_MOUTH_PEAK_OPEN', getattr(settings, 'MOUTH_PEAK_OPEN', 0.01)))
+MOUTH_MAX_OPEN = float(getattr(settings, 'FLUTE_MOUTH_MAX_OPEN', getattr(settings, 'MOUTH_MAX_OPEN', 0.05)))
 BLOW_KEY = 32
 
 INVERT_BLOW_LOGIC = False
 INVERT_ANGLE_LOGIC = False
 
-MOUTH_SMOOTHING_FACTOR = 0.3 
-VELOCITY_CHANGE_THRESHOLD = 4
+MOUTH_SMOOTHING_FACTOR = float(getattr(settings, 'FLUTE_MOUTH_SMOOTHING_FACTOR', 0.3))
+VELOCITY_CHANGE_THRESHOLD = int(getattr(settings, 'FLUTE_VELOCITY_CHANGE_THRESHOLD', 4))
 MOUTH_FOLLOW_SENSITIVITY = float(getattr(settings, 'FLUTE_MOUTH_FOLLOW_SENSITIVITY', 0.22))
 MOUTH_FOLLOW_OFFSET_Y = float(getattr(settings, 'FLUTE_MOUTH_FOLLOW_OFFSET_Y', 0.09))
 MOUTH_ANGLE_SENSITIVITY = float(getattr(settings, 'FLUTE_MOUTH_ANGLE_SENSITIVITY', 1.0))
 FLUTE_VERTICAL_BASE_ANGLE = math.pi * 0.5
-MOUTH_CLOSE_STOP_THRESHOLD = float(getattr(settings, 'MOUTH_CLOSE_STOP_THRESHOLD', 0.0006))
-MOUTH_PEAK_NEAR_CLOSE_FACTOR = float(getattr(settings, 'MOUTH_PEAK_NEAR_CLOSE_FACTOR', 0.25))
+MOUTH_CLOSE_STOP_THRESHOLD = float(getattr(settings, 'FLUTE_MOUTH_CLOSE_STOP_THRESHOLD', getattr(settings, 'MOUTH_CLOSE_STOP_THRESHOLD', 0.0006)))
+MOUTH_PEAK_NEAR_CLOSE_FACTOR = float(getattr(settings, 'FLUTE_MOUTH_PEAK_NEAR_CLOSE_FACTOR', getattr(settings, 'MOUTH_PEAK_NEAR_CLOSE_FACTOR', 0.25)))
 
 PLAYBACK_CHANNEL = 0
 LIVE_CHANNEL = 1

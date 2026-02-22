@@ -30,14 +30,14 @@ if root_dir not in sys.path:
 
 from src.config import settings
 
-VELOCITY_THRESHOLD = 0.002 
-TOUCH_VELOCITY = getattr(settings, 'TOUCH_VELOCITY')
-TOUCH_TOLERANCE = getattr(settings, 'TOUCH_TOLERANCE', 0.01)
+VELOCITY_THRESHOLD = float(getattr(settings, 'DRUMS_VELOCITY_THRESHOLD', 0.002))
+TOUCH_VELOCITY = float(getattr(settings, 'DRUMS_TOUCH_VELOCITY', getattr(settings, 'TOUCH_VELOCITY', 0.012)))
+TOUCH_TOLERANCE = float(getattr(settings, 'DRUMS_TOUCH_TOLERANCE', 0.01))
 ELLIPSE_THRESHOLD = 1.0 - TOUCH_TOLERANCE 
-DRUM_SYNTH_GAIN = 1.8
-DRUM_MIN_VELOCITY = 50
-MIN_REHIT_PIXELS = 32
-FOOT_REHIT_PIXELS = 36
+DRUM_SYNTH_GAIN = float(getattr(settings, 'DRUMS_SYNTH_GAIN', 1.8))
+DRUM_MIN_VELOCITY = int(getattr(settings, 'DRUMS_MIN_VELOCITY', 50))
+MIN_REHIT_PIXELS = int(getattr(settings, 'DRUMS_MIN_REHIT_PIXELS', 32))
+FOOT_REHIT_PIXELS = int(getattr(settings, 'DRUMS_FOOT_REHIT_PIXELS', 36))
 
 COLOR_RED = (255, 0, 0)        # Vermelho
 COLOR_HIT_FILL = (255, 0, 0)  

@@ -26,21 +26,21 @@ from src.instruments.common import (
 # Import fluidsynth AFTER common.py setup has run
 import fluidsynth
 
-RELEASE_THRESHOLD = 0.015
-MIN_NOTE_DURATION = 0.1
-ARMED_TIMEOUT = 2.5
-SUSTAIN_DECAY = getattr(settings, 'SUSTAIN_DECAY', 0.8)
-TOUCH_TOLERANCE = getattr(settings, 'TOUCH_TOLERANCE', 0.005)
-LIFT_THRESHOLD = getattr(settings, 'LIFT_THRESHOLD', 0.02)
-MAX_MISSING_TIME = 0.1
+RELEASE_THRESHOLD = float(getattr(settings, 'KEYBOARD_RELEASE_THRESHOLD', 0.015))
+MIN_NOTE_DURATION = float(getattr(settings, 'KEYBOARD_MIN_NOTE_DURATION', 0.1))
+ARMED_TIMEOUT = float(getattr(settings, 'KEYBOARD_ARMED_TIMEOUT', 2.5))
+SUSTAIN_DECAY = float(getattr(settings, 'KEYBOARD_SUSTAIN_DECAY', getattr(settings, 'SUSTAIN_DECAY', 0.8)))
+TOUCH_TOLERANCE = float(getattr(settings, 'KEYBOARD_TOUCH_TOLERANCE', getattr(settings, 'TOUCH_TOLERANCE', 0.005)))
+LIFT_THRESHOLD = float(getattr(settings, 'KEYBOARD_LIFT_THRESHOLD', getattr(settings, 'LIFT_THRESHOLD', 0.02)))
+MAX_MISSING_TIME = float(getattr(settings, 'KEYBOARD_MAX_MISSING_TIME', 0.1))
 
-DEFAULT_NUM_KEYS = 30
-MIN_NUM_KEYS = 12
+DEFAULT_NUM_KEYS = int(getattr(settings, 'KEYBOARD_DEFAULT_NUM_KEYS', 30))
+MIN_NUM_KEYS = int(getattr(settings, 'KEYBOARD_MIN_NUM_KEYS', 12))
 MAX_NUM_KEYS = 72
 NUM_KEYS = DEFAULT_NUM_KEYS
-DEFAULT_TABLE_Y = 0.80
-MIN_TABLE_Y = 0.45
-MAX_TABLE_Y = 0.93
+DEFAULT_TABLE_Y = float(getattr(settings, 'KEYBOARD_DEFAULT_TABLE_Y', 0.80))
+MIN_TABLE_Y = float(getattr(settings, 'KEYBOARD_MIN_TABLE_Y', 0.45))
+MAX_TABLE_Y = float(getattr(settings, 'KEYBOARD_MAX_TABLE_Y', 0.93))
 TABLE_LINE_HITBOX_PX = 14
 ACTIVE_FINGERS = [4, 8, 12, 16, 20]
 show_menu = False
