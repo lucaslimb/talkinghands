@@ -26,7 +26,7 @@ os.makedirs(RECORDINGS_DIR, exist_ok=True)
 
 SF2_PATHS = {
     "master": str(SOUNDFONTS_DIR / "keyboard" / "module_master.sf2"),
-    "drums":  str(SOUNDFONTS_DIR / "drums" / "Drums.sf2"),
+    "drums":  str(SOUNDFONTS_DIR / "drums" / "NewDrums.sf2"),
     "flute":  str(SOUNDFONTS_DIR / "flute" / "Chris_Flutes_and_Harmonicas.sf2"),
 }
 
@@ -56,18 +56,12 @@ INSTRUMENTS = {
     "Flute Bell":     ("master", 0, 97),
     "Koto LA":        ("master", 1, 89),
 
-    "Drum":      ("drums", 128, 0),
-    "Drum 2":    ("drums", 128, 1),
-    "Drum 3":    ("drums", 128, 2),
-    "Drum 4":    ("drums", 128, 3),
-    "Drum 5":    ("drums", 128, 4),
-    "Drum 6":    ("drums", 128, 5),
-    "Drum 7":    ("drums", 128, 6),
-    "Drum 8":    ("drums", 128, 7),
-    "Drum 9":    ("drums", 128, 8),
-    "Drum 10":   ("drums", 128, 9),
-    "Drum 11":   ("drums", 128, 10),
-    "Drum 12":   ("drums", 128, 11),
+    "Classic":     ("drums", 128, 0),
+    "Power":       ("drums", 128, 16),
+    "Vintage":     ("drums", 128, 0),
+    "Bright":      ("drums", 128, 0),
+    "Power Tight": ("drums", 128, 16),
+    "Power Wide":  ("drums", 128, 16),
 
     "Harmonica":            ("flute", 0, 0),
     "Recorder":             ("flute", 0, 4),
@@ -99,7 +93,70 @@ DRUMS_VELOCITY_THRESHOLD = 0.002
 DRUMS_MIN_VELOCITY = 50
 DRUMS_MIN_REHIT_PIXELS = 32
 DRUMS_FOOT_REHIT_PIXELS = 36
+DRUMS_MIN_HIT_INTERVAL_SEC = 0.045
+DRUMS_CUSTOM_RECT_THICKNESS = 1.20
 DRUMS_SYNTH_GAIN = 1.8
+DRUMS_NOTE_OVERRIDES = {
+    "kick": 36,
+    "snare": 38,
+    "floor": 41,
+    "hihat": 42,
+    "tom_hi": 48,
+    "tom_low": 45,
+    "crash": 49,
+    "ride": 51,
+}
+DRUMS_INSTRUMENT_NOTE_VARIATIONS = {
+    "Vintage": {
+        "kick": 35,
+        "snare": 40,
+        "floor": 43,
+        "hihat": 42,
+        "tom_hi": 48,
+        "tom_low": 45,
+        "crash": 49,
+        "ride": 51,
+    },
+    "Bright": {
+        "kick": 35,
+        "snare": 40,
+        "floor": 43,
+        "hihat": 46,
+        "tom_hi": 50,
+        "tom_low": 45,
+        "crash": 57,
+        "ride": 59,
+    },
+    "Power Tight": {
+        "kick": 35,
+        "snare": 40,
+        "floor": 41,
+        "hihat": 42,
+        "tom_hi": 50,
+        "tom_low": 45,
+        "crash": 49,
+        "ride": 51,
+    },
+    "Power Wide": {
+        "kick": 35,
+        "snare": 38,
+        "floor": 43,
+        "hihat": 46,
+        "tom_hi": 48,
+        "tom_low": 45,
+        "crash": 57,
+        "ride": 59,
+    },
+}
+DRUMS_PREDEFINED_ELEMENTS = [
+    "crash", "ride", "splash", "china",
+    "tom_hi", "tom_mid", "tom_low",
+    "hihat", "open_hh", "snare", "rimshot", "floor", "kick",
+    "hh_pedal", "cowbell", "clap", "tamb", "shaker",
+    "agogo_hi", "agogo_lo", "clave",
+]
+DRUMS_DEFAULT_ELEMENTS = ["crash", "ride", "tom_hi", "tom_low", "hihat", "snare", "floor", "kick"]
+DRUMS_COMPLETE_EXTRA_ELEMENTS = ["hh_pedal"]
 
 # Flute defaults
 FLUTE_DEFAULT_X = 0.6

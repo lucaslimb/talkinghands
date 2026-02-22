@@ -34,10 +34,14 @@ VELOCITY_THRESHOLD = float(getattr(settings, 'DRUMS_VELOCITY_THRESHOLD', 0.002))
 TOUCH_VELOCITY = float(getattr(settings, 'DRUMS_TOUCH_VELOCITY', getattr(settings, 'TOUCH_VELOCITY', 0.012)))
 TOUCH_TOLERANCE = float(getattr(settings, 'DRUMS_TOUCH_TOLERANCE', 0.01))
 ELLIPSE_THRESHOLD = 1.0 - TOUCH_TOLERANCE 
-DRUM_SYNTH_GAIN = float(getattr(settings, 'DRUMS_SYNTH_GAIN', 1.8))
 DRUM_MIN_VELOCITY = int(getattr(settings, 'DRUMS_MIN_VELOCITY', 50))
 MIN_REHIT_PIXELS = int(getattr(settings, 'DRUMS_MIN_REHIT_PIXELS', 32))
 FOOT_REHIT_PIXELS = int(getattr(settings, 'DRUMS_FOOT_REHIT_PIXELS', 36))
+DRUM_MIN_HIT_INTERVAL_SEC = float(getattr(settings, 'DRUMS_MIN_HIT_INTERVAL_SEC', 0.045))
+DRUM_CUSTOM_RECT_THICKNESS = float(getattr(settings, 'DRUMS_CUSTOM_RECT_THICKNESS', 1.20))
+DRUM_RESIZE_EDGE_TOLERANCE_PX = int(getattr(settings, 'DRUMS_RESIZE_EDGE_TOLERANCE_PX', 10))
+DRUM_MIN_HALF_WIDTH_NORM = float(getattr(settings, 'DRUMS_MIN_HALF_WIDTH_NORM', 0.02))
+DRUM_MIN_HALF_HEIGHT_NORM = float(getattr(settings, 'DRUMS_MIN_HALF_HEIGHT_NORM', 0.015))
 
 COLOR_RED = (255, 0, 0)        # Vermelho
 COLOR_HIT_FILL = (255, 0, 0)  
@@ -71,57 +75,242 @@ fps_tracker = FPSTracker(update_interval=10)
 # ------------------------
 # MAPEAMENTO DA BATERIA
 # ------------------------
-BASE_DRUM_KIT = [
-    # --- LINHA SUPERIOR (PRATOS) ---
-    {"id": 0, "pos": (0.20, 0.40), "axes": (0.13, 0.045), "note": 49, "name": "CRASH", "shape": "ellipse"},
-    {"id": 1, "pos": (0.80, 0.40), "axes": (0.13, 0.045), "note": 51, "name": "RIDE",  "shape": "ellipse"},
-    
-    # --- LINHA DO MEIO (TOMS) ---
-    {"id": 2, "pos": (0.38, 0.60), "axes": (0.10, 0.045), "note": 48, "name": "HI-TOM", "shape": "ellipse"},
-    {"id": 3, "pos": (0.62, 0.60), "axes": (0.10, 0.045), "note": 45, "name": "LO-TOM", "shape": "ellipse"},
-    
-    # --- LINHA INFERIOR (TAMBORES PRINCIPAIS) ---
-    {"id": 4, "pos": (0.20, 0.85), "axes": (0.12, 0.055), "note": 42, "name": "HI-HAT", "shape": "ellipse"},
-    {"id": 5, "pos": (0.50, 0.80), "axes": (0.14, 0.060), "note": 38, "name": "SNARE",  "shape": "ellipse"},
-    {"id": 6, "pos": (0.80, 0.85), "axes": (0.12, 0.055), "note": 41, "name": "FLOOR",  "shape": "ellipse"},
+DRUM_ELEMENT_LIBRARY = {
+    "crash":   {"name": "CRASH",    "note": 49, "shape": "ellipse", "row": "top",    "size": 1.15, "ry_ratio": 0.34, "foot_only": False},
+    "ride":    {"name": "RIDE",     "note": 51, "shape": "ellipse", "row": "top",    "size": 1.15, "ry_ratio": 0.34, "foot_only": False},
+    "splash":  {"name": "SPLASH",   "note": 55, "shape": "ellipse", "row": "top",    "size": 0.85, "ry_ratio": 0.34, "foot_only": False},
+    "china":   {"name": "CHINA",    "note": 52, "shape": "ellipse", "row": "top",    "size": 1.00, "ry_ratio": 0.34, "foot_only": False},
+    "tom_hi":  {"name": "HI-TOM",   "note": 48, "shape": "ellipse", "row": "mid",    "size": 0.95, "ry_ratio": 0.42, "foot_only": False},
+    "tom_mid": {"name": "MID-TOM",  "note": 47, "shape": "ellipse", "row": "mid",    "size": 0.95, "ry_ratio": 0.42, "foot_only": False},
+    "tom_low": {"name": "LO-TOM",   "note": 45, "shape": "ellipse", "row": "mid",    "size": 1.00, "ry_ratio": 0.42, "foot_only": False},
+    "hihat":   {"name": "HI-HAT",   "note": 42, "shape": "ellipse", "row": "bottom", "size": 1.00, "ry_ratio": 0.45, "foot_only": False},
+    "open_hh": {"name": "OPEN-HH",  "note": 46, "shape": "ellipse", "row": "top",    "size": 0.95, "ry_ratio": 0.34, "foot_only": False},
+    "snare":   {"name": "SNARE",    "note": 38, "shape": "ellipse", "row": "bottom", "size": 1.15, "ry_ratio": 0.45, "foot_only": False},
+    "rimshot": {"name": "RIMSHOT",  "note": 37, "shape": "rect",    "row": "bottom", "size": 0.62, "ry_ratio": 0.28, "foot_only": False},
+    "floor":   {"name": "FLOOR",    "note": 41, "shape": "ellipse", "row": "bottom", "size": 1.05, "ry_ratio": 0.45, "foot_only": False},
+    "kick":    {"name": "KICK",     "note": 36, "shape": "rect",    "row": "foot",   "size": 1.40, "ry_ratio": 0.16, "foot_only": False},
+    "hh_pedal":{"name": "HH-PEDAL", "note": 44, "shape": "rect",    "row": "foot",   "size": 0.65, "ry_ratio": 0.22, "foot_only": True},
+    "cowbell": {"name": "COWBELL",  "note": 56, "shape": "rect",    "row": "top",    "size": 0.60, "ry_ratio": 0.30, "foot_only": False},
+    "clap":    {"name": "CLAP",     "note": 39, "shape": "rect",    "row": "bottom", "size": 0.70, "ry_ratio": 0.28, "foot_only": False},
+    "tamb":    {"name": "TAMB",     "note": 54, "shape": "rect",    "row": "top",    "size": 0.55, "ry_ratio": 0.28, "foot_only": False},
+    "shaker":  {"name": "SHAKER",   "note": 82, "shape": "rect",    "row": "top",    "size": 0.55, "ry_ratio": 0.28, "foot_only": False},
+    "agogo_hi": {"name": "AGOGO-H", "note": 67, "shape": "rect",    "row": "mid",    "size": 0.58, "ry_ratio": 0.30, "foot_only": False},
+    "agogo_lo": {"name": "AGOGO-L", "note": 68, "shape": "rect",    "row": "mid",    "size": 0.58, "ry_ratio": 0.30, "foot_only": False},
+    "clave":   {"name": "CLAVE",    "note": 75, "shape": "rect",    "row": "bottom", "size": 0.50, "ry_ratio": 0.28, "foot_only": False},
+}
 
-    # --- BUMBO PADRÃO (MÃO) ---
-    {"id": 7, "pos": (0.50, 0.96), "axes": (0.16, 0.025), "note": 36, "name": "KICK", "shape": "rect", "foot_only": False},
+_NOTE_OVERRIDES = getattr(settings, "DRUMS_NOTE_OVERRIDES", {}) or {}
+for _element_key, _note_value in _NOTE_OVERRIDES.items():
+    if _element_key in DRUM_ELEMENT_LIBRARY:
+        try:
+            _note = int(_note_value)
+            if 0 <= _note <= 127:
+                DRUM_ELEMENT_LIBRARY[_element_key]["note"] = _note
+        except Exception:
+            pass
+
+BASE_DRUM_NOTES = {key: int(cfg.get("note", 0)) for key, cfg in DRUM_ELEMENT_LIBRARY.items()}
+DRUMS_INSTRUMENT_NOTE_VARIATIONS = getattr(settings, "DRUMS_INSTRUMENT_NOTE_VARIATIONS", {}) or {}
+
+
+def apply_drum_note_profile(instrument_name=None):
+    for key, note in BASE_DRUM_NOTES.items():
+        if key in DRUM_ELEMENT_LIBRARY:
+            DRUM_ELEMENT_LIBRARY[key]["note"] = note
+
+    profile = DRUMS_INSTRUMENT_NOTE_VARIATIONS.get(instrument_name, {}) if instrument_name else {}
+    applied_count = 0
+    for key, note_value in profile.items():
+        if key not in DRUM_ELEMENT_LIBRARY:
+            continue
+        try:
+            note = int(note_value)
+            if 0 <= note <= 127:
+                DRUM_ELEMENT_LIBRARY[key]["note"] = note
+                applied_count += 1
+        except Exception:
+            continue
+
+    if instrument_name and profile:
+        print(f">>> Perfil de notas aplicado: {instrument_name} ({applied_count} variações)")
+
+FIXED_BASE_LAYOUT_DEFAULT = [
+    {"element_key": "crash",  "pos": (0.20, 0.40), "axes": (0.13, 0.045)},
+    {"element_key": "ride",   "pos": (0.80, 0.40), "axes": (0.13, 0.045)},
+    {"element_key": "tom_hi", "pos": (0.38, 0.60), "axes": (0.10, 0.045)},
+    {"element_key": "tom_low","pos": (0.62, 0.60), "axes": (0.10, 0.045)},
+    {"element_key": "hihat",  "pos": (0.20, 0.85), "axes": (0.12, 0.055)},
+    {"element_key": "snare",  "pos": (0.50, 0.80), "axes": (0.14, 0.060)},
+    {"element_key": "floor",  "pos": (0.80, 0.85), "axes": (0.12, 0.055)},
+    {"element_key": "kick",   "pos": (0.50, 0.96), "axes": (0.16, 0.025), "foot_only": False},
 ]
 
-COMPLETE_FOOT_ELEMENTS = [
-    # --- BUMBO REALISTA + PEDAL DO CHIMBAL (PÉS) ---
-    {"id": 7, "pos": (0.50, 0.92), "axes": (0.16, 0.025), "note": 36, "name": "KICK",      "shape": "rect",    "foot_only": True},
-    {"id": 8, "pos": (0.32, 0.93), "axes": (0.07, 0.020), "note": 44, "name": "HH-PEDAL", "shape": "rect",    "foot_only": True},
+FIXED_BASE_LAYOUT_COMPLETE = [
+    {"element_key": "crash",    "pos": (0.20, 0.40), "axes": (0.13, 0.045)},
+    {"element_key": "ride",     "pos": (0.80, 0.40), "axes": (0.13, 0.045)},
+    {"element_key": "tom_hi",   "pos": (0.38, 0.60), "axes": (0.10, 0.045)},
+    {"element_key": "tom_low",  "pos": (0.62, 0.60), "axes": (0.10, 0.045)},
+    {"element_key": "hihat",    "pos": (0.20, 0.85), "axes": (0.12, 0.055)},
+    {"element_key": "snare",    "pos": (0.50, 0.80), "axes": (0.14, 0.060)},
+    {"element_key": "floor",    "pos": (0.80, 0.85), "axes": (0.12, 0.055)},
+    {"element_key": "kick",     "pos": (0.50, 0.92), "axes": (0.16, 0.025), "foot_only": True},
+    {"element_key": "hh_pedal", "pos": (0.32, 0.93), "axes": (0.07, 0.020), "foot_only": True},
 ]
+
+EXTRA_SLOTS = [
+    {"pos": (0.50, 0.33), "base_rx": 0.09,  "row": "top"},
+    {"pos": (0.35, 0.33), "base_rx": 0.08,  "row": "top"},
+    {"pos": (0.65, 0.33), "base_rx": 0.08,  "row": "top"},
+    {"pos": (0.12, 0.55), "base_rx": 0.07,  "row": "mid"},
+    {"pos": (0.88, 0.55), "base_rx": 0.07,  "row": "mid"},
+    {"pos": (0.50, 0.66), "base_rx": 0.08,  "row": "mid"},
+    {"pos": (0.34, 0.73), "base_rx": 0.075, "row": "bottom"},
+    {"pos": (0.66, 0.73), "base_rx": 0.075, "row": "bottom"},
+    {"pos": (0.68, 0.93), "base_rx": 0.06,  "row": "foot"},
+]
+
+DEFAULT_DRUM_ELEMENTS = list(getattr(settings, "DRUMS_DEFAULT_ELEMENTS", ["crash", "ride", "tom_hi", "tom_low", "hihat", "snare", "floor", "kick"]))
+COMPLETE_EXTRA_ELEMENTS = list(getattr(settings, "DRUMS_COMPLETE_EXTRA_ELEMENTS", ["hh_pedal"]))
 
 DRUM_KIT = []
 INITIAL_POSITIONS = {}
 current_drum_model = "default"
+current_drum_elements = []
 
 def _clone_kit(source):
     return [dict(item) for item in source]
 
-def configure_drum_kit(drum_model="default"):
-    global DRUM_KIT, INITIAL_POSITIONS, current_drum_model
+def _expand_elements(drum_model="default", drums_elements=None):
+    if drums_elements:
+        selected = [e for e in drums_elements if e in DRUM_ELEMENT_LIBRARY]
+    else:
+        selected = [e for e in DEFAULT_DRUM_ELEMENTS if e in DRUM_ELEMENT_LIBRARY]
+        if str(drum_model).strip().lower() == "complete":
+            selected.extend([e for e in COMPLETE_EXTRA_ELEMENTS if e in DRUM_ELEMENT_LIBRARY])
+
+    dedup = []
+    seen = set()
+    for item in selected:
+        if item not in seen:
+            dedup.append(item)
+            seen.add(item)
+
+    if not dedup:
+        dedup = ["snare", "kick"]
+    return dedup
+
+
+def _make_drum_from_entry(entry, complete_mode=False):
+    key = entry["element_key"]
+    template = DRUM_ELEMENT_LIBRARY[key]
+    drum = dict(template)
+    drum["element_key"] = key
+    drum["pos"] = tuple(entry["pos"])
+    drum["axes"] = tuple(entry["axes"])
+    if "foot_only" in entry:
+        drum["foot_only"] = bool(entry["foot_only"])
+    elif key == "kick":
+        drum["foot_only"] = bool(complete_mode)
+    return drum
+
+
+def _build_fixed_base_kit(drum_model="default"):
+    complete_mode = str(drum_model).strip().lower() == "complete"
+    source = FIXED_BASE_LAYOUT_COMPLETE if complete_mode else FIXED_BASE_LAYOUT_DEFAULT
+    return [_make_drum_from_entry(entry, complete_mode=complete_mode) for entry in source]
+
+
+def _drums_overlap(d1, d2, gap=0.008):
+    x1, y1 = d1["pos"]
+    x2, y2 = d2["pos"]
+    rx1, ry1 = d1["axes"]
+    rx2, ry2 = d2["axes"]
+    return (abs(x1 - x2) < (rx1 + rx2 + gap)) and (abs(y1 - y2) < (ry1 + ry2 + gap))
+
+
+def _fits_without_overlap(candidate, kit_data):
+    for drum in kit_data:
+        if _drums_overlap(candidate, drum):
+            return False
+    return True
+
+
+def _shrink_row(kit_data, row_name, factor=0.92, min_rx=0.03):
+    for drum in kit_data:
+        if drum.get("row") != row_name:
+            continue
+        rx, ry = drum["axes"]
+        new_rx = max(min_rx, rx * factor)
+        scale = new_rx / rx if rx > 0 else 1.0
+        drum["axes"] = (new_rx, ry * scale)
+
+
+def _add_extra_elements(kit_data, extras_to_add):
+    pending = list(extras_to_add)
+    slot_usage = [False] * len(EXTRA_SLOTS)
+
+    for extra_key in pending:
+        template = DRUM_ELEMENT_LIBRARY.get(extra_key)
+        if not template:
+            continue
+
+        preferred_row = template.get("row", "mid")
+        ordered_slots = [
+            (idx, slot) for idx, slot in enumerate(EXTRA_SLOTS)
+            if not slot_usage[idx]
+        ]
+        ordered_slots.sort(key=lambda x: 0 if x[1]["row"] == preferred_row else 1)
+
+        placed = False
+        for idx, slot in ordered_slots:
+            candidate = dict(template)
+            candidate["element_key"] = extra_key
+            candidate["pos"] = tuple(slot["pos"])
+
+            rx = slot["base_rx"] * float(template.get("size", 1.0))
+            ry = rx * float(template.get("ry_ratio", 0.35))
+            if str(template.get("shape", "")).lower() == "rect":
+                ry *= max(1.0, DRUM_CUSTOM_RECT_THICKNESS)
+            candidate["axes"] = (rx, ry)
+
+            if not _fits_without_overlap(candidate, kit_data):
+                _shrink_row(kit_data, slot["row"], factor=0.92)
+                if not _fits_without_overlap(candidate, kit_data):
+                    continue
+
+            slot_usage[idx] = True
+            kit_data.append(candidate)
+            placed = True
+            break
+
+        if not placed:
+            print(f"AVISO: Sem espaço para elemento extra '{extra_key}'.")
+
+
+def configure_drum_kit(drum_model="default", drums_elements=None):
+    global DRUM_KIT, INITIAL_POSITIONS, current_drum_model, current_drum_elements
 
     normalized_model = (drum_model or "default").strip().lower()
     if normalized_model not in ("default", "complete"):
         normalized_model = "default"
 
-    if normalized_model == "complete":
-        kit_data = _clone_kit(BASE_DRUM_KIT[:-1]) + _clone_kit(COMPLETE_FOOT_ELEMENTS)
-    else:
-        kit_data = _clone_kit(BASE_DRUM_KIT)
+    selected = _expand_elements(normalized_model, drums_elements)
 
-    for drum in kit_data:
+    DRUM_KIT = _build_fixed_base_kit(normalized_model)
+    base_keys = {d["element_key"] for d in DRUM_KIT}
+    extras = [e for e in selected if e not in base_keys]
+    if extras:
+        _add_extra_elements(DRUM_KIT, extras)
+
+    for idx, drum in enumerate(DRUM_KIT):
+        drum["id"] = idx
         drum["last_hit"] = 0
         drum["color"] = COLOR_RED
         drum.setdefault("foot_only", False)
 
-    DRUM_KIT = kit_data
     INITIAL_POSITIONS = {d["id"]: d["pos"] for d in DRUM_KIT}
     current_drum_model = normalized_model
+    current_drum_elements = [d["element_key"] for d in DRUM_KIT]
 
 
 configure_drum_kit("default")
@@ -139,19 +328,12 @@ FIXED_SF2_PATH = settings.SF2_PATHS["drums"]
 
 fs, _ = init_fluidsynth(driver="dsound")
 if fs is not None:
-    try:
-        fs.setting("synth.gain", DRUM_SYNTH_GAIN)
-    except Exception:
-        pass
-
     print(f">>> Carregando SoundFont Fixo: {FIXED_SF2_PATH}...")
     drum_sfid = load_single_soundfont(fs, "drums", FIXED_SF2_PATH)
     if drum_sfid != -1:
         print(f"Sucesso! ID do SF2: {drum_sfid}")
         for i in range(POLYPHONY_CHANNELS):
             fs.program_select(i, drum_sfid, 128, 0)
-            fs.cc(i, 7, 127)   # Channel Volume
-            fs.cc(i, 11, 127)  # Expression
     else:
         print(f"ERRO CRÍTICO: Falha ao carregar o arquivo {FIXED_SF2_PATH}")
 else:
@@ -165,8 +347,6 @@ def select_kit_by_name(name):
     
     for i in range(POLYPHONY_CHANNELS):
         fs.program_select(i, drum_sfid, bank, preset)
-        fs.cc(i, 7, 127)   # Channel Volume
-        fs.cc(i, 11, 127)  # Expression
     recorder.set_instrument(FIXED_SF2_PATH, bank, preset, is_drum=True)
 
     return True
@@ -193,6 +373,85 @@ def is_mouse_over_drum(mx, my, drum, w, h):
         return (cx - rx < mx < cx + rx) and (cy - ry < my < cy + ry)
     else:
         return ((mx - cx)**2 / rx**2) + ((my - cy)**2 / ry**2) <= 1.0
+
+
+def _detect_resize_handle(mx, my, drum, w, h, tol_px=DRUM_RESIZE_EDGE_TOLERANCE_PX):
+    cx = drum["pos"][0] * w
+    cy = drum["pos"][1] * h
+    rx = drum["axes"][0] * w
+    ry = drum["axes"][1] * h
+
+    left = cx - rx
+    right = cx + rx
+    top = cy - ry
+    bottom = cy + ry
+
+    if mx < left - tol_px or mx > right + tol_px or my < top - tol_px or my > bottom + tol_px:
+        return None
+
+    candidates = []
+    if top <= my <= bottom:
+        dl = abs(mx - left)
+        dr = abs(mx - right)
+        if dl <= tol_px:
+            candidates.append((dl, "left"))
+        if dr <= tol_px:
+            candidates.append((dr, "right"))
+
+    if left <= mx <= right:
+        dt = abs(my - top)
+        db = abs(my - bottom)
+        if dt <= tol_px:
+            candidates.append((dt, "top"))
+        if db <= tol_px:
+            candidates.append((db, "bottom"))
+
+    if not candidates:
+        return None
+
+    candidates.sort(key=lambda item: item[0])
+    return candidates[0][1]
+
+
+def _apply_resize_from_handle(drum, handle, mx, my, w, h):
+    cx, cy = drum["pos"]
+    rx, ry = drum["axes"]
+
+    left = cx - rx
+    right = cx + rx
+    top = cy - ry
+    bottom = cy + ry
+
+    norm_mx = mx / w
+    norm_my = my / h
+
+    min_rx = DRUM_MIN_HALF_WIDTH_NORM
+    min_ry = DRUM_MIN_HALF_HEIGHT_NORM
+
+    if handle == "left":
+        new_left = max(0.0, min(norm_mx, right - 2.0 * min_rx))
+        new_cx = (new_left + right) * 0.5
+        new_rx = (right - new_left) * 0.5
+        drum["pos"] = (new_cx, cy)
+        drum["axes"] = (new_rx, ry)
+    elif handle == "right":
+        new_right = min(1.0, max(norm_mx, left + 2.0 * min_rx))
+        new_cx = (left + new_right) * 0.5
+        new_rx = (new_right - left) * 0.5
+        drum["pos"] = (new_cx, cy)
+        drum["axes"] = (new_rx, ry)
+    elif handle == "top":
+        new_top = max(0.0, min(norm_my, bottom - 2.0 * min_ry))
+        new_cy = (new_top + bottom) * 0.5
+        new_ry = (bottom - new_top) * 0.5
+        drum["pos"] = (cx, new_cy)
+        drum["axes"] = (rx, new_ry)
+    elif handle == "bottom":
+        new_bottom = min(1.0, max(norm_my, top + 2.0 * min_ry))
+        new_cy = (top + new_bottom) * 0.5
+        new_ry = (new_bottom - top) * 0.5
+        drum["pos"] = (cx, new_cy)
+        drum["axes"] = (rx, new_ry)
 
 hands_state = {
     "Left":  {"prev_y": 0.0, "can_hit": True, "last_hit_pos": None, "last_hit_drum": None},
@@ -248,9 +507,12 @@ def try_trigger_hit(state, hit_drum_id, dy, cursor_pos, min_rehit_pixels=MIN_REH
     if can_hit and is_moving_down and moved_enough_after_last_hit:
         target_drum = next((d for d in DRUM_KIT if d["id"] == hit_drum_id), None)
         if target_drum:
+            now = time.time()
+            if (now - float(target_drum.get("last_hit", 0))) < DRUM_MIN_HIT_INTERVAL_SEC:
+                return False
             velocity = int(min(max((dy - TOUCH_VELOCITY) * 10000, DRUM_MIN_VELOCITY), 127))
             audio_queue.put((target_drum["note"], velocity))
-            target_drum["last_hit"] = time.time()
+            target_drum["last_hit"] = now
             state["last_hit_pos"] = cursor_pos
             state["last_hit_drum"] = hit_drum_id
             state["can_hit"] = False
@@ -322,7 +584,11 @@ def process_foot(label, landmark, w, h, screen, show_trackers=False):
     dy = ref_y - prev_y
 
     hit_drum_id = None
-    foot_targets = [7, 8]
+    foot_targets = [d["id"] for d in DRUM_KIT if d.get("foot_only", False)]
+    if not foot_targets:
+        state["prev_y"] = ref_y
+        return
+
     for drum_id in foot_targets:
         drum = next((d for d in DRUM_KIT if d["id"] == drum_id), None)
         if drum and check_collision(ref_x, ref_y, drum):
@@ -352,7 +618,7 @@ def process_foot(label, landmark, w, h, screen, show_trackers=False):
 
 # draw_text is imported from src.instruments.common
 
-def draw_drums_pygame(screen, w, h, font, dragging_drum=None):
+def draw_drums_pygame(screen, w, h, font, dragging_drum=None, show_names=False, names_font=None):
     overlay = pygame.Surface((w, h), pygame.SRCALPHA)
     
     for drum in DRUM_KIT:
@@ -383,7 +649,7 @@ def draw_drums_pygame(screen, w, h, font, dragging_drum=None):
         color_with_alpha = (*color, fill_alpha)
         
         if drum["shape"] == "rect":
-            if drum["id"] == 7:
+            if drum.get("element_key") == "kick":
                 pygame.draw.rect(overlay, color, drum_rect, 2)
             else:
                 pygame.draw.rect(overlay, color_with_alpha, drum_rect)
@@ -392,9 +658,10 @@ def draw_drums_pygame(screen, w, h, font, dragging_drum=None):
             pygame.draw.ellipse(overlay, color_with_alpha, drum_rect)
             pygame.draw.ellipse(overlay, color, drum_rect, 2)
             
-        # Nome do tambor
-        # name_surf = font.render(drum["name"], True, (255,255,255))
-        # screen.blit(name_surf, (cx_px - name_surf.get_width()//2, cy_px))
+        if show_names:
+            draw_font = names_font if names_font is not None else font
+            name_surf = draw_font.render(drum["name"], True, (240, 240, 240))
+            screen.blit(name_surf, (cx_px - name_surf.get_width() // 2, cy_px - name_surf.get_height() // 2))
 
     screen.blit(overlay, (0, 0))
 
@@ -410,7 +677,10 @@ def draw_drums_pygame(screen, w, h, font, dragging_drum=None):
             "1 -> iniciar gravacao",
             "2 -> encerrar gravacao",
             "3 -> iniciar/interromper playback",
+            "Mouse interno -> reposicionar elemento",
+            "Mouse na borda -> redimensionar pela borda",
             "5 -> resetar posicao da bateria",
+            "8 -> ocultar/mostrar nomes",
             "9 -> ocultar/mostrar trackers",
             "0 -> ocultar/mostrar menu"
         ]
@@ -422,12 +692,14 @@ def draw_drums_pygame(screen, w, h, font, dragging_drum=None):
         draw_text(screen, fps_text, (w - 120, 30), font)
 
  # Loop principal
-def start_drums(chosen_instrument=None, user_tolerance=None, rec_options=None, touch_velocity=None, resolution_profile=None, show_trackers=False, drum_model="default"):
+def start_drums(chosen_instrument=None, user_tolerance=None, rec_options=None, touch_velocity=None, resolution_profile=None, show_trackers=False, drum_model="default", drums_elements=None):
     print(">>> INICIANDO BATERIA (Pygame)")
     tracker_visible = bool(show_trackers)
     use_feet_model = str(drum_model).strip().lower() == "complete"
-    configure_drum_kit("complete" if use_feet_model else "default")
+    apply_drum_note_profile(chosen_instrument)
+    configure_drum_kit("complete" if use_feet_model else "default", drums_elements=drums_elements)
     print(f">>> Modelo de bateria: {current_drum_model}")
+    print(f">>> Elementos: {', '.join(current_drum_elements)}")
     
     if user_tolerance:
         global ELLIPSE_THRESHOLD
@@ -487,7 +759,11 @@ def start_drums(chosen_instrument=None, user_tolerance=None, rec_options=None, t
         pose = mp.solutions.pose.Pose(model_complexity=0, min_detection_confidence=0.3, min_tracking_confidence=0.3)
         
     dragging_drum = None
+    resizing_drum = None
+    resize_handle = None
     drag_offset = (0, 0)
+    names_visible = False
+    names_font = pygame.font.SysFont("Arial", 12, bold=False)
 
     running = True
     try:
@@ -501,8 +777,17 @@ def start_drums(chosen_instrument=None, user_tolerance=None, rec_options=None, t
                     if event.button == 1: # Clique Esquerdo
                         mx, my = event.pos
                         for drum in DRUM_KIT:
+                            handle = _detect_resize_handle(mx, my, drum, LOGICAL_W, LOGICAL_H)
+                            if handle is not None:
+                                resizing_drum = drum
+                                resize_handle = handle
+                                dragging_drum = None
+                                break
+
                             if is_mouse_over_drum(mx, my, drum, LOGICAL_W, LOGICAL_H):
                                 dragging_drum = drum
+                                resizing_drum = None
+                                resize_handle = None
                                 norm_mx = mx / LOGICAL_W
                                 norm_my = my / LOGICAL_H
                                 drag_offset = (drum["pos"][0] - norm_mx, drum["pos"][1] - norm_my)
@@ -511,9 +796,14 @@ def start_drums(chosen_instrument=None, user_tolerance=None, rec_options=None, t
                 elif event.type == pygame.MOUSEBUTTONUP:
                     if event.button == 1:
                         dragging_drum = None
+                        resizing_drum = None
+                        resize_handle = None
                 
                 elif event.type == pygame.MOUSEMOTION:
-                    if dragging_drum:
+                    if resizing_drum is not None and resize_handle is not None:
+                        mx, my = event.pos
+                        _apply_resize_from_handle(resizing_drum, resize_handle, mx, my, LOGICAL_W, LOGICAL_H)
+                    elif dragging_drum:
                         mx, my = event.pos
                         norm_mx = mx / LOGICAL_W
                         norm_my = my / LOGICAL_H
@@ -541,6 +831,8 @@ def start_drums(chosen_instrument=None, user_tolerance=None, rec_options=None, t
                         recorder.toggle_playback(fs)
                     elif event.key == pygame.K_5:
                         reset_drum_positions()
+                    elif event.key == pygame.K_8:
+                        names_visible = not names_visible
                     elif event.key == pygame.K_9:
                         tracker_visible = not tracker_visible
                     elif event.key == pygame.K_0:
@@ -560,7 +852,15 @@ def start_drums(chosen_instrument=None, user_tolerance=None, rec_options=None, t
             frame_surface = pygame.image.frombuffer(frame_rgb.tobytes(), (LOGICAL_W, LOGICAL_H), 'RGB')
             main_surface.blit(frame_surface, (0, 0))
             
-            draw_drums_pygame(main_surface, LOGICAL_W, LOGICAL_H, font, dragging_drum)
+            draw_drums_pygame(
+                main_surface,
+                LOGICAL_W,
+                LOGICAL_H,
+                font,
+                dragging_drum,
+                show_names=names_visible,
+                names_font=names_font,
+            )
             
             results = hands.process(frame_rgb)
             pose_results = pose.process(frame_rgb) if pose is not None else None
@@ -596,4 +896,4 @@ def start_drums(chosen_instrument=None, user_tolerance=None, rec_options=None, t
         print(">>> Bateria Encerrada.")
 
 if __name__ == "__main__":
-    start_drums("Perfect Drums 1")
+    start_drums("Classic")

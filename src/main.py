@@ -157,6 +157,33 @@ def parse_resolution_arg(value):
         "fps": fps,
     }
 
+
+def parse_drums_elements_arg(value):
+    """Parse comma-separated drums elements and validate against predefined list."""
+    raw = str(value).strip()
+    if not raw:
+        raise argparse.ArgumentTypeError("Invalid --drm-elems value. Use comma-separated names.")
+
+    elements = [token.strip().lower() for token in raw.split(",") if token.strip()]
+    if not elements:
+        raise argparse.ArgumentTypeError("Invalid --drm-elems value. Use comma-separated names.")
+
+    allowed = set(getattr(settings, "DRUMS_PREDEFINED_ELEMENTS", []))
+    invalid = [name for name in elements if name not in allowed]
+    if invalid:
+        allowed_txt = ",".join(sorted(allowed))
+        raise argparse.ArgumentTypeError(
+            f"Invalid drums elements: {', '.join(invalid)}. Allowed: {allowed_txt}"
+        )
+
+    dedup = []
+    seen = set()
+    for name in elements:
+        if name not in seen:
+            dedup.append(name)
+            seen.add(name)
+    return dedup
+
 def get_instrument_type(instrument_name):
     """Determine instrument type from name"""
     catalog = get_available_instruments()
@@ -185,7 +212,7 @@ STANDALONE OPTIONS:
 
 GLOBAL OPTIONS:
   -h, --help                         Show help message and exit
-  -i, --instrument INSTRUMENT_NAME   Instrument name to start (e.g., 'Perfect Drums 1', 'Grand Piano', 'Recorder')
+    -i, --instrument INSTRUMENT_NAME   Instrument name to start (e.g., 'Classic', 'Power', 'Grand Piano', 'Recorder')
     -r, --resolution PROFILE           Resolution/FPS profile (HEIGHT+FPS). HEIGHT min/max: 240..4320, FPS min/max: 1..240 (default: 108030)
     -t, --trackers                     Show hand/face trackers on screen (boolean flag: False|True, default: False)
     -f, --separate-folders             Keep playback and recordings in different folders (boolean flag: False|True, default: False)
@@ -203,6 +230,7 @@ KEYBOARD OPTIONS:
 
 DRUMS OPTIONS:
     --drm-model {default,complete}      Drum layout model (string values: default|complete, default: default)
+    --drm-elems a,b,c                    Drums elements list (comma-separated). Allowed: crash,ride,splash,china,tom_hi,tom_mid,tom_low,hihat,open_hh,snare,rimshot,floor,kick,hh_pedal,cowbell,clap,tamb,shaker,agogo_hi,agogo_lo,clave
     --drm-tt TOUCH_TOLERANCE            Touch tolerance (float > 0, default: 0.01; suggested: 0.001..0.10)
     --drm-tv TOUCH_VELOCITY             Touch velocity threshold (float > 0, default: 0.012; suggested: 0.001..0.10)
 
@@ -215,7 +243,7 @@ FLUTE OPTIONS:
     --flt-p {small,medium,large}        Hole size preset (string values: small|medium|large, default: medium)
 
 EXAMPLES:
-  python main.py -i "Perfect Drums 1" -tf
+    python main.py -i "Classic" -tf
     python main.py -i "Piano" -r 108030
     python main.py -i "Grand Piano" --kbd-sd 0.5 --kbd-lf 0.025
     python main.py -i "Recorder" --flt-max 0.06 --flt-p medium
@@ -234,7 +262,7 @@ def create_argparse():
         add_help=False,  # Disable default help to prevent automatic exit
         epilog="""
     Examples:
-    python main.py -i "Perfect Drums 1" -tf
+    python main.py -i "Classic" -tf
     python main.py -i "Grand Piano" --kbd-sd 0.5 --kbd-lf 0.025
     python main.py -i "Recorder" --flt-max 0.06 --flt-p medium
     python main.py -i "Quality Flute" --flt-inv --flt-ang-inv
@@ -260,7 +288,7 @@ def create_argparse():
         "-i", "--instrument",
         type=validate_instrument,
         required=False,  # Made optional to allow help without instrument
-        help="Instrument name to start (e.g., 'Perfect Drums 1', 'Grand Piano', 'Recorder')"
+        help="Instrument name to start (e.g., 'Classic', 'Power', 'Grand Piano', 'Recorder')"
     )
 
     parser.add_argument(
@@ -340,6 +368,14 @@ def create_argparse():
         default="default",
         dest="drums_model",
         help="Drum layout model (string: default|complete, default: default)."
+    )
+    drums_group.add_argument(
+        "--drm-elems", "--drums-elements",
+        type=parse_drums_elements_arg,
+        default=None,
+        dest="drm_elems",
+        metavar="a,b,c",
+        help="Drums elements list (CSV). Allowed: crash,ride,splash,china,tom_hi,tom_mid,tom_low,hihat,open_hh,snare,rimshot,floor,kick,hh_pedal,cowbell,clap,tamb,shaker,agogo_hi,agogo_lo,clave."
     )
     drums_group.add_argument(
         "--drm-tt", "--drums-tt",
@@ -483,11 +519,12 @@ def start_drums(args, rec_opts):
     defaults = get_defaults()
     
     # Use provided values or defaults
-    tolerance = args.drums_tt if args.drums_tt is not None else defaults["drums"]["tolerance"]
-    touch_velocity = args.drums_tv if args.drums_tv is not None else defaults["drums"]["touch_velocity"]
+    tolerance = args.drm_tt if args.drm_tt is not None else defaults["drums"]["tolerance"]
+    touch_velocity = args.drm_tv if args.drm_tv is not None else defaults["drums"]["touch_velocity"]
     
     print(f"\n>>> STARTING DRUMS: {args.instrument}")
     print(f"    Drum Model: {args.drums_model}")
+    print(f"    Drum Elements: {','.join(args.drm_elems) if args.drm_elems else 'auto(default)'}")
     print(f"    Tolerance: {tolerance}")
     print(f"    Touch Velocity: {touch_velocity}")
     
@@ -500,6 +537,7 @@ def start_drums(args, rec_opts):
         resolution_profile=args.resolution,
         show_trackers=args.trackers,
         drum_model=args.drums_model,
+        drums_elements=args.drm_elems,
     )
 
 
@@ -508,17 +546,17 @@ def start_flute(args, rec_opts):
     defaults = get_defaults()
     
     # Use provided values or defaults
-    mouth_peak = args.flute_min if args.flute_min is not None else defaults["flute"]["mouth_peak"]
-    mouth_max = args.flute_max if args.flute_max is not None else defaults["flute"]["mouth_max"]
-    hole_radius, hole_spacing = get_flute_hole_params(args.flute_precision)
+    mouth_peak = args.flt_min if args.flt_min is not None else defaults["flute"]["mouth_peak"]
+    mouth_max = args.flt_max if args.flt_max is not None else defaults["flute"]["mouth_max"]
+    hole_radius, hole_spacing = get_flute_hole_params(args.flt_p)
     
     print(f"\n>>> STARTING FLUTE: {args.instrument}")
     print(f"    Mouth Peak: {mouth_peak}")
     print(f"    Mouth Max: {mouth_max}")
-    print(f"    Precision: {args.flute_precision}")
-    print(f"    Invert Blow: {args.flute_invert}")
-    print(f"    Invert Angle: {args.flute_angle_invert}")
-    print(f"    Follow Sensitivity: {args.flute_follow_sens}")
+    print(f"    Precision: {args.flt_p}")
+    print(f"    Invert Blow: {args.flt_inv}")
+    print(f"    Invert Angle: {args.flt_ang_inv}")
+    print(f"    Follow Sensitivity: {args.flt_fs}")
     
     flute = safe_import_module("src.instruments.flute")
     reload(flute)
@@ -529,9 +567,9 @@ def start_flute(args, rec_opts):
         mouth_max=mouth_max,
         hole_radius=hole_radius,
         hole_spacing=hole_spacing,
-        invert_blow=args.flute_invert,
-        invert_angle=args.flute_angle_invert,
-        follow_sensitivity=args.flute_follow_sens,
+        invert_blow=args.flt_inv,
+        invert_angle=args.flt_ang_inv,
+        follow_sensitivity=args.flt_fs,
         rec_options=rec_opts,
         resolution_profile=args.resolution,
         show_trackers=args.trackers,
@@ -543,9 +581,9 @@ def start_keyboard(args, rec_opts):
     defaults = get_defaults()
     
     # Use provided values or defaults
-    sustain = args.keyboard_sd if args.keyboard_sd is not None else defaults["keyboard"]["sustain"]
-    lift = args.keyboard_lf if args.keyboard_lf is not None else defaults["keyboard"]["lift"]
-    tolerance = args.keyboard_ts if args.keyboard_ts is not None else defaults["keyboard"]["tolerance"]
+    sustain = args.kbd_sd if args.kbd_sd is not None else defaults["keyboard"]["sustain"]
+    lift = args.kbd_lf if args.kbd_lf is not None else defaults["keyboard"]["lift"]
+    tolerance = args.kbd_ts if args.kbd_ts is not None else defaults["keyboard"]["tolerance"]
     
     print(f"\n>>> STARTING KEYBOARD: {args.instrument}")
     print(f"    Sustain Decay: {sustain}s")

@@ -1,0 +1,1607 @@
+[
+  {
+    "file": "C:\\Users\\lucas.bezerra\\OneDrive - Diebold Nixdorf\\Documentos\\Outros\\TKH\\talkinghands\\assets\\soundfonts\\drums\\NewDrums.sf2",
+    "preset_count": 2,
+    "instrument_count": 4,
+    "presets": [
+      {
+        "name": "Neu",
+        "bank": 128,
+        "program": 0
+      },
+      {
+        "name": "Power",
+        "bank": 128,
+        "program": 16
+      }
+    ],
+    "instruments": [
+      "Neu0",
+      "Neu1",
+      "Power0",
+      "Power1"
+    ],
+    "preset_details": [
+      {
+        "name": "Neu",
+        "bank": 128,
+        "program": 0,
+        "layer_group_count": 58,
+        "layers": [
+          {
+            "key_from": 26,
+            "key_to": 26,
+            "instruments": [
+              "Neu0",
+              "Neu1"
+            ],
+            "samples": [
+              "Finger Snap Wet(L)",
+              "Finger Snap Wet(R)"
+            ]
+          },
+          {
+            "key_from": 27,
+            "key_to": 27,
+            "instruments": [
+              "Neu0",
+              "Neu1"
+            ],
+            "samples": []
+          },
+          {
+            "key_from": 28,
+            "key_to": 28,
+            "instruments": [
+              "Neu0",
+              "Neu1"
+            ],
+            "samples": [
+              "Slap"
+            ]
+          },
+          {
+            "key_from": 29,
+            "key_to": 30,
+            "instruments": [
+              "Neu0",
+              "Neu1"
+            ],
+            "samples": []
+          },
+          {
+            "key_from": 31,
+            "key_to": 31,
+            "instruments": [
+              "Neu0",
+              "Neu1"
+            ],
+            "samples": [
+              "SticksII(L)",
+              "SticksII(R)"
+            ]
+          },
+          {
+            "key_from": 32,
+            "key_to": 32,
+            "instruments": [
+              "Neu0",
+              "Neu1"
+            ],
+            "samples": [
+              "Square Click(L)",
+              "Square Click(R)"
+            ]
+          },
+          {
+            "key_from": 33,
+            "key_to": 33,
+            "instruments": [
+              "Neu0",
+              "Neu1"
+            ],
+            "samples": [
+              "Metron ClickII(L)",
+              "Metron ClickII(R)"
+            ]
+          },
+          {
+            "key_from": 34,
+            "key_to": 34,
+            "instruments": [
+              "Neu0",
+              "Neu1"
+            ],
+            "samples": [
+              "Metron BellII(L)",
+              "Metron BellII(R)"
+            ]
+          },
+          {
+            "key_from": 35,
+            "key_to": 35,
+            "instruments": [
+              "Neu0",
+              "Neu1"
+            ],
+            "samples": [
+              "NCBD22-3H -L",
+              "NCBD22-3H -R"
+            ]
+          },
+          {
+            "key_from": 36,
+            "key_to": 36,
+            "instruments": [
+              "Neu0",
+              "Neu1"
+            ],
+            "samples": [
+              "NCBD22-3H -L1",
+              "NCBD22-3H -R1"
+            ]
+          },
+          {
+            "key_from": 37,
+            "key_to": 37,
+            "instruments": [
+              "Neu0",
+              "Neu1"
+            ],
+            "samples": [
+              "Rimshot1"
+            ]
+          },
+          {
+            "key_from": 38,
+            "key_to": 38,
+            "instruments": [
+              "Neu0",
+              "Neu1"
+            ],
+            "samples": [
+              "NCSN2LRFMH-L",
+              "NCSN2LRFMH-R"
+            ]
+          },
+          {
+            "key_from": 39,
+            "key_to": 39,
+            "instruments": [
+              "Neu0",
+              "Neu1"
+            ],
+            "samples": [
+              "Hip clap(L)",
+              "Hip clap(R)"
+            ]
+          },
+          {
+            "key_from": 40,
+            "key_to": 40,
+            "instruments": [
+              "Neu0",
+              "Neu1"
+            ],
+            "samples": [
+              "NCSNC2RFHL-L",
+              "NCSNC2RFHL-R"
+            ]
+          },
+          {
+            "key_from": 41,
+            "key_to": 41,
+            "instruments": [
+              "Neu0",
+              "Neu1"
+            ],
+            "samples": [
+              "F1(L)",
+              "F1(R)"
+            ]
+          },
+          {
+            "key_from": 42,
+            "key_to": 42,
+            "instruments": [
+              "Neu0",
+              "Neu1"
+            ],
+            "samples": [
+              "42 HH Cl(L)",
+              "42 HH Cl(R)"
+            ]
+          },
+          {
+            "key_from": 43,
+            "key_to": 43,
+            "instruments": [
+              "Neu0",
+              "Neu1"
+            ],
+            "samples": [
+              "Tom16 Hard(L)",
+              "Tom16 Hard(R)"
+            ]
+          },
+          {
+            "key_from": 44,
+            "key_to": 44,
+            "instruments": [
+              "Neu0",
+              "Neu1"
+            ],
+            "samples": [
+              "44 HH Foot(L)",
+              "44 HH Foot(R)"
+            ]
+          },
+          {
+            "key_from": 45,
+            "key_to": 45,
+            "instruments": [
+              "Neu0",
+              "Neu1"
+            ],
+            "samples": [
+              "Tom14 Hard(L)",
+              "Tom14 Hard(R)"
+            ]
+          },
+          {
+            "key_from": 46,
+            "key_to": 46,
+            "instruments": [
+              "Neu0",
+              "Neu1"
+            ],
+            "samples": [
+              "Edge Hard Open (L)",
+              "Edge Hard Open (R)"
+            ]
+          },
+          {
+            "key_from": 47,
+            "key_to": 47,
+            "instruments": [
+              "Neu0",
+              "Neu1"
+            ],
+            "samples": [
+              "Tom13 Hard(L)",
+              "Tom13 Hard(R)"
+            ]
+          },
+          {
+            "key_from": 48,
+            "key_to": 48,
+            "instruments": [
+              "Neu0",
+              "Neu1"
+            ],
+            "samples": [
+              "Tom12 Hard(L)",
+              "Tom12 Hard(R)"
+            ]
+          },
+          {
+            "key_from": 49,
+            "key_to": 49,
+            "instruments": [
+              "Neu0",
+              "Neu1"
+            ],
+            "samples": [
+              "Crsh 1(L)",
+              "Crsh 1(R)"
+            ]
+          },
+          {
+            "key_from": 50,
+            "key_to": 50,
+            "instruments": [
+              "Neu0",
+              "Neu1"
+            ],
+            "samples": [
+              "Tom10 Hard(L)",
+              "Tom10 Hard(R)"
+            ]
+          },
+          {
+            "key_from": 51,
+            "key_to": 51,
+            "instruments": [
+              "Neu0",
+              "Neu1"
+            ],
+            "samples": [
+              "51 Ride Cymbal(L)",
+              "51 Ride Cymbal(R)"
+            ]
+          },
+          {
+            "key_from": 52,
+            "key_to": 52,
+            "instruments": [
+              "Neu0",
+              "Neu1"
+            ],
+            "samples": [
+              "drm-StereoChina(L)",
+              "drm-StereoChina(R)"
+            ]
+          },
+          {
+            "key_from": 53,
+            "key_to": 53,
+            "instruments": [
+              "Neu0",
+              "Neu1"
+            ],
+            "samples": [
+              "PRide20 HBell"
+            ]
+          },
+          {
+            "key_from": 54,
+            "key_to": 54,
+            "instruments": [
+              "Neu0",
+              "Neu1"
+            ],
+            "samples": [
+              "54 Tambourine(L)",
+              "54 Tambourine(R)"
+            ]
+          },
+          {
+            "key_from": 55,
+            "key_to": 55,
+            "instruments": [
+              "Neu0",
+              "Neu1"
+            ],
+            "samples": [
+              "Splash1(L)",
+              "Splash1(R)"
+            ]
+          },
+          {
+            "key_from": 56,
+            "key_to": 56,
+            "instruments": [
+              "Neu0",
+              "Neu1"
+            ],
+            "samples": [
+              "56 Cowbell(L)",
+              "56 Cowbell(R)"
+            ]
+          },
+          {
+            "key_from": 57,
+            "key_to": 57,
+            "instruments": [
+              "Neu0",
+              "Neu1"
+            ],
+            "samples": [
+              "Crsh 2(L)",
+              "Crsh 2(R)"
+            ]
+          },
+          {
+            "key_from": 58,
+            "key_to": 58,
+            "instruments": [
+              "Neu0",
+              "Neu1"
+            ],
+            "samples": [
+              "Vibra Slap1"
+            ]
+          },
+          {
+            "key_from": 59,
+            "key_to": 59,
+            "instruments": [
+              "Neu0",
+              "Neu1"
+            ],
+            "samples": [
+              "59 Ride 1(R)"
+            ]
+          },
+          {
+            "key_from": 60,
+            "key_to": 60,
+            "instruments": [
+              "Neu0",
+              "Neu1"
+            ],
+            "samples": [
+              "Bongo Hi Op(L)",
+              "Bongo Hi Op(R)"
+            ]
+          },
+          {
+            "key_from": 61,
+            "key_to": 61,
+            "instruments": [
+              "Neu0",
+              "Neu1"
+            ],
+            "samples": [
+              "Bongo Lo Op(L)",
+              "Bongo Lo Op(R)"
+            ]
+          },
+          {
+            "key_from": 62,
+            "key_to": 62,
+            "instruments": [
+              "Neu0",
+              "Neu1"
+            ],
+            "samples": [
+              "Conga Hi slapop(L)",
+              "Conga Hi slapop(R)"
+            ]
+          },
+          {
+            "key_from": 63,
+            "key_to": 63,
+            "instruments": [
+              "Neu0",
+              "Neu1"
+            ],
+            "samples": [
+              "Conga Hi(L)",
+              "Conga Hi(R)"
+            ]
+          },
+          {
+            "key_from": 64,
+            "key_to": 64,
+            "instruments": [
+              "Neu0",
+              "Neu1"
+            ],
+            "samples": [
+              "Conga Lo.Op(L)",
+              "Conga Lo.Op(R)"
+            ]
+          },
+          {
+            "key_from": 65,
+            "key_to": 65,
+            "instruments": [
+              "Neu0",
+              "Neu1"
+            ],
+            "samples": [
+              "65 Timbale Hi(L)",
+              "65 Timbale Hi(R)"
+            ]
+          },
+          {
+            "key_from": 66,
+            "key_to": 66,
+            "instruments": [
+              "Neu0",
+              "Neu1"
+            ],
+            "samples": [
+              "66 Timbale Lw(L)",
+              "66 Timbale Lw(R)"
+            ]
+          },
+          {
+            "key_from": 67,
+            "key_to": 67,
+            "instruments": [
+              "Neu0",
+              "Neu1"
+            ],
+            "samples": [
+              "67 Hi Agogo(L)",
+              "67 Hi Agogo(R)"
+            ]
+          },
+          {
+            "key_from": 68,
+            "key_to": 68,
+            "instruments": [
+              "Neu0",
+              "Neu1"
+            ],
+            "samples": [
+              "68 Lw Agogo(L)",
+              "68 Lw Agogo(R)"
+            ]
+          },
+          {
+            "key_from": 69,
+            "key_to": 69,
+            "instruments": [
+              "Neu0",
+              "Neu1"
+            ],
+            "samples": [
+              "69 Cabasa(L)",
+              "69 Cabasa(R)"
+            ]
+          },
+          {
+            "key_from": 70,
+            "key_to": 70,
+            "instruments": [
+              "Neu0",
+              "Neu1"
+            ],
+            "samples": [
+              "70 Maracas(L)",
+              "70 Maracas(R)"
+            ]
+          },
+          {
+            "key_from": 71,
+            "key_to": 72,
+            "instruments": [
+              "Neu0",
+              "Neu1"
+            ],
+            "samples": []
+          },
+          {
+            "key_from": 73,
+            "key_to": 73,
+            "instruments": [
+              "Neu0",
+              "Neu1"
+            ],
+            "samples": [
+              "Short Guiro"
+            ]
+          },
+          {
+            "key_from": 74,
+            "key_to": 74,
+            "instruments": [
+              "Neu0",
+              "Neu1"
+            ],
+            "samples": [
+              "Long Guiro"
+            ]
+          },
+          {
+            "key_from": 75,
+            "key_to": 75,
+            "instruments": [
+              "Neu0",
+              "Neu1"
+            ],
+            "samples": [
+              "75 Claves(L)",
+              "75 Claves(R)"
+            ]
+          },
+          {
+            "key_from": 76,
+            "key_to": 76,
+            "instruments": [
+              "Neu0",
+              "Neu1"
+            ],
+            "samples": [
+              "76 Wood Block Hi(L)"
+            ]
+          },
+          {
+            "key_from": 77,
+            "key_to": 77,
+            "instruments": [
+              "Neu0",
+              "Neu1"
+            ],
+            "samples": [
+              "77 Wood Block Lw(R)"
+            ]
+          },
+          {
+            "key_from": 78,
+            "key_to": 79,
+            "instruments": [
+              "Neu0",
+              "Neu1"
+            ],
+            "samples": []
+          },
+          {
+            "key_from": 80,
+            "key_to": 80,
+            "instruments": [
+              "Neu0",
+              "Neu1"
+            ],
+            "samples": [
+              "80 Mute Triangle(L)",
+              "80 Mute Triangle(R)"
+            ]
+          },
+          {
+            "key_from": 81,
+            "key_to": 81,
+            "instruments": [
+              "Neu0",
+              "Neu1"
+            ],
+            "samples": [
+              "open vol 3"
+            ]
+          },
+          {
+            "key_from": 82,
+            "key_to": 82,
+            "instruments": [
+              "Neu0",
+              "Neu1"
+            ],
+            "samples": [
+              "Met Shaker Dn(R)"
+            ]
+          },
+          {
+            "key_from": 83,
+            "key_to": 83,
+            "instruments": [
+              "Neu0",
+              "Neu1"
+            ],
+            "samples": [
+              "83 Jingle Bell 3(L)",
+              "83 Jingle Bell 3(R)"
+            ]
+          },
+          {
+            "key_from": 84,
+            "key_to": 84,
+            "instruments": [
+              "Neu0",
+              "Neu1"
+            ],
+            "samples": [
+              "Bell Tree 2"
+            ]
+          },
+          {
+            "key_from": 85,
+            "key_to": 85,
+            "instruments": [
+              "Neu0",
+              "Neu1"
+            ],
+            "samples": [
+              "Castanets(L)",
+              "Castanets(R)"
+            ]
+          },
+          {
+            "key_from": 86,
+            "key_to": 86,
+            "instruments": [
+              "Neu0",
+              "Neu1"
+            ],
+            "samples": [
+              "86 Mute Surdo(L)",
+              "86 Mute Surdo(R)"
+            ]
+          }
+        ]
+      },
+      {
+        "name": "Power",
+        "bank": 128,
+        "program": 16,
+        "layer_group_count": 58,
+        "layers": [
+          {
+            "key_from": 26,
+            "key_to": 26,
+            "instruments": [
+              "Power0",
+              "Power1"
+            ],
+            "samples": [
+              "Finger Snap Wet(L)",
+              "Finger Snap Wet(R)"
+            ]
+          },
+          {
+            "key_from": 27,
+            "key_to": 27,
+            "instruments": [
+              "Power0",
+              "Power1"
+            ],
+            "samples": []
+          },
+          {
+            "key_from": 28,
+            "key_to": 28,
+            "instruments": [
+              "Power0",
+              "Power1"
+            ],
+            "samples": [
+              "Slap"
+            ]
+          },
+          {
+            "key_from": 29,
+            "key_to": 30,
+            "instruments": [
+              "Power0",
+              "Power1"
+            ],
+            "samples": []
+          },
+          {
+            "key_from": 31,
+            "key_to": 31,
+            "instruments": [
+              "Power0",
+              "Power1"
+            ],
+            "samples": [
+              "SticksII(L)",
+              "SticksII(R)"
+            ]
+          },
+          {
+            "key_from": 32,
+            "key_to": 32,
+            "instruments": [
+              "Power0",
+              "Power1"
+            ],
+            "samples": [
+              "Square Click(L)",
+              "Square Click(R)"
+            ]
+          },
+          {
+            "key_from": 33,
+            "key_to": 33,
+            "instruments": [
+              "Power0",
+              "Power1"
+            ],
+            "samples": [
+              "Metron ClickII(L)",
+              "Metron ClickII(R)"
+            ]
+          },
+          {
+            "key_from": 34,
+            "key_to": 34,
+            "instruments": [
+              "Power0",
+              "Power1"
+            ],
+            "samples": [
+              "Metron BellII(L)",
+              "Metron BellII(R)"
+            ]
+          },
+          {
+            "key_from": 35,
+            "key_to": 35,
+            "instruments": [
+              "Power0",
+              "Power1"
+            ],
+            "samples": [
+              "NCBD22-3H -L",
+              "NCBD22-3H -R"
+            ]
+          },
+          {
+            "key_from": 36,
+            "key_to": 36,
+            "instruments": [
+              "Power0",
+              "Power1"
+            ],
+            "samples": [
+              "kick2"
+            ]
+          },
+          {
+            "key_from": 37,
+            "key_to": 37,
+            "instruments": [
+              "Power0",
+              "Power1"
+            ],
+            "samples": [
+              "Rimshot1"
+            ]
+          },
+          {
+            "key_from": 38,
+            "key_to": 38,
+            "instruments": [
+              "Power0",
+              "Power1"
+            ],
+            "samples": [
+              "Rvb-S1(L)",
+              "Rvb-S1(R)"
+            ]
+          },
+          {
+            "key_from": 39,
+            "key_to": 39,
+            "instruments": [
+              "Power0",
+              "Power1"
+            ],
+            "samples": [
+              "Hip clap(L)",
+              "Hip clap(R)"
+            ]
+          },
+          {
+            "key_from": 40,
+            "key_to": 40,
+            "instruments": [
+              "Power0",
+              "Power1"
+            ],
+            "samples": [
+              "drm-PowerSnare2(L)",
+              "drm-PowerSnare2(R)"
+            ]
+          },
+          {
+            "key_from": 41,
+            "key_to": 41,
+            "instruments": [
+              "Power0",
+              "Power1"
+            ],
+            "samples": [
+              "41 HEX Tom Lw 1(L)",
+              "41 HEX Tom Lw 1(R)"
+            ]
+          },
+          {
+            "key_from": 42,
+            "key_to": 42,
+            "instruments": [
+              "Power0",
+              "Power1"
+            ],
+            "samples": [
+              "42 HH Cl(L)",
+              "42 HH Cl(R)"
+            ]
+          },
+          {
+            "key_from": 43,
+            "key_to": 43,
+            "instruments": [
+              "Power0",
+              "Power1"
+            ],
+            "samples": [
+              "43 HEX Tom Lw 2(L)",
+              "43 HEX Tom Lw 2(R)"
+            ]
+          },
+          {
+            "key_from": 44,
+            "key_to": 44,
+            "instruments": [
+              "Power0",
+              "Power1"
+            ],
+            "samples": [
+              "44 HH Foot(L)",
+              "44 HH Foot(R)"
+            ]
+          },
+          {
+            "key_from": 45,
+            "key_to": 45,
+            "instruments": [
+              "Power0",
+              "Power1"
+            ],
+            "samples": [
+              "45 HEX Tom Mid 1(L)",
+              "45 HEX Tom Mid 1(R)"
+            ]
+          },
+          {
+            "key_from": 46,
+            "key_to": 46,
+            "instruments": [
+              "Power0",
+              "Power1"
+            ],
+            "samples": [
+              "Edge Hard Open (L)",
+              "Edge Hard Open (R)"
+            ]
+          },
+          {
+            "key_from": 47,
+            "key_to": 47,
+            "instruments": [
+              "Power0",
+              "Power1"
+            ],
+            "samples": [
+              "47 HEX Tom Mid 2(L)",
+              "47 HEX Tom Mid 2(R)"
+            ]
+          },
+          {
+            "key_from": 48,
+            "key_to": 48,
+            "instruments": [
+              "Power0",
+              "Power1"
+            ],
+            "samples": [
+              "48 HEX Tom Hi 1(L)",
+              "48 HEX Tom Hi 1(R)"
+            ]
+          },
+          {
+            "key_from": 49,
+            "key_to": 49,
+            "instruments": [
+              "Power0",
+              "Power1"
+            ],
+            "samples": [
+              "Crsh 1(L)",
+              "Crsh 1(R)"
+            ]
+          },
+          {
+            "key_from": 50,
+            "key_to": 50,
+            "instruments": [
+              "Power0",
+              "Power1"
+            ],
+            "samples": [
+              "50 HEX Tom Hi 2(L)",
+              "50 HEX Tom Hi 2(R)"
+            ]
+          },
+          {
+            "key_from": 51,
+            "key_to": 51,
+            "instruments": [
+              "Power0",
+              "Power1"
+            ],
+            "samples": [
+              "51 Ride Cymbal(L)",
+              "51 Ride Cymbal(R)"
+            ]
+          },
+          {
+            "key_from": 52,
+            "key_to": 52,
+            "instruments": [
+              "Power0",
+              "Power1"
+            ],
+            "samples": [
+              "drm-StereoChina(L)",
+              "drm-StereoChina(R)"
+            ]
+          },
+          {
+            "key_from": 53,
+            "key_to": 53,
+            "instruments": [
+              "Power0",
+              "Power1"
+            ],
+            "samples": [
+              "PRide20 HBell"
+            ]
+          },
+          {
+            "key_from": 54,
+            "key_to": 54,
+            "instruments": [
+              "Power0",
+              "Power1"
+            ],
+            "samples": [
+              "54 Tambourine(L)",
+              "54 Tambourine(R)"
+            ]
+          },
+          {
+            "key_from": 55,
+            "key_to": 55,
+            "instruments": [
+              "Power0",
+              "Power1"
+            ],
+            "samples": [
+              "drm-CSSplash81(L)",
+              "drm-CSSplash81(R)"
+            ]
+          },
+          {
+            "key_from": 56,
+            "key_to": 56,
+            "instruments": [
+              "Power0",
+              "Power1"
+            ],
+            "samples": [
+              "56 Cowbell(L)",
+              "56 Cowbell(R)"
+            ]
+          },
+          {
+            "key_from": 57,
+            "key_to": 57,
+            "instruments": [
+              "Power0",
+              "Power1"
+            ],
+            "samples": [
+              "Crsh 2(L)",
+              "Crsh 2(R)"
+            ]
+          },
+          {
+            "key_from": 58,
+            "key_to": 58,
+            "instruments": [
+              "Power0",
+              "Power1"
+            ],
+            "samples": [
+              "Vibra Slap1"
+            ]
+          },
+          {
+            "key_from": 59,
+            "key_to": 59,
+            "instruments": [
+              "Power0",
+              "Power1"
+            ],
+            "samples": [
+              "59 Ride 1(R)"
+            ]
+          },
+          {
+            "key_from": 60,
+            "key_to": 60,
+            "instruments": [
+              "Power0",
+              "Power1"
+            ],
+            "samples": [
+              "Bongo Hi Op(L)",
+              "Bongo Hi Op(R)"
+            ]
+          },
+          {
+            "key_from": 61,
+            "key_to": 61,
+            "instruments": [
+              "Power0",
+              "Power1"
+            ],
+            "samples": [
+              "Bongo Lo Op(L)",
+              "Bongo Lo Op(R)"
+            ]
+          },
+          {
+            "key_from": 62,
+            "key_to": 62,
+            "instruments": [
+              "Power0",
+              "Power1"
+            ],
+            "samples": [
+              "Conga Hi slapop(L)",
+              "Conga Hi slapop(R)"
+            ]
+          },
+          {
+            "key_from": 63,
+            "key_to": 63,
+            "instruments": [
+              "Power0",
+              "Power1"
+            ],
+            "samples": [
+              "Conga Hi(L)",
+              "Conga Hi(R)"
+            ]
+          },
+          {
+            "key_from": 64,
+            "key_to": 64,
+            "instruments": [
+              "Power0",
+              "Power1"
+            ],
+            "samples": [
+              "Conga Lo.Op(L)",
+              "Conga Lo.Op(R)"
+            ]
+          },
+          {
+            "key_from": 65,
+            "key_to": 65,
+            "instruments": [
+              "Power0",
+              "Power1"
+            ],
+            "samples": [
+              "65 Timbale Hi(L)",
+              "65 Timbale Hi(R)"
+            ]
+          },
+          {
+            "key_from": 66,
+            "key_to": 66,
+            "instruments": [
+              "Power0",
+              "Power1"
+            ],
+            "samples": [
+              "66 Timbale Lw(L)",
+              "66 Timbale Lw(R)"
+            ]
+          },
+          {
+            "key_from": 67,
+            "key_to": 67,
+            "instruments": [
+              "Power0",
+              "Power1"
+            ],
+            "samples": [
+              "67 Hi Agogo(L)",
+              "67 Hi Agogo(R)"
+            ]
+          },
+          {
+            "key_from": 68,
+            "key_to": 68,
+            "instruments": [
+              "Power0",
+              "Power1"
+            ],
+            "samples": [
+              "68 Lw Agogo(L)",
+              "68 Lw Agogo(R)"
+            ]
+          },
+          {
+            "key_from": 69,
+            "key_to": 69,
+            "instruments": [
+              "Power0",
+              "Power1"
+            ],
+            "samples": [
+              "69 Cabasa(L)",
+              "69 Cabasa(R)"
+            ]
+          },
+          {
+            "key_from": 70,
+            "key_to": 70,
+            "instruments": [
+              "Power0",
+              "Power1"
+            ],
+            "samples": [
+              "70 Maracas(L)",
+              "70 Maracas(R)"
+            ]
+          },
+          {
+            "key_from": 71,
+            "key_to": 72,
+            "instruments": [
+              "Power0",
+              "Power1"
+            ],
+            "samples": []
+          },
+          {
+            "key_from": 73,
+            "key_to": 73,
+            "instruments": [
+              "Power0",
+              "Power1"
+            ],
+            "samples": [
+              "Short Guiro"
+            ]
+          },
+          {
+            "key_from": 74,
+            "key_to": 74,
+            "instruments": [
+              "Power0",
+              "Power1"
+            ],
+            "samples": [
+              "Long Guiro"
+            ]
+          },
+          {
+            "key_from": 75,
+            "key_to": 75,
+            "instruments": [
+              "Power0",
+              "Power1"
+            ],
+            "samples": [
+              "75 Claves(L)",
+              "75 Claves(R)"
+            ]
+          },
+          {
+            "key_from": 76,
+            "key_to": 76,
+            "instruments": [
+              "Power0",
+              "Power1"
+            ],
+            "samples": [
+              "76 Wood Block Hi(L)"
+            ]
+          },
+          {
+            "key_from": 77,
+            "key_to": 77,
+            "instruments": [
+              "Power0",
+              "Power1"
+            ],
+            "samples": [
+              "77 Wood Block Lw(R)"
+            ]
+          },
+          {
+            "key_from": 78,
+            "key_to": 79,
+            "instruments": [
+              "Power0",
+              "Power1"
+            ],
+            "samples": []
+          },
+          {
+            "key_from": 80,
+            "key_to": 80,
+            "instruments": [
+              "Power0",
+              "Power1"
+            ],
+            "samples": [
+              "80 Mute Triangle(L)",
+              "80 Mute Triangle(R)"
+            ]
+          },
+          {
+            "key_from": 81,
+            "key_to": 81,
+            "instruments": [
+              "Power0",
+              "Power1"
+            ],
+            "samples": [
+              "open vol 3"
+            ]
+          },
+          {
+            "key_from": 82,
+            "key_to": 82,
+            "instruments": [
+              "Power0",
+              "Power1"
+            ],
+            "samples": [
+              "Met Shaker Dn(R)"
+            ]
+          },
+          {
+            "key_from": 83,
+            "key_to": 83,
+            "instruments": [
+              "Power0",
+              "Power1"
+            ],
+            "samples": [
+              "83 Jingle Bell 3(L)",
+              "83 Jingle Bell 3(R)"
+            ]
+          },
+          {
+            "key_from": 84,
+            "key_to": 84,
+            "instruments": [
+              "Power0",
+              "Power1"
+            ],
+            "samples": [
+              "Bell Tree 2"
+            ]
+          },
+          {
+            "key_from": 85,
+            "key_to": 85,
+            "instruments": [
+              "Power0",
+              "Power1"
+            ],
+            "samples": [
+              "Castanets(L)",
+              "Castanets(R)"
+            ]
+          },
+          {
+            "key_from": 86,
+            "key_to": 86,
+            "instruments": [
+              "Power0",
+              "Power1"
+            ],
+            "samples": [
+              "86 Mute Surdo(L)",
+              "86 Mute Surdo(R)"
+            ]
+          }
+        ]
+      }
+    ],
+    "instrument_details": [
+      {
+        "name": "Neu0",
+        "sample_count": 54,
+        "samples": [
+          "42 HH Cl(L)",
+          "44 HH Foot(R)",
+          "51 Ride Cymbal(L)",
+          "54 Tambourine(L)",
+          "56 Cowbell(L)",
+          "59 Ride 1(R)",
+          "65 Timbale Hi(L)",
+          "66 Timbale Lw(L)",
+          "67 Hi Agogo(L)",
+          "68 Lw Agogo(L)",
+          "69 Cabasa(L)",
+          "70 Maracas(L)",
+          "75 Claves(L)",
+          "76 Wood Block Hi(L)",
+          "77 Wood Block Lw(R)",
+          "80 Mute Triangle(L)",
+          "83 Jingle Bell 3(L)",
+          "86 Mute Surdo(L)",
+          "87 Open Surdo(L)",
+          "Bell Tree 2",
+          "Bongo Hi Op(L)",
+          "Bongo Lo Op(L)",
+          "Castanets(L)",
+          "Conga Hi slapop(L)",
+          "Conga Hi(L)",
+          "Conga Lo.Op(L)",
+          "Crsh 1(L)",
+          "Crsh 2(L)",
+          "Edge Hard Open (L)",
+          "F1(L)",
+          "Finger Snap Wet(L)",
+          "Hip clap(L)",
+          "Long Guiro",
+          "Metron BellII(L)",
+          "Metron ClickII(L)",
+          "NCBD22-3H -L",
+          "NCBD22-3H -L1",
+          "NCSN2LRFMH-L",
+          "NCSNC2RFHL-L",
+          "PRide20 HBell",
+          "Rimshot1",
+          "Short Guiro",
+          "Slap",
+          "Splash1(L)",
+          "Square Click(L)",
+          "SticksII(L)",
+          "Tom10 Hard(L)",
+          "Tom12 Hard(L)",
+          "Tom13 Hard(L)",
+          "Tom14 Hard(L)",
+          "Tom16 Hard(L)",
+          "Vibra Slap1",
+          "drm-StereoChina(L)",
+          "open vol 3"
+        ]
+      },
+      {
+        "name": "Neu1",
+        "sample_count": 44,
+        "samples": [
+          "42 HH Cl(R)",
+          "44 HH Foot(L)",
+          "51 Ride Cymbal(R)",
+          "54 Tambourine(R)",
+          "56 Cowbell(R)",
+          "65 Timbale Hi(R)",
+          "66 Timbale Lw(R)",
+          "67 Hi Agogo(R)",
+          "68 Lw Agogo(R)",
+          "69 Cabasa(R)",
+          "70 Maracas(R)",
+          "75 Claves(R)",
+          "80 Mute Triangle(R)",
+          "83 Jingle Bell 3(R)",
+          "86 Mute Surdo(R)",
+          "87 Open Surdo(R)",
+          "Bongo Hi Op(R)",
+          "Bongo Lo Op(R)",
+          "Castanets(R)",
+          "Conga Hi slapop(R)",
+          "Conga Hi(R)",
+          "Conga Lo.Op(R)",
+          "Crsh 1(R)",
+          "Crsh 2(R)",
+          "Edge Hard Open (R)",
+          "F1(R)",
+          "Finger Snap Wet(R)",
+          "Hip clap(R)",
+          "Met Shaker Dn(R)",
+          "Metron BellII(R)",
+          "Metron ClickII(R)",
+          "NCBD22-3H -R",
+          "NCBD22-3H -R1",
+          "NCSN2LRFMH-R",
+          "NCSNC2RFHL-R",
+          "Splash1(R)",
+          "Square Click(R)",
+          "SticksII(R)",
+          "Tom10 Hard(R)",
+          "Tom12 Hard(R)",
+          "Tom13 Hard(R)",
+          "Tom14 Hard(R)",
+          "Tom16 Hard(R)",
+          "drm-StereoChina(R)"
+        ]
+      },
+      {
+        "name": "Power0",
+        "sample_count": 54,
+        "samples": [
+          "41 HEX Tom Lw 1(L)",
+          "42 HH Cl(L)",
+          "43 HEX Tom Lw 2(L)",
+          "44 HH Foot(R)",
+          "45 HEX Tom Mid 1(L)",
+          "47 HEX Tom Mid 2(L)",
+          "48 HEX Tom Hi 1(L)",
+          "50 HEX Tom Hi 2(L)",
+          "51 Ride Cymbal(L)",
+          "54 Tambourine(L)",
+          "56 Cowbell(L)",
+          "59 Ride 1(R)",
+          "65 Timbale Hi(L)",
+          "66 Timbale Lw(L)",
+          "67 Hi Agogo(L)",
+          "68 Lw Agogo(L)",
+          "69 Cabasa(L)",
+          "70 Maracas(L)",
+          "75 Claves(L)",
+          "76 Wood Block Hi(L)",
+          "77 Wood Block Lw(R)",
+          "80 Mute Triangle(L)",
+          "83 Jingle Bell 3(L)",
+          "86 Mute Surdo(L)",
+          "87 Open Surdo(L)",
+          "Bell Tree 2",
+          "Bongo Hi Op(L)",
+          "Bongo Lo Op(L)",
+          "Castanets(L)",
+          "Conga Hi slapop(L)",
+          "Conga Hi(L)",
+          "Conga Lo.Op(L)",
+          "Crsh 1(L)",
+          "Crsh 2(L)",
+          "Edge Hard Open (L)",
+          "Finger Snap Wet(L)",
+          "Hip clap(L)",
+          "Long Guiro",
+          "Metron BellII(L)",
+          "Metron ClickII(L)",
+          "NCBD22-3H -L",
+          "PRide20 HBell",
+          "Rimshot1",
+          "Rvb-S1(L)",
+          "Short Guiro",
+          "Slap",
+          "Square Click(L)",
+          "SticksII(L)",
+          "Vibra Slap1",
+          "drm-CSSplash81(L)",
+          "drm-PowerSnare2(L)",
+          "drm-StereoChina(L)",
+          "kick2",
+          "open vol 3"
+        ]
+      },
+      {
+        "name": "Power1",
+        "sample_count": 43,
+        "samples": [
+          "41 HEX Tom Lw 1(R)",
+          "42 HH Cl(R)",
+          "43 HEX Tom Lw 2(R)",
+          "44 HH Foot(L)",
+          "45 HEX Tom Mid 1(R)",
+          "47 HEX Tom Mid 2(R)",
+          "48 HEX Tom Hi 1(R)",
+          "50 HEX Tom Hi 2(R)",
+          "51 Ride Cymbal(R)",
+          "54 Tambourine(R)",
+          "56 Cowbell(R)",
+          "65 Timbale Hi(R)",
+          "66 Timbale Lw(R)",
+          "67 Hi Agogo(R)",
+          "68 Lw Agogo(R)",
+          "69 Cabasa(R)",
+          "70 Maracas(R)",
+          "75 Claves(R)",
+          "80 Mute Triangle(R)",
+          "83 Jingle Bell 3(R)",
+          "86 Mute Surdo(R)",
+          "87 Open Surdo(R)",
+          "Bongo Hi Op(R)",
+          "Bongo Lo Op(R)",
+          "Castanets(R)",
+          "Conga Hi slapop(R)",
+          "Conga Hi(R)",
+          "Conga Lo.Op(R)",
+          "Crsh 1(R)",
+          "Crsh 2(R)",
+          "Edge Hard Open (R)",
+          "Finger Snap Wet(R)",
+          "Hip clap(R)",
+          "Met Shaker Dn(R)",
+          "Metron BellII(R)",
+          "Metron ClickII(R)",
+          "NCBD22-3H -R",
+          "Rvb-S1(R)",
+          "Square Click(R)",
+          "SticksII(R)",
+          "drm-CSSplash81(R)",
+          "drm-PowerSnare2(R)",
+          "drm-StereoChina(R)"
+        ]
+      }
+    ]
+  }
+]
