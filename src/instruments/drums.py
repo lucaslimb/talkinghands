@@ -87,16 +87,39 @@ DRUM_ELEMENT_LIBRARY = {
     "open_hh": {"name": "OPEN-HH",  "note": 46, "shape": "ellipse", "row": "top",    "size": 0.95, "ry_ratio": 0.34, "foot_only": False},
     "snare":   {"name": "SNARE",    "note": 38, "shape": "ellipse", "row": "bottom", "size": 1.15, "ry_ratio": 0.45, "foot_only": False},
     "rimshot": {"name": "RIMSHOT",  "note": 37, "shape": "rect",    "row": "bottom", "size": 0.62, "ry_ratio": 0.28, "foot_only": False},
+    "snare_alt": {"name": "SNARE-ALT","note": 40, "shape": "ellipse", "row": "bottom", "size": 1.00, "ry_ratio": 0.42, "foot_only": False},
     "floor":   {"name": "FLOOR",    "note": 41, "shape": "ellipse", "row": "bottom", "size": 1.05, "ry_ratio": 0.45, "foot_only": False},
     "kick":    {"name": "KICK",     "note": 36, "shape": "rect",    "row": "foot",   "size": 1.40, "ry_ratio": 0.16, "foot_only": False},
+    "kick_alt": {"name": "KICK-ALT", "note": 35, "shape": "rect",    "row": "foot",   "size": 1.30, "ry_ratio": 0.16, "foot_only": False},
     "hh_pedal":{"name": "HH-PEDAL", "note": 44, "shape": "rect",    "row": "foot",   "size": 0.65, "ry_ratio": 0.22, "foot_only": True},
     "cowbell": {"name": "COWBELL",  "note": 56, "shape": "rect",    "row": "top",    "size": 0.60, "ry_ratio": 0.30, "foot_only": False},
     "clap":    {"name": "CLAP",     "note": 39, "shape": "rect",    "row": "bottom", "size": 0.70, "ry_ratio": 0.28, "foot_only": False},
     "tamb":    {"name": "TAMB",     "note": 54, "shape": "rect",    "row": "top",    "size": 0.55, "ry_ratio": 0.28, "foot_only": False},
+    "ride_bell": {"name": "RIDE-BELL","note": 53, "shape": "rect",    "row": "top",    "size": 0.62, "ry_ratio": 0.30, "foot_only": False},
+    "crash2":  {"name": "CRASH 2",  "note": 57, "shape": "ellipse", "row": "top",    "size": 1.05, "ry_ratio": 0.34, "foot_only": False},
+    "ride2":   {"name": "RIDE 2",   "note": 59, "shape": "ellipse", "row": "top",    "size": 1.05, "ry_ratio": 0.34, "foot_only": False},
+    "vibra_slap": {"name": "VIBRA",  "note": 58, "shape": "rect",    "row": "mid",    "size": 0.55, "ry_ratio": 0.30, "foot_only": False},
     "shaker":  {"name": "SHAKER",   "note": 82, "shape": "rect",    "row": "top",    "size": 0.55, "ry_ratio": 0.28, "foot_only": False},
+    "cabasa":  {"name": "CABASA",   "note": 69, "shape": "rect",    "row": "mid",    "size": 0.55, "ry_ratio": 0.28, "foot_only": False},
+    "maracas": {"name": "MARACAS",  "note": 70, "shape": "rect",    "row": "mid",    "size": 0.55, "ry_ratio": 0.28, "foot_only": False},
+    "guiro_s": {"name": "GUIRO-S",  "note": 73, "shape": "rect",    "row": "mid",    "size": 0.52, "ry_ratio": 0.28, "foot_only": False},
+    "guiro_l": {"name": "GUIRO-L",  "note": 74, "shape": "rect",    "row": "mid",    "size": 0.52, "ry_ratio": 0.28, "foot_only": False},
     "agogo_hi": {"name": "AGOGO-H", "note": 67, "shape": "rect",    "row": "mid",    "size": 0.58, "ry_ratio": 0.30, "foot_only": False},
     "agogo_lo": {"name": "AGOGO-L", "note": 68, "shape": "rect",    "row": "mid",    "size": 0.58, "ry_ratio": 0.30, "foot_only": False},
     "clave":   {"name": "CLAVE",    "note": 75, "shape": "rect",    "row": "bottom", "size": 0.50, "ry_ratio": 0.28, "foot_only": False},
+    "wood_hi": {"name": "WOOD-HI",  "note": 76, "shape": "rect",    "row": "bottom", "size": 0.50, "ry_ratio": 0.28, "foot_only": False},
+    "wood_lo": {"name": "WOOD-LO",  "note": 77, "shape": "rect",    "row": "bottom", "size": 0.50, "ry_ratio": 0.28, "foot_only": False},
+    "tri_mute": {"name": "TRI-MUTE", "note": 80, "shape": "rect",    "row": "top",    "size": 0.50, "ry_ratio": 0.28, "foot_only": False},
+    "tri_open": {"name": "TRI-OPEN", "note": 81, "shape": "rect",    "row": "top",    "size": 0.50, "ry_ratio": 0.28, "foot_only": False},
+    "bongo_hi": {"name": "BONGO-H",  "note": 60, "shape": "ellipse", "row": "mid",    "size": 0.62, "ry_ratio": 1.00, "foot_only": False},
+    "bongo_mid": {"name": "BONGO-M", "note": 63, "shape": "ellipse", "row": "mid",    "size": 0.62, "ry_ratio": 1.00, "foot_only": False},
+    "bongo_lo": {"name": "BONGO-L",  "note": 61, "shape": "ellipse", "row": "mid",    "size": 0.66, "ry_ratio": 1.00, "foot_only": False},
+    "bongo_deep": {"name": "BONGO-D", "note": 64, "shape": "ellipse", "row": "mid",    "size": 0.70, "ry_ratio": 1.00, "foot_only": False},
+    "conga_hi": {"name": "CONGA-H",  "note": 62, "shape": "rect",    "row": "mid",    "size": 0.58, "ry_ratio": 0.30, "foot_only": False},
+    "conga_mid": {"name": "CONGA-M", "note": 63, "shape": "rect",    "row": "mid",    "size": 0.58, "ry_ratio": 0.30, "foot_only": False},
+    "conga_lo": {"name": "CONGA-L",  "note": 64, "shape": "rect",    "row": "mid",    "size": 0.58, "ry_ratio": 0.30, "foot_only": False},
+    "timbale_hi": {"name": "TIMB-H", "note": 65, "shape": "rect",    "row": "mid",    "size": 0.56, "ry_ratio": 0.30, "foot_only": False},
+    "timbale_lo": {"name": "TIMB-L", "note": 66, "shape": "rect",    "row": "mid",    "size": 0.56, "ry_ratio": 0.30, "foot_only": False},
 }
 
 _NOTE_OVERRIDES = getattr(settings, "DRUMS_NOTE_OVERRIDES", {}) or {}
@@ -111,6 +134,8 @@ for _element_key, _note_value in _NOTE_OVERRIDES.items():
 
 BASE_DRUM_NOTES = {key: int(cfg.get("note", 0)) for key, cfg in DRUM_ELEMENT_LIBRARY.items()}
 DRUMS_INSTRUMENT_NOTE_VARIATIONS = getattr(settings, "DRUMS_INSTRUMENT_NOTE_VARIATIONS", {}) or {}
+DRUMS_INSTRUMENT_ELEMENT_PRESETS = getattr(settings, "DRUMS_INSTRUMENT_ELEMENT_PRESETS", {}) or {}
+DRUMS_INSTRUMENT_REPLACE_BASE = set(getattr(settings, "DRUMS_INSTRUMENT_REPLACE_BASE", []))
 
 
 def apply_drum_note_profile(instrument_name=None):
@@ -169,6 +194,16 @@ EXTRA_SLOTS = [
     {"pos": (0.68, 0.93), "base_rx": 0.06,  "row": "foot"},
 ]
 
+LATIN_REPLACEMENT_LAYOUT = [
+    {"element_key": "bongo_hi",   "pos": (0.20, 0.40), "axes": (0.09, 0.09)},
+    {"element_key": "bongo_mid",  "pos": (0.80, 0.40), "axes": (0.09, 0.09)},
+    {"element_key": "bongo_lo",   "pos": (0.38, 0.60), "axes": (0.10, 0.10)},
+    {"element_key": "bongo_deep", "pos": (0.62, 0.60), "axes": (0.11, 0.11)},
+    {"element_key": "conga_mid",  "pos": (0.50, 0.80), "axes": (0.11, 0.07)},
+    {"element_key": "maracas",    "pos": (0.20, 0.85), "axes": (0.10, 0.06)},
+    {"element_key": "cabasa",     "pos": (0.80, 0.85), "axes": (0.10, 0.06)},
+]
+
 DEFAULT_DRUM_ELEMENTS = list(getattr(settings, "DRUMS_DEFAULT_ELEMENTS", ["crash", "ride", "tom_hi", "tom_low", "hihat", "snare", "floor", "kick"]))
 COMPLETE_EXTRA_ELEMENTS = list(getattr(settings, "DRUMS_COMPLETE_EXTRA_ELEMENTS", ["hh_pedal"]))
 
@@ -218,6 +253,19 @@ def _build_fixed_base_kit(drum_model="default"):
     complete_mode = str(drum_model).strip().lower() == "complete"
     source = FIXED_BASE_LAYOUT_COMPLETE if complete_mode else FIXED_BASE_LAYOUT_DEFAULT
     return [_make_drum_from_entry(entry, complete_mode=complete_mode) for entry in source]
+
+
+def _build_layout_kit(layout_entries, selected_elements):
+    selected_set = set(selected_elements or [])
+    kit_data = []
+    for entry in layout_entries:
+        key = entry.get("element_key")
+        if key not in DRUM_ELEMENT_LIBRARY:
+            continue
+        if selected_set and key not in selected_set:
+            continue
+        kit_data.append(_make_drum_from_entry(entry, complete_mode=False))
+    return kit_data
 
 
 def _drums_overlap(d1, d2, gap=0.008):
@@ -287,7 +335,7 @@ def _add_extra_elements(kit_data, extras_to_add):
             print(f"AVISO: Sem espaço para elemento extra '{extra_key}'.")
 
 
-def configure_drum_kit(drum_model="default", drums_elements=None):
+def configure_drum_kit(drum_model="default", drums_elements=None, replace_base=False, instrument_name=None):
     global DRUM_KIT, INITIAL_POSITIONS, current_drum_model, current_drum_elements
 
     normalized_model = (drum_model or "default").strip().lower()
@@ -296,11 +344,23 @@ def configure_drum_kit(drum_model="default", drums_elements=None):
 
     selected = _expand_elements(normalized_model, drums_elements)
 
-    DRUM_KIT = _build_fixed_base_kit(normalized_model)
-    base_keys = {d["element_key"] for d in DRUM_KIT}
-    extras = [e for e in selected if e not in base_keys]
-    if extras:
-        _add_extra_elements(DRUM_KIT, extras)
+    if replace_base:
+        if instrument_name == "Latin":
+            DRUM_KIT = _build_layout_kit(LATIN_REPLACEMENT_LAYOUT, selected)
+            placed_keys = {d["element_key"] for d in DRUM_KIT}
+            missing = [e for e in selected if e not in placed_keys]
+            if missing:
+                _add_extra_elements(DRUM_KIT, missing)
+        else:
+            DRUM_KIT = []
+            if selected:
+                _add_extra_elements(DRUM_KIT, selected)
+    else:
+        DRUM_KIT = _build_fixed_base_kit(normalized_model)
+        base_keys = {d["element_key"] for d in DRUM_KIT}
+        extras = [e for e in selected if e not in base_keys]
+        if extras:
+            _add_extra_elements(DRUM_KIT, extras)
 
     for idx, drum in enumerate(DRUM_KIT):
         drum["id"] = idx
@@ -373,6 +433,19 @@ def is_mouse_over_drum(mx, my, drum, w, h):
         return (cx - rx < mx < cx + rx) and (cy - ry < my < cy + ry)
     else:
         return ((mx - cx)**2 / rx**2) + ((my - cy)**2 / ry**2) <= 1.0
+
+
+def remove_drum_at_mouse(mx, my, w, h):
+    global DRUM_KIT, current_drum_elements
+
+    for idx in range(len(DRUM_KIT) - 1, -1, -1):
+        drum = DRUM_KIT[idx]
+        if is_mouse_over_drum(mx, my, drum, w, h):
+            removed = DRUM_KIT.pop(idx)
+            current_drum_elements = [d["element_key"] for d in DRUM_KIT]
+            print(f">>> Elemento removido: {removed.get('name', removed.get('element_key', '?'))}")
+            return True
+    return False
 
 
 def _detect_resize_handle(mx, my, drum, w, h, tol_px=DRUM_RESIZE_EDGE_TOLERANCE_PX):
@@ -679,6 +752,7 @@ def draw_drums_pygame(screen, w, h, font, dragging_drum=None, show_names=False, 
             "3 -> iniciar/interromper playback",
             "Mouse interno -> reposicionar elemento",
             "Mouse na borda -> redimensionar pela borda",
+            "Mouse direito -> remover elemento",
             "5 -> resetar posicao da bateria",
             "8 -> ocultar/mostrar nomes",
             "9 -> ocultar/mostrar trackers",
@@ -697,7 +771,23 @@ def start_drums(chosen_instrument=None, user_tolerance=None, rec_options=None, t
     tracker_visible = bool(show_trackers)
     use_feet_model = str(drum_model).strip().lower() == "complete"
     apply_drum_note_profile(chosen_instrument)
-    configure_drum_kit("complete" if use_feet_model else "default", drums_elements=drums_elements)
+    effective_elements = drums_elements
+    replace_base = False
+    if effective_elements is None and chosen_instrument in DRUMS_INSTRUMENT_ELEMENT_PRESETS:
+        preset_elements = DRUMS_INSTRUMENT_ELEMENT_PRESETS.get(chosen_instrument, [])
+        effective_elements = [e for e in preset_elements if e in DRUM_ELEMENT_LIBRARY]
+        if effective_elements:
+            print(f">>> Preset de elementos aplicado: {chosen_instrument} -> {', '.join(effective_elements)}")
+        if chosen_instrument in DRUMS_INSTRUMENT_REPLACE_BASE:
+            replace_base = True
+            print(f">>> Preset substitui kit base: {chosen_instrument}")
+
+    configure_drum_kit(
+        "complete" if use_feet_model else "default",
+        drums_elements=effective_elements,
+        replace_base=replace_base,
+        instrument_name=chosen_instrument,
+    )
     print(f">>> Modelo de bateria: {current_drum_model}")
     print(f">>> Elementos: {', '.join(current_drum_elements)}")
     
@@ -792,6 +882,13 @@ def start_drums(chosen_instrument=None, user_tolerance=None, rec_options=None, t
                                 norm_my = my / LOGICAL_H
                                 drag_offset = (drum["pos"][0] - norm_mx, drum["pos"][1] - norm_my)
                                 break
+                    elif event.button == 3: # Clique Direito
+                        mx, my = event.pos
+                        removed = remove_drum_at_mouse(mx, my, LOGICAL_W, LOGICAL_H)
+                        if removed:
+                            dragging_drum = None
+                            resizing_drum = None
+                            resize_handle = None
 
                 elif event.type == pygame.MOUSEBUTTONUP:
                     if event.button == 1:

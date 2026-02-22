@@ -71,13 +71,19 @@ recorder = MidiRecorder()
 
 fs, loaded_sfids = init_fluidsynth(driver="dsound")
 if fs is not None:
-    sf_path = settings.SF2_PATHS.get("flute")
-    if sf_path:
-        sfid = load_single_soundfont(fs, "flute", sf_path)
+    flute_sf2_items = [
+        (sf_key, sf_path)
+        for sf_key, sf_path in settings.SF2_PATHS.items()
+        if str(sf_key).startswith("flute")
+    ]
+    if not flute_sf2_items:
+        print("ERRO: Nenhum SF2 de flauta configurado em settings.SF2_PATHS.")
+    for sf_key, sf_path in flute_sf2_items:
+        sfid = load_single_soundfont(fs, sf_key, sf_path)
         if sfid != -1:
-            loaded_sfids["flute"] = sfid
+            loaded_sfids[sf_key] = sfid
         else:
-            print("ERRO: SF2 de flauta não carregado.")
+            print(f"ERRO: SF2 de flauta não carregado para key '{sf_key}'.")
 else:
     print(f"ERRO CRÍTICO DE AUDIO: Falha ao inicializar FluidSynth")
 

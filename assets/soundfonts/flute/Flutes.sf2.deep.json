@@ -1,0 +1,406 @@
+[
+  {
+    "file": "C:\\Users\\lucas.bezerra\\OneDrive - Diebold Nixdorf\\Documentos\\Outros\\TKH\\talkinghands\\assets\\soundfonts\\flute\\Flutes.sf2",
+    "preset_count": 3,
+    "instrument_count": 3,
+    "presets": [
+      {
+        "name": "RecorderAltSopr",
+        "bank": 0,
+        "program": 4
+      },
+      {
+        "name": "RecorderTenor",
+        "bank": 0,
+        "program": 5
+      },
+      {
+        "name": "BassRecorder",
+        "bank": 0,
+        "program": 6
+      }
+    ],
+    "instruments": [
+      "BassRecorder",
+      "RecorderTenr",
+      "RecrdrAltSopr"
+    ],
+    "preset_details": [
+      {
+        "name": "RecorderAltSopr",
+        "bank": 0,
+        "program": 4,
+        "layer_group_count": 12,
+        "layers": [
+          {
+            "key_from": 65,
+            "key_to": 66,
+            "instruments": [
+              "RecrdrAltSopr"
+            ],
+            "samples": [
+              "RecrdrA-S_65"
+            ]
+          },
+          {
+            "key_from": 67,
+            "key_to": 69,
+            "instruments": [
+              "RecrdrAltSopr"
+            ],
+            "samples": [
+              "RecrdrA-S_68"
+            ]
+          },
+          {
+            "key_from": 70,
+            "key_to": 72,
+            "instruments": [
+              "RecrdrAltSopr"
+            ],
+            "samples": [
+              "RecrdrA-S_71"
+            ]
+          },
+          {
+            "key_from": 73,
+            "key_to": 75,
+            "instruments": [
+              "RecrdrAltSopr"
+            ],
+            "samples": [
+              "RecrdrA-S_74"
+            ]
+          },
+          {
+            "key_from": 76,
+            "key_to": 78,
+            "instruments": [
+              "RecrdrAltSopr"
+            ],
+            "samples": [
+              "RecrdrA-S_77"
+            ]
+          },
+          {
+            "key_from": 79,
+            "key_to": 80,
+            "instruments": [
+              "RecrdrAltSopr"
+            ],
+            "samples": [
+              "RecrdrA-S_80"
+            ]
+          },
+          {
+            "key_from": 81,
+            "key_to": 83,
+            "instruments": [
+              "RecrdrAltSopr"
+            ],
+            "samples": [
+              "RecrdrA-S_82"
+            ]
+          },
+          {
+            "key_from": 84,
+            "key_to": 86,
+            "instruments": [
+              "RecrdrAltSopr"
+            ],
+            "samples": [
+              "RecrdrA-S_85"
+            ]
+          },
+          {
+            "key_from": 87,
+            "key_to": 89,
+            "instruments": [
+              "RecrdrAltSopr"
+            ],
+            "samples": [
+              "RecrdrA-S_88"
+            ]
+          },
+          {
+            "key_from": 90,
+            "key_to": 92,
+            "instruments": [
+              "RecrdrAltSopr"
+            ],
+            "samples": [
+              "RecrdrA-S_91"
+            ]
+          },
+          {
+            "key_from": 93,
+            "key_to": 94,
+            "instruments": [
+              "RecrdrAltSopr"
+            ],
+            "samples": [
+              "RecrdrA-S_94"
+            ]
+          },
+          {
+            "key_from": 95,
+            "key_to": 95,
+            "instruments": [
+              "RecrdrAltSopr"
+            ],
+            "samples": [
+              "RecrdrA-S_96"
+            ]
+          }
+        ]
+      },
+      {
+        "name": "RecorderTenor",
+        "bank": 0,
+        "program": 5,
+        "layer_group_count": 9,
+        "layers": [
+          {
+            "key_from": 60,
+            "key_to": 61,
+            "instruments": [
+              "RecorderTenr"
+            ],
+            "samples": [
+              "RecrdrTenor_60"
+            ]
+          },
+          {
+            "key_from": 62,
+            "key_to": 64,
+            "instruments": [
+              "RecorderTenr"
+            ],
+            "samples": [
+              "RecrdrTenor_63"
+            ]
+          },
+          {
+            "key_from": 65,
+            "key_to": 67,
+            "instruments": [
+              "RecorderTenr"
+            ],
+            "samples": [
+              "RecrdrTenor_66"
+            ]
+          },
+          {
+            "key_from": 68,
+            "key_to": 70,
+            "instruments": [
+              "RecorderTenr"
+            ],
+            "samples": [
+              "RecrdrTenor_69"
+            ]
+          },
+          {
+            "key_from": 71,
+            "key_to": 73,
+            "instruments": [
+              "RecorderTenr"
+            ],
+            "samples": [
+              "RecrdrTenor_72"
+            ]
+          },
+          {
+            "key_from": 74,
+            "key_to": 76,
+            "instruments": [
+              "RecorderTenr"
+            ],
+            "samples": [
+              "RecrdrTenor_75"
+            ]
+          },
+          {
+            "key_from": 77,
+            "key_to": 79,
+            "instruments": [
+              "RecorderTenr"
+            ],
+            "samples": [
+              "RecrdrTenor_78"
+            ]
+          },
+          {
+            "key_from": 80,
+            "key_to": 82,
+            "instruments": [
+              "RecorderTenr"
+            ],
+            "samples": [
+              "RecrdrTenor_81"
+            ]
+          },
+          {
+            "key_from": 83,
+            "key_to": 83,
+            "instruments": [
+              "RecorderTenr"
+            ],
+            "samples": [
+              "RecrdrTenor_84"
+            ]
+          }
+        ]
+      },
+      {
+        "name": "BassRecorder",
+        "bank": 0,
+        "program": 6,
+        "layer_group_count": 9,
+        "layers": [
+          {
+            "key_from": 53,
+            "key_to": 53,
+            "instruments": [
+              "BassRecorder"
+            ],
+            "samples": [
+              "RecorderBass_53"
+            ]
+          },
+          {
+            "key_from": 54,
+            "key_to": 56,
+            "instruments": [
+              "BassRecorder"
+            ],
+            "samples": [
+              "RecorderBass_55"
+            ]
+          },
+          {
+            "key_from": 57,
+            "key_to": 59,
+            "instruments": [
+              "BassRecorder"
+            ],
+            "samples": [
+              "RecorderBass_58"
+            ]
+          },
+          {
+            "key_from": 60,
+            "key_to": 61,
+            "instruments": [
+              "BassRecorder"
+            ],
+            "samples": [
+              "RecorderBass_61"
+            ]
+          },
+          {
+            "key_from": 62,
+            "key_to": 64,
+            "instruments": [
+              "BassRecorder"
+            ],
+            "samples": [
+              "RecorderBass_63"
+            ]
+          },
+          {
+            "key_from": 65,
+            "key_to": 67,
+            "instruments": [
+              "BassRecorder"
+            ],
+            "samples": [
+              "RecorderBass_66"
+            ]
+          },
+          {
+            "key_from": 68,
+            "key_to": 70,
+            "instruments": [
+              "BassRecorder"
+            ],
+            "samples": [
+              "RecorderBass_69"
+            ]
+          },
+          {
+            "key_from": 71,
+            "key_to": 73,
+            "instruments": [
+              "BassRecorder"
+            ],
+            "samples": [
+              "RecorderBass_72"
+            ]
+          },
+          {
+            "key_from": 74,
+            "key_to": 76,
+            "instruments": [
+              "BassRecorder"
+            ],
+            "samples": [
+              "RecorderBass_75"
+            ]
+          }
+        ]
+      }
+    ],
+    "instrument_details": [
+      {
+        "name": "BassRecorder",
+        "sample_count": 10,
+        "samples": [
+          "RecorderBass_53",
+          "RecorderBass_55",
+          "RecorderBass_58",
+          "RecorderBass_61",
+          "RecorderBass_63",
+          "RecorderBass_66",
+          "RecorderBass_69",
+          "RecorderBass_72",
+          "RecorderBass_75",
+          "RecorderBass_78"
+        ]
+      },
+      {
+        "name": "RecorderTenr",
+        "sample_count": 9,
+        "samples": [
+          "RecrdrTenor_60",
+          "RecrdrTenor_63",
+          "RecrdrTenor_66",
+          "RecrdrTenor_69",
+          "RecrdrTenor_72",
+          "RecrdrTenor_75",
+          "RecrdrTenor_78",
+          "RecrdrTenor_81",
+          "RecrdrTenor_84"
+        ]
+      },
+      {
+        "name": "RecrdrAltSopr",
+        "sample_count": 12,
+        "samples": [
+          "RecrdrA-S_65",
+          "RecrdrA-S_68",
+          "RecrdrA-S_71",
+          "RecrdrA-S_74",
+          "RecrdrA-S_77",
+          "RecrdrA-S_80",
+          "RecrdrA-S_82",
+          "RecrdrA-S_85",
+          "RecrdrA-S_88",
+          "RecrdrA-S_91",
+          "RecrdrA-S_94",
+          "RecrdrA-S_96"
+        ]
+      }
+    ]
+  }
+]

@@ -27,7 +27,8 @@ os.makedirs(RECORDINGS_DIR, exist_ok=True)
 SF2_PATHS = {
     "master": str(SOUNDFONTS_DIR / "keyboard" / "module_master.sf2"),
     "drums":  str(SOUNDFONTS_DIR / "drums" / "NewDrums.sf2"),
-    "flute":  str(SOUNDFONTS_DIR / "flute" / "Chris_Flutes_and_Harmonicas.sf2"),
+    "flute_general": str(SOUNDFONTS_DIR / "flute" / "FlutesGeneral.sf2"),
+    "flute_alt":     str(SOUNDFONTS_DIR / "flute" / "Flutes.sf2"),
 }
 
 RECORDINGS_FOLDER = str(RECORDINGS_DIR)
@@ -55,6 +56,32 @@ INSTRUMENTS = {
     "Oohs":           ("master", 0, 87),
     "Flute Bell":     ("master", 0, 97),
     "Koto LA":        ("master", 1, 89),
+    "Honky-Tonk":     ("master", 0, 2),
+    "Soft EP":        ("master", 0, 3),
+    "EP2":            ("master", 0, 5),
+    "Synth Piano":    ("master", 0, 6),
+    "Rotary Organ":   ("master", 0, 11),
+    "Celesta":        ("master", 0, 14),
+    "Vibraphone":     ("master", 0, 17),
+    "Glass Hit":      ("master", 0, 21),
+    "Breath Bells":   ("master", 0, 24),
+    "Acoustic Guitar 1": ("master", 0, 33),
+    "Oud":            ("master", 0, 42),
+    "Acoustic Bass":  ("master", 0, 44),
+    "Fretless 1":     ("master", 0, 47),
+    "Fantasy LA":     ("master", 1, 0),
+    "Eventide":       ("master", 1, 1),
+    "Polysynth":      ("master", 1, 8),
+    "Space Voices":   ("master", 1, 10),
+    "Warm Voices":    ("master", 1, 11),
+    "Ocean Pad":      ("master", 1, 18),
+    "Digital Pad":    ("master", 1, 20),
+    "Synth Glass":    ("master", 1, 22),
+    "Silver Pad":     ("master", 1, 25),
+    "Petrichor":      ("master", 1, 35),
+    "Blue Planet":    ("master", 1, 39),
+    "Ambient Bell":   ("master", 1, 51),
+    "Bamboo Forest":  ("master", 1, 52),
 
     "Classic":     ("drums", 128, 0),
     "Power":       ("drums", 128, 16),
@@ -62,14 +89,15 @@ INSTRUMENTS = {
     "Bright":      ("drums", 128, 0),
     "Power Tight": ("drums", 128, 16),
     "Power Wide":  ("drums", 128, 16),
+    "Latin": ("drums", 128, 0),
 
-    "Harmonica":            ("flute", 0, 0),
-    "Recorder":             ("flute", 0, 4),
-    "Plastic Flute Short":  ("flute", 0, 11),
-    "Plastic Flute Low":    ("flute", 0, 12),
-    "Plastic Flute High":   ("flute", 0, 14),
-    "Plastic Flute Mid":    ("flute", 0, 13),
-    "Tin Whistle":          ("flute", 0, 16),
+    "Harmonica":    ("flute_general", 0, 0),
+    "Recorder":     ("flute_general", 0, 5),
+    "PlasticFlute": ("flute_general", 0, 10),
+    "TinWhistle":   ("flute_general", 0, 15),
+    "RecorderAltSopr": ("flute_alt", 0, 4),
+    "RecorderTenor":   ("flute_alt", 0, 5),
+    "BassRecorder":    ("flute_alt", 0, 6),
 }
 
 # Keyboard defaults
@@ -148,12 +176,18 @@ DRUMS_INSTRUMENT_NOTE_VARIATIONS = {
         "ride": 59,
     },
 }
+DRUMS_INSTRUMENT_ELEMENT_PRESETS = {
+    "Latin": ["bongo_hi", "bongo_mid", "bongo_lo", "bongo_deep", "conga_mid", "maracas", "cabasa"],
+}
+DRUMS_INSTRUMENT_REPLACE_BASE = ["Latin"]
 DRUMS_PREDEFINED_ELEMENTS = [
     "crash", "ride", "splash", "china",
     "tom_hi", "tom_mid", "tom_low",
-    "hihat", "open_hh", "snare", "rimshot", "floor", "kick",
-    "hh_pedal", "cowbell", "clap", "tamb", "shaker",
-    "agogo_hi", "agogo_lo", "clave",
+    "hihat", "open_hh", "snare", "snare_alt", "rimshot", "floor", "kick", "kick_alt",
+    "hh_pedal", "cowbell", "clap", "tamb", "ride_bell", "crash2", "ride2", "vibra_slap", "shaker",
+    "cabasa", "maracas", "guiro_s", "guiro_l",
+    "agogo_hi", "agogo_lo", "clave", "wood_hi", "wood_lo", "tri_mute", "tri_open",
+    "bongo_hi", "bongo_mid", "bongo_lo", "bongo_deep", "conga_hi", "conga_mid", "conga_lo", "timbale_hi", "timbale_lo",
 ]
 DRUMS_DEFAULT_ELEMENTS = ["crash", "ride", "tom_hi", "tom_low", "hihat", "snare", "floor", "kick"]
 DRUMS_COMPLETE_EXTRA_ELEMENTS = ["hh_pedal"]

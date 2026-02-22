@@ -86,7 +86,7 @@ def get_available_instruments():
         sf_key = data[0]
         if sf_key == "drums":
             catalog["drums"].append(name)
-        elif sf_key == "flute":
+        elif sf_key == "flute" or str(sf_key).startswith("flute"):
             catalog["flute"].append(name)
         else:
             catalog["keyboard"].append(name)
@@ -230,7 +230,7 @@ KEYBOARD OPTIONS:
 
 DRUMS OPTIONS:
     --drm-model {default,complete}      Drum layout model (string values: default|complete, default: default)
-    --drm-elems a,b,c                    Drums elements list (comma-separated). Allowed: crash,ride,splash,china,tom_hi,tom_mid,tom_low,hihat,open_hh,snare,rimshot,floor,kick,hh_pedal,cowbell,clap,tamb,shaker,agogo_hi,agogo_lo,clave
+    --drm-elems a,b,c                    Drums elements list (comma-separated). Allowed: crash,ride,splash,china,tom_hi,tom_mid,tom_low,hihat,open_hh,snare,snare_alt,rimshot,floor,kick,kick_alt,hh_pedal,cowbell,clap,tamb,ride_bell,crash2,ride2,vibra_slap,shaker,cabasa,maracas,guiro_s,guiro_l,agogo_hi,agogo_lo,clave,wood_hi,wood_lo,tri_mute,tri_open,bongo_hi,bongo_mid,bongo_lo,bongo_deep,conga_hi,conga_mid,conga_lo,timbale_hi,timbale_lo
     --drm-tt TOUCH_TOLERANCE            Touch tolerance (float > 0, default: 0.01; suggested: 0.001..0.10)
     --drm-tv TOUCH_VELOCITY             Touch velocity threshold (float > 0, default: 0.012; suggested: 0.001..0.10)
 
@@ -247,7 +247,7 @@ EXAMPLES:
     python main.py -i "Piano" -r 108030
     python main.py -i "Grand Piano" --kbd-sd 0.5 --kbd-lf 0.025
     python main.py -i "Recorder" --flt-max 0.06 --flt-p medium
-    python main.py -i "Quality Flute" --flt-inv --flt-ang-inv
+    python main.py -i "TinWhistle" --flt-inv --flt-ang-inv
 """
     print(doc)
     sys.exit(0)
@@ -265,7 +265,7 @@ def create_argparse():
     python main.py -i "Classic" -tf
     python main.py -i "Grand Piano" --kbd-sd 0.5 --kbd-lf 0.025
     python main.py -i "Recorder" --flt-max 0.06 --flt-p medium
-    python main.py -i "Quality Flute" --flt-inv --flt-ang-inv
+    python main.py -i "TinWhistle" --flt-inv --flt-ang-inv
         """
     )
     
@@ -375,7 +375,7 @@ def create_argparse():
         default=None,
         dest="drm_elems",
         metavar="a,b,c",
-        help="Drums elements list (CSV). Allowed: crash,ride,splash,china,tom_hi,tom_mid,tom_low,hihat,open_hh,snare,rimshot,floor,kick,hh_pedal,cowbell,clap,tamb,shaker,agogo_hi,agogo_lo,clave."
+        help="Drums elements list (CSV). Allowed: crash,ride,splash,china,tom_hi,tom_mid,tom_low,hihat,open_hh,snare,snare_alt,rimshot,floor,kick,kick_alt,hh_pedal,cowbell,clap,tamb,ride_bell,crash2,ride2,vibra_slap,shaker,cabasa,maracas,guiro_s,guiro_l,agogo_hi,agogo_lo,clave,wood_hi,wood_lo,tri_mute,tri_open,bongo_hi,bongo_mid,bongo_lo,bongo_deep,conga_hi,conga_mid,conga_lo,timbale_hi,timbale_lo."
     )
     drums_group.add_argument(
         "--drm-tt", "--drums-tt",
@@ -544,19 +544,24 @@ def start_drums(args, rec_opts):
 def start_flute(args, rec_opts):
     """Start flute instrument"""
     defaults = get_defaults()
+
+    precision = getattr(args, "flute_precision", getattr(args, "flt_p", "medium"))
+    invert_blow = getattr(args, "flute_invert", getattr(args, "flt_inv", False))
+    invert_angle = getattr(args, "flute_angle_invert", getattr(args, "flt_ang_inv", False))
+    follow_sensitivity = getattr(args, "flute_follow_sens", getattr(args, "flt_fs", 0.22))
     
     # Use provided values or defaults
     mouth_peak = args.flt_min if args.flt_min is not None else defaults["flute"]["mouth_peak"]
     mouth_max = args.flt_max if args.flt_max is not None else defaults["flute"]["mouth_max"]
-    hole_radius, hole_spacing = get_flute_hole_params(args.flt_p)
+    hole_radius, hole_spacing = get_flute_hole_params(precision)
     
     print(f"\n>>> STARTING FLUTE: {args.instrument}")
     print(f"    Mouth Peak: {mouth_peak}")
     print(f"    Mouth Max: {mouth_max}")
-    print(f"    Precision: {args.flt_p}")
-    print(f"    Invert Blow: {args.flt_inv}")
-    print(f"    Invert Angle: {args.flt_ang_inv}")
-    print(f"    Follow Sensitivity: {args.flt_fs}")
+    print(f"    Precision: {precision}")
+    print(f"    Invert Blow: {invert_blow}")
+    print(f"    Invert Angle: {invert_angle}")
+    print(f"    Follow Sensitivity: {follow_sensitivity}")
     
     flute = safe_import_module("src.instruments.flute")
     reload(flute)
@@ -567,9 +572,9 @@ def start_flute(args, rec_opts):
         mouth_max=mouth_max,
         hole_radius=hole_radius,
         hole_spacing=hole_spacing,
-        invert_blow=args.flt_inv,
-        invert_angle=args.flt_ang_inv,
-        follow_sensitivity=args.flt_fs,
+        invert_blow=invert_blow,
+        invert_angle=invert_angle,
+        follow_sensitivity=follow_sensitivity,
         rec_options=rec_opts,
         resolution_profile=args.resolution,
         show_trackers=args.trackers,
