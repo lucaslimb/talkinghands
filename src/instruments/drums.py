@@ -339,7 +339,7 @@ def configure_drum_kit(drum_model="default", drums_elements=None, replace_base=F
     global DRUM_KIT, INITIAL_POSITIONS, current_drum_model, current_drum_elements
 
     normalized_model = (drum_model or "default").strip().lower()
-    if normalized_model not in ("default", "complete"):
+    if normalized_model not in ("default", "complete", "override"):
         normalized_model = "default"
 
     selected = _expand_elements(normalized_model, drums_elements)
@@ -769,11 +769,16 @@ def draw_drums_pygame(screen, w, h, font, dragging_drum=None, show_names=False, 
 def start_drums(chosen_instrument=None, user_tolerance=None, rec_options=None, touch_velocity=None, resolution_profile=None, show_trackers=False, drum_model="default", drums_elements=None, hand_model_complexity=1, pose_model_complexity=0):
     print(">>> INICIANDO BATERIA (Pygame)")
     tracker_visible = bool(show_trackers)
-    use_feet_model = str(drum_model).strip().lower() == "complete"
+    requested_model = str(drum_model).strip().lower()
+    use_feet_model = requested_model in ("complete", "override")
     apply_drum_note_profile(chosen_instrument)
     effective_elements = drums_elements
-    replace_base = False
-    if effective_elements is None and chosen_instrument in DRUMS_INSTRUMENT_ELEMENT_PRESETS:
+    replace_base = bool(requested_model == "override" and effective_elements is not None)
+
+    if replace_base:
+        print(f">>> Override ativo via CLI: {', '.join(effective_elements)}")
+
+    if (not replace_base) and effective_elements is None and chosen_instrument in DRUMS_INSTRUMENT_ELEMENT_PRESETS:
         preset_elements = DRUMS_INSTRUMENT_ELEMENT_PRESETS.get(chosen_instrument, [])
         effective_elements = [e for e in preset_elements if e in DRUM_ELEMENT_LIBRARY]
         if effective_elements:
@@ -783,7 +788,7 @@ def start_drums(chosen_instrument=None, user_tolerance=None, rec_options=None, t
             print(f">>> Preset substitui kit base: {chosen_instrument}")
 
     configure_drum_kit(
-        "complete" if use_feet_model else "default",
+        requested_model,
         drums_elements=effective_elements,
         replace_base=replace_base,
         instrument_name=chosen_instrument,

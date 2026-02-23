@@ -36,7 +36,7 @@
 - acoustic bass
 - fretless 1
 - fantasy la
-- even tide
+- eventide
 - poly synth
 - space voices
 - warm voices

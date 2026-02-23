@@ -254,7 +254,7 @@ KEYBOARD OPTIONS:
     --kbd-ts TOUCH_TOLERANCE           Touch tolerance (float > 0, default: 0.005; suggested: 0.001..0.05)
 
 DRUMS OPTIONS:
-    --drm-model {default,complete}      Drum layout model (string values: default|complete, default: default)
+    --drm-model {default,complete,override} Drum layout model (string values: default|complete|override, default: default)
     --drm-elems a,b,c                   Drums elements list (comma-separated). Allowed: crash,ride,splash,china,tom_hi,tom_mid,tom_low,hihat,open_hh,snare,snare_alt,rimshot,floor,kick,kick_alt,hh_pedal,cowbell,clap,tamb,ride_bell,crash2,ride2,vibra_slap,shaker,cabasa,maracas,guiro_s,guiro_l,agogo_hi,agogo_lo,clave,wood_hi,wood_lo,tri_mute,tri_open,bongo_hi,bongo_mid,bongo_lo,bongo_deep,conga_hi,conga_mid,conga_lo,timbale_hi,timbale_lo
     --drm-tt TOUCH_TOLERANCE            Touch tolerance (float > 0, default: 0.01; suggested: 0.001..0.10)
     --drm-tv TOUCH_VELOCITY             Touch velocity threshold (float > 0, default: 0.012; suggested: 0.001..0.10)
@@ -371,10 +371,10 @@ def create_argparse():
     drums_group = parser.add_argument_group("Drums Options")
     drums_group.add_argument(
         "--drm-model", "--drums-model",
-        choices=["default", "complete"],
+        choices=["default", "complete", "override"],
         default="default",
         dest="drums_model",
-        help="Drum layout model (string: default|complete, default: default)."
+        help="Drum layout model (string: default|complete|override, default: default)."
     )
     drums_group.add_argument(
         "--drm-elems", "--drums-elements",
@@ -645,6 +645,8 @@ def start_drums(args, rec_opts, resolution_profile, runtime_config):
     print(f"\n>>> STARTING DRUMS: {args.instrument}")
     print(f"    Drum Model: {args.drums_model}")
     print(f"    Drum Elements: {','.join(args.drm_elems) if args.drm_elems else 'auto(default)'}")
+    if args.drums_model == "override" and not args.drm_elems:
+        print("    Aviso: 'override' sem --drm-elems não altera o kit base.")
     print(f"    Tolerance: {tolerance}")
     print(f"    Touch Velocity: {touch_velocity}")
     
