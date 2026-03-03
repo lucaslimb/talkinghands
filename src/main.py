@@ -249,6 +249,19 @@ KEYBOARD OPTIONS:
     --kbd-sd SUSTAIN_DECAY             Sustain decay seconds (float > 0, default: 0.8; suggested: 0.05..5.0)
     --kbd-ts TOUCH_TOLERANCE           Touch tolerance (float > 0, default: 0.005; suggested: 0.001..0.05)
 
+GAME MODE:
+    --mode {play,game}                  Instrument mode (default: play)
+                                          play  → standard free-play
+                                          game  → Genius-style drum challenge (drums instruments only)
+    --difficulty {easy,medium,hard}     Game difficulty (default: easy); only used with --mode game
+                                          easy    → slow demo (0.55 s/hit), 12 s timeout,  default kit, +10 pts/hit
+                                          medium  → medium demo (0.36 s/hit), 8 s timeout, +3 extra pads, +15 pts/hit
+                                          hard    → fast demo (0.20 s/hit),  4.5 s timeout, +6 extra pads, +25 pts/hit
+                                        Controls in game mode:
+                                          SPACE → start / restart game
+                                          1 / 2 / 3 → switch difficulty from IDLE or GAME OVER screen
+                                          ESC   → exit
+
 DRUMS OPTIONS:
     --drm-model {default,complete,override} Drum layout model (string values: default|complete|override, default: default)
     --drm-elems a,b,c                   Drums elements list (comma-separated). Allowed: crash,ride,splash,china,tom_hi,tom_mid,tom_low,hihat,open_hh,snare,snare_alt,rimshot,floor,kick,kick_alt,hh_pedal,cowbell,clap,tamb,ride_bell,crash2,ride2,vibra_slap,shaker,cabasa,maracas,guiro_s,guiro_l,agogo_hi,agogo_lo,clave,wood_hi,wood_lo,tri_mute,tri_open,bongo_hi,bongo_mid,bongo_lo,bongo_deep,conga_hi,conga_mid,conga_lo,timbale_hi,timbale_lo
@@ -353,6 +366,23 @@ def create_argparse():
         help="Touch sensitivity/tolerance (float > 0, default: 0.005; suggested: 0.001..0.05)."
     )
     
+    # Mode argument
+    parser.add_argument(
+        "--mode",
+        choices=["play", "game"],
+        default="play",
+        metavar="MODE",
+        help="Instrument mode: 'play' (default free-play) or 'game' (Genius-style drum challenge)."
+    )
+
+    parser.add_argument(
+        "--difficulty",
+        choices=["easy", "medium", "hard"],
+        default="easy",
+        metavar="LEVEL",
+        help="Game difficulty when --mode game is used: easy | medium | hard (default: easy)."
+    )
+
     # Drums arguments
     drums_group = parser.add_argument_group("Drums Options")
     drums_group.add_argument(
@@ -558,10 +588,30 @@ def resolve_execution_runtime(args):
 
 
 def start_drums(args, rec_opts, resolution_profile, runtime_config):
-    """Start drums instrument"""
+    """Start drums instrument (free-play or game mode based on args.mode)"""
     defaults = get_defaults()
-    
-    # Use provided values or defaults
+
+    mode = getattr(args, "mode", "play")
+
+    # ── Genius game mode ──────────────────────────────────────────────────
+    if mode == "game":
+        print(f"\n>>> STARTING GENIUS DRUMS GAME: {args.instrument}")
+        print(f"    Drum Model: {args.drums_model}")
+        print(f"    Drum Elements: {','.join(args.drm_elems) if args.drm_elems else 'auto(default)'}")
+        print(f"    Difficulty: {args.difficulty.upper()}")
+        drums_game = safe_import_module("src.instruments.drums_game")
+        drums_game.start_drums_game(
+            chosen_instrument=args.instrument,
+            resolution_profile=resolution_profile,
+            show_trackers=args.trackers,
+            drum_model=args.drums_model,
+            drums_elements=args.drm_elems,
+            hand_model_complexity=runtime_config["hand_model_complexity"],
+            difficulty=args.difficulty,
+        )
+        return
+
+    # ── standard free-play mode ───────────────────────────────────────────
     tolerance = args.drm_tt if args.drm_tt is not None else defaults["drums"]["tolerance"]
     touch_velocity = args.drm_tv if args.drm_tv is not None else defaults["drums"]["touch_velocity"]
     
