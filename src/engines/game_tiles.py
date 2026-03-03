@@ -320,6 +320,11 @@ class TilesGame:
             pts    = self.GOOD_PTS
             result = "good"
         else:
+            # tile exists but timing is outside the hit window — counts as a miss
+            self.combo          = 0
+            self.mistakes      += 1
+            self.last_result    = "miss"
+            self.last_result_ts = now
             return "ignored"
 
         self.combo += 1

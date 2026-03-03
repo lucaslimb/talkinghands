@@ -453,7 +453,8 @@ def _draw_idle_overlay(surface, w: int, h: int, font, big_font,
 
 
 def _draw_gameover_overlay(surface, w: int, h: int, font, big_font,
-                           game: TilesGame, difficulty: str) -> None:
+                           game: TilesGame, difficulty: str,
+                           song: str = "") -> None:
     overlay = pygame.Surface((w, h), pygame.SRCALPHA)
     overlay.fill((0, 0, 0, 160))
     surface.blit(overlay, (0, 0))
@@ -471,18 +472,23 @@ def _draw_gameover_overlay(surface, w: int, h: int, font, big_font,
         title_c  = (255, 70, 70)
 
     t  = big_font.render(title_t, True, title_c)
-    surface.blit(t, (cx - t.get_width() // 2, cy - 90))
+    surface.blit(t, (cx - t.get_width() // 2, cy - 100))
 
     sc_txt = f"Score: {game.score}     Best: {game.best_score}"
     s1 = font.render(sc_txt, True, (220, 220, 220))
-    surface.blit(s1, (cx - s1.get_width() // 2, cy - 20))
+    surface.blit(s1, (cx - s1.get_width() // 2, cy - 40))
+
+    # selected song (updated live as user presses ← →)
+    if song:
+        song_surf = font.render(f"◄  {song}  ►", True, (200, 200, 255))
+        surface.blit(song_surf, (cx - song_surf.get_width() // 2, cy))
 
     s2 = font.render(f"1: EASY   2: MEDIUM   3: HARD   |   SPACE to replay [{diff_lbl}]",
                      True, diff_col)
-    surface.blit(s2, (cx - s2.get_width() // 2, cy + 30))
+    surface.blit(s2, (cx - s2.get_width() // 2, cy + 42))
 
     s3 = font.render("ESC — leave game", True, (130, 130, 130))
-    surface.blit(s3, (cx - s3.get_width() // 2, cy + 65))
+    surface.blit(s3, (cx - s3.get_width() // 2, cy + 77))
 
 
 # ── main entry point ──────────────────────────────────────────────────────
@@ -654,7 +660,8 @@ def start_piano_tiles(
 
             elif game.state == game.STATE_GAME_OVER:
                 _draw_gameover_overlay(main_surface, LOGICAL_W, LOGICAL_H,
-                                       font, big_font, game, current_difficulty)
+                                       font, big_font, game, current_difficulty,
+                                       song=SONG_NAMES[current_song_idx])
 
             window_display.blit(main_surface, (0, 0))
             pygame.display.flip()
