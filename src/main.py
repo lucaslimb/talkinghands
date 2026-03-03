@@ -383,6 +383,17 @@ def create_argparse():
         help="Game difficulty when --mode game is used: easy | medium | hard (default: easy)."
     )
 
+    parser.add_argument(
+        "--song",
+        default="Twinkle Twinkle",
+        metavar="SONG",
+        help=(
+            "Song for Piano Tiles game mode (keyboard + --mode game). "
+            "Options: 'Twinkle Twinkle', 'Ode to Joy', 'Happy Birthday', "
+            "'Mary Had a Little Lamb', 'Jingle Bells (refrao)', 'Random' (default: 'Twinkle Twinkle')."
+        ),
+    )
+
     # Drums arguments
     drums_group = parser.add_argument_group("Drums Options")
     drums_group.add_argument(
@@ -639,19 +650,38 @@ def start_drums(args, rec_opts, resolution_profile, runtime_config):
 
 
 def start_keyboard(args, rec_opts, resolution_profile, runtime_config):
-    """Start keyboard/piano instrument"""
+    """Start keyboard/piano instrument (free-play or Piano Tiles game mode)."""
     defaults = get_defaults()
-    
-    # Use provided values or defaults
-    sustain = args.kbd_sd if args.kbd_sd is not None else defaults["keyboard"]["sustain"]
-    lift = args.kbd_lf if args.kbd_lf is not None else defaults["keyboard"]["lift"]
+
+    mode = getattr(args, "mode", "play")
+
+    # ── Piano Tiles game mode ─────────────────────────────────────────────
+    if mode == "game":
+        song = getattr(args, "song", "Twinkle Twinkle")
+        print(f"\n>>> STARTING PIANO TILES GAME: {args.instrument}")
+        print(f"    Difficulty: {args.difficulty.upper()}")
+        print(f"    Song: {song}")
+        keyboard_game = safe_import_module("src.instruments.keyboard_game")
+        keyboard_game.start_piano_tiles(
+            chosen_instrument=args.instrument,
+            resolution_profile=resolution_profile,
+            show_trackers=args.trackers,
+            hand_model_complexity=runtime_config["hand_model_complexity"],
+            difficulty=args.difficulty,
+            song=song,
+        )
+        return
+
+    # ── standard free-play mode ───────────────────────────────────────────
+    sustain   = args.kbd_sd if args.kbd_sd is not None else defaults["keyboard"]["sustain"]
+    lift      = args.kbd_lf if args.kbd_lf is not None else defaults["keyboard"]["lift"]
     tolerance = args.kbd_ts if args.kbd_ts is not None else defaults["keyboard"]["tolerance"]
-    
+
     print(f"\n>>> STARTING KEYBOARD: {args.instrument}")
     print(f"    Sustain Decay: {sustain}s")
     print(f"    Lift Threshold: {lift}")
     print(f"    Touch Tolerance: {tolerance}")
-    
+
     keyboard = safe_import_module("src.instruments.keyboard")
     keyboard.start_piano(
         chosen_instrument=args.instrument,
