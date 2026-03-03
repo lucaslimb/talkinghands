@@ -250,10 +250,11 @@ KEYBOARD OPTIONS:
     --kbd-ts TOUCH_TOLERANCE           Touch tolerance (float > 0, default: 0.005; suggested: 0.001..0.05)
 
 GAME MODE:
-    --mode {play,game}                  Instrument mode (default: play)
+    --mode {play,game,tiles}            Instrument mode (default: play)
                                           play  → standard free-play
-                                          game  → Genius-style drum challenge (drums instruments only)
-    --difficulty {easy,medium,hard}     Game difficulty (default: easy); only used with --mode game
+                                          game  → Genius-style drum challenge (drums only)
+                                          tiles → Tiles game: Piano Tiles (keyboard) or Drum Tiles (drums)
+    --difficulty {easy,medium,hard}     Game difficulty (default: easy); only used with --mode game/tiles
                                           easy    → slow demo (0.55 s/hit), 12 s timeout,  default kit, +10 pts/hit
                                           medium  → medium demo (0.36 s/hit), 8 s timeout, +3 extra pads, +15 pts/hit
                                           hard    → fast demo (0.20 s/hit),  4.5 s timeout, +6 extra pads, +25 pts/hit
@@ -369,10 +370,10 @@ def create_argparse():
     # Mode argument
     parser.add_argument(
         "--mode",
-        choices=["play", "game"],
+        choices=["play", "game", "tiles"],
         default="play",
         metavar="MODE",
-        help="Instrument mode: 'play' (default free-play) or 'game' (Genius-style drum challenge)."
+        help="Instrument mode: 'play' (default free-play), 'game' (Genius-style drums), or 'tiles' (Piano/Drum Tiles game)."
     )
 
     parser.add_argument(
@@ -388,9 +389,11 @@ def create_argparse():
         default="Twinkle Twinkle",
         metavar="SONG",
         help=(
-            "Song for Piano Tiles game mode (keyboard + --mode game). "
-            "Options: 'Twinkle Twinkle', 'Ode to Joy', 'Happy Birthday', "
-            "'Mary Had a Little Lamb', 'Jingle Bells (refrao)', 'Random' (default: 'Twinkle Twinkle')."
+            "Song for Tiles game mode (--mode tiles or keyboard --mode game). "
+            "Piano songs: 'Twinkle Twinkle', 'Ode to Joy', 'Happy Birthday', "
+            "'Mary Had a Little Lamb', 'Jingle Bells (refrao)', 'Random'. "
+            "Drum songs: 'Basic Beat', 'Rock Pattern', 'Tom Run', 'Groove', 'Ballad', 'Random' "
+            "(default: 'Twinkle Twinkle')."
         ),
     )
 
@@ -622,6 +625,23 @@ def start_drums(args, rec_opts, resolution_profile, runtime_config):
         )
         return
 
+    # ── Drum Tiles game mode ──────────────────────────────────────────────
+    if mode == "tiles":
+        print(f"\n>>> STARTING DRUM TILES: {args.instrument}")
+        print(f"    Song: {args.song}  |  Difficulty: {args.difficulty.upper()}")
+        drums_tiles = safe_import_module("src.instruments.drums_tiles_game")
+        drums_tiles.start_drums_tiles(
+            chosen_instrument=args.instrument,
+            resolution_profile=resolution_profile,
+            show_trackers=args.trackers,
+            drum_model=args.drums_model,
+            drums_elements=args.drm_elems,
+            hand_model_complexity=runtime_config["hand_model_complexity"],
+            difficulty=args.difficulty,
+            song=args.song,
+        )
+        return
+
     # ── standard free-play mode ───────────────────────────────────────────
     tolerance = args.drm_tt if args.drm_tt is not None else defaults["drums"]["tolerance"]
     touch_velocity = args.drm_tv if args.drm_tv is not None else defaults["drums"]["touch_velocity"]
@@ -656,7 +676,7 @@ def start_keyboard(args, rec_opts, resolution_profile, runtime_config):
     mode = getattr(args, "mode", "play")
 
     # ── Piano Tiles game mode ─────────────────────────────────────────────
-    if mode == "game":
+    if mode in ("game", "tiles"):
         song = getattr(args, "song", "Twinkle Twinkle")
         print(f"\n>>> STARTING PIANO TILES GAME: {args.instrument}")
         print(f"    Difficulty: {args.difficulty.upper()}")
