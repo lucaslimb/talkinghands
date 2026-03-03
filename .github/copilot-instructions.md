@@ -4,7 +4,6 @@
 - CLI entrypoint is `src/main.py`; it parses args, selects instrument type from `settings.INSTRUMENTS`, and dispatches to one of:
 	- `src/instruments/keyboard.py` (`start_piano`)
 	- `src/instruments/drums.py` (`start_drums`)
-	- `src/instruments/flute.py` (`start_flute`)
 - Core shared helpers live in `src/instruments/common.py` (FluidSynth init/load, pygame/camera setup, UI helpers).
 - Recording/export pipeline is centralized in `src/engines/recorder.py` (`MidiRecorder`): captures note/CC events, writes MIDI, optionally renders WAV, optionally converts to MP3.
 - Global configuration is in `src/config/settings.py` (soundfont paths, instrument map, thresholds, recording defaults, OS-specific recordings path).

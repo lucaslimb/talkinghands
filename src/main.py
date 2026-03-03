@@ -8,7 +8,7 @@ import sys
 import os
 import re
 import time
-from importlib import import_module, reload
+from importlib import import_module
 import importlib.util
 from pathlib import Path
 
@@ -81,14 +81,12 @@ def safe_import_module(module_path):
 
 def get_available_instruments():
     """Get instruments grouped by type"""
-    catalog = {"keyboard": [], "drums": [], "flute": []}
+    catalog = {"keyboard": [], "drums": []}
     
     for name, data in settings.INSTRUMENTS.items():
         sf_key = data[0]
         if sf_key == "drums":
             catalog["drums"].append(name)
-        elif sf_key == "flute" or str(sf_key).startswith("flute"):
-            catalog["flute"].append(name)
         else:
             catalog["keyboard"].append(name)
     
@@ -97,7 +95,7 @@ def get_available_instruments():
 def validate_instrument(value):
     """Validate that the instrument exists"""
     catalog = get_available_instruments()
-    all_instruments = catalog["keyboard"] + catalog["drums"] + catalog["flute"]
+    all_instruments = catalog["keyboard"] + catalog["drums"]
     
     if value not in all_instruments:
         raise argparse.ArgumentTypeError(
@@ -215,8 +213,6 @@ def get_instrument_type(instrument_name):
     
     if instrument_name in catalog["drums"]:
         return "drums"
-    elif instrument_name in catalog["flute"]:
-        return "flute"
     else:
         return "keyboard"
 
@@ -259,20 +255,10 @@ DRUMS OPTIONS:
     --drm-tt TOUCH_TOLERANCE            Touch tolerance (float > 0, default: 0.01; suggested: 0.001..0.10)
     --drm-tv TOUCH_VELOCITY             Touch velocity threshold (float > 0, default: 0.012; suggested: 0.001..0.10)
 
-FLUTE OPTIONS:
-    --flt-inv                           Invert blow logic (boolean flag: False|True, default: False)
-    --flt-ang-inv                       Invert flute angle follow (boolean flag: False|True, default: False)
-    --flt-max MOUTH_MAX                 Maximum mouth opening threshold (float > 0, default: 0.05; suggested: 0.005..0.20)
-    --flt-min MOUTH_MIN                 Minimum/peak mouth opening threshold (float > 0, default: 0.01; suggested: 0.001..0.10)
-    --flt-fs VALUE                      Mouth-follow sensitivity (float min/max: 0.0..1.0, default: 0.22)
-    --flt-p {small,medium,large}        Hole size preset (string values: small|medium|large, default: medium)
-
 EXAMPLES:
     python src/main.py -i "Classic" -tf
     python src/main.py -i "Piano" -r 108030
     THEngine.exe -i "Grand Piano" --kbd-sd 0.5 --kbd-lf 0.025
-    THEngine.exe -i "Recorder" --flt-max 0.06 --flt-p medium
-    THEngine.exe -i "TinWhistle" --flt-inv --flt-ang-inv
 """
     print(doc)
     sys.exit(0)
@@ -399,52 +385,6 @@ def create_argparse():
         help="Touch velocity threshold (float > 0, default: 0.012; suggested: 0.001..0.10)."
     )
     
-    # Flute arguments
-    flute_group = parser.add_argument_group("Flute Options")
-    flute_group.add_argument(
-        "--flt-inv", "--flute-inv",
-        action="store_true",
-        dest="flute_invert",
-        help="Invert blow logic (bool flag, default: False)."
-    )
-
-    flute_group.add_argument(
-        "--flt-ang-inv", "--flute-angle-inv",
-        action="store_true",
-        dest="flute_angle_invert",
-        help="Invert flute angle follow (bool flag, default: False)."
-    )
-
-    flute_group.add_argument(
-        "--flt-max", "--flute-max",
-        type=float,
-        default=None,
-        metavar="MOUTH_MAX",
-        help="Maximum mouth opening threshold (float > 0, default: 0.05; suggested: 0.005..0.20)."
-    )
-    flute_group.add_argument(
-        "--flt-min", "--flute-min",
-        type=float,
-        default=None,
-        metavar="MOUTH_MIN",
-        help="Minimum/peak mouth opening threshold (float > 0, default: 0.01; suggested: 0.001..0.10)."
-    )
-    flute_group.add_argument(
-        "--flt-fs", "--flute-follow-sens",
-        type=float,
-        default=0.22,
-        metavar="VALUE",
-        dest="flute_follow_sens",
-        help="Mouth-follow sensitivity (float 0.0..1.0, default: 0.22)."
-    )
-    flute_group.add_argument(
-        "--flt-p", "--flute-p", "--flute-precision",
-        choices=["small", "medium", "large"],
-        default="medium",
-        dest="flute_precision",
-        help="Hole size preset (string: small|medium|large, default: medium)."
-    )
-    
     return parser
 
 
@@ -482,10 +422,6 @@ def get_defaults():
             "tolerance": float(getattr(settings, 'DRUMS_TOUCH_TOLERANCE', 0.01)),
             "touch_velocity": float(getattr(settings, 'DRUMS_TOUCH_VELOCITY', getattr(settings, 'TOUCH_VELOCITY', 0.012))),
         },
-        "flute": {
-            "mouth_peak": float(getattr(settings, 'FLUTE_MOUTH_PEAK_OPEN', getattr(settings, 'MOUTH_PEAK_OPEN', 0.01))),
-            "mouth_max": float(getattr(settings, 'FLUTE_MOUTH_MAX_OPEN', getattr(settings, 'MOUTH_MAX_OPEN', 0.05))),
-        },
         "recording": {
             "mid": bool(getattr(settings, 'RECORD_SAVE_MID', True)),
             "wav": bool(getattr(settings, 'RECORD_SAVE_WAV', True)),
@@ -500,19 +436,6 @@ def build_recording_options(args):
         "save_mid": True,
         "save_wav": True,
     }
-
-
-def get_flute_hole_params(precision):
-    """Convert precision string to hole parameters"""
-    params = {
-        "small": (0.015, 0.058),
-        "medium": (
-            float(getattr(settings, 'FLUTE_HOLE_RADIUS', getattr(settings, 'HOLE_RADIUS', 0.019))),
-            float(getattr(settings, 'FLUTE_HOLE_SPACING', getattr(settings, 'HOLE_SPACING', 0.068))),
-        ),
-        "large": (0.023, 0.077),
-    }
-    return params.get(precision, params["medium"])
 
 
 def detect_auto_model_complexity(resolution_profile):
@@ -665,46 +588,6 @@ def start_drums(args, rec_opts, resolution_profile, runtime_config):
     )
 
 
-def start_flute(args, rec_opts, resolution_profile, runtime_config):
-    """Start flute instrument"""
-    defaults = get_defaults()
-
-    precision = getattr(args, "flute_precision", getattr(args, "flt_p", "medium"))
-    invert_blow = getattr(args, "flute_invert", getattr(args, "flt_inv", False))
-    invert_angle = getattr(args, "flute_angle_invert", getattr(args, "flt_ang_inv", False))
-    follow_sensitivity = getattr(args, "flute_follow_sens", getattr(args, "flt_fs", 0.22))
-    
-    # Use provided values or defaults
-    mouth_peak = args.flt_min if args.flt_min is not None else defaults["flute"]["mouth_peak"]
-    mouth_max = args.flt_max if args.flt_max is not None else defaults["flute"]["mouth_max"]
-    hole_radius, hole_spacing = get_flute_hole_params(precision)
-    
-    print(f"\n>>> STARTING FLUTE: {args.instrument}")
-    print(f"    Mouth Peak: {mouth_peak}")
-    print(f"    Mouth Max: {mouth_max}")
-    print(f"    Precision: {precision}")
-    print(f"    Invert Blow: {invert_blow}")
-    print(f"    Invert Angle: {invert_angle}")
-    print(f"    Follow Sensitivity: {follow_sensitivity}")
-    
-    flute = safe_import_module("src.instruments.flute")
-    reload(flute)
-    
-    flute.start_flute(
-        chosen_instrument=args.instrument,
-        mouth_peak=mouth_peak,
-        mouth_max=mouth_max,
-        hole_radius=hole_radius,
-        hole_spacing=hole_spacing,
-        invert_blow=invert_blow,
-        invert_angle=invert_angle,
-        follow_sensitivity=follow_sensitivity,
-        rec_options=rec_opts,
-        resolution_profile=resolution_profile,
-        show_trackers=args.trackers,
-        hand_model_complexity=runtime_config["hand_model_complexity"],
-    )
-
 def start_keyboard(args, rec_opts, resolution_profile, runtime_config):
     """Start keyboard/piano instrument"""
     defaults = get_defaults()
@@ -801,8 +684,6 @@ def main():
         
         if instrument_type == "drums":
             start_drums(args, rec_opts, effective_resolution, runtime_config)
-        elif instrument_type == "flute":
-            start_flute(args, rec_opts, effective_resolution, runtime_config)
         else:  # keyboard
             start_keyboard(args, rec_opts, effective_resolution, runtime_config)
         

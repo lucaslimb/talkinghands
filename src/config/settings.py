@@ -32,8 +32,6 @@ os.makedirs(WAV_DIR, exist_ok=True)
 SF2_PATHS = {
     "master": str(SOUNDFONTS_DIR / "keyboard" / "module_master.sf2"),
     "drums":  str(SOUNDFONTS_DIR / "drums" / "NewDrums.sf2"),
-    "flute_general": str(SOUNDFONTS_DIR / "flute" / "FlutesGeneral.sf2"),
-    "flute_alt":     str(SOUNDFONTS_DIR / "flute" / "Flutes.sf2"),
 }
 
 RECORDINGS_FOLDER = str(RECORDINGS_ROOT)
@@ -95,14 +93,6 @@ INSTRUMENTS = {
     "Power Tight": ("drums", 128, 16),
     "Power Wide":  ("drums", 128, 16),
     "Latin": ("drums", 128, 0),
-
-    "Harmonica":    ("flute_general", 0, 0),
-    "Recorder":     ("flute_general", 0, 5),
-    "PlasticFlute": ("flute_general", 0, 10),
-    "TinWhistle":   ("flute_general", 0, 15),
-    "RecorderAltSopr": ("flute_alt", 0, 4),
-    "RecorderTenor":   ("flute_alt", 0, 5),
-    "BassRecorder":    ("flute_alt", 0, 6),
 }
 
 # Keyboard defaults
@@ -197,31 +187,11 @@ DRUMS_PREDEFINED_ELEMENTS = [
 DRUMS_DEFAULT_ELEMENTS = ["crash", "ride", "tom_hi", "tom_low", "hihat", "snare", "floor", "kick"]
 DRUMS_COMPLETE_EXTRA_ELEMENTS = ["hh_pedal"]
 
-# Flute defaults
-FLUTE_DEFAULT_X = 0.6
-FLUTE_DEFAULT_Y = 0.25
-FLUTE_MOUTH_MIN_OPEN = 0.002
-FLUTE_MOUTH_PEAK_OPEN = 0.01
-FLUTE_MOUTH_MAX_OPEN = 0.05
-FLUTE_HOLE_RADIUS = 0.019
-FLUTE_HOLE_SPACING = 0.068
-FLUTE_MOUTH_SMOOTHING_FACTOR = 0.3
-FLUTE_VELOCITY_CHANGE_THRESHOLD = 4
-FLUTE_MOUTH_FOLLOW_SENSITIVITY = 0.22
-FLUTE_MOUTH_FOLLOW_OFFSET_Y = 0.09
-FLUTE_MOUTH_ANGLE_SENSITIVITY = 1.0
-FLUTE_MOUTH_CLOSE_STOP_THRESHOLD = 0.0006
-FLUTE_MOUTH_PEAK_NEAR_CLOSE_FACTOR = 0.25
-
 # Legacy aliases (compatibility)
 SUSTAIN_DECAY = KEYBOARD_SUSTAIN_DECAY
 LIFT_THRESHOLD = KEYBOARD_LIFT_THRESHOLD
 TOUCH_TOLERANCE = KEYBOARD_TOUCH_TOLERANCE
 TOUCH_VELOCITY = DRUMS_TOUCH_VELOCITY
-MOUTH_PEAK_OPEN = FLUTE_MOUTH_PEAK_OPEN
-MOUTH_MAX_OPEN = FLUTE_MOUTH_MAX_OPEN
-HOLE_RADIUS = FLUTE_HOLE_RADIUS
-HOLE_SPACING = FLUTE_HOLE_SPACING
 
 # Gravação (sempre ativa para MID e WAV)
 RECORD_SAVE_MID = True

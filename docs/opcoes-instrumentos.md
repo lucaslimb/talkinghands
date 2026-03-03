@@ -104,11 +104,3 @@
 - timbalehi
 - timbalelo
 
-### Flauta:
-- harmonica
-- recorder
-- plastic flute
-- tin whistle
-- recorder alt sopr
-- recorder tenor
-- bass recorder
