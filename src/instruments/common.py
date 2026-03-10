@@ -6,6 +6,8 @@ import pygame
 import sys
 import os
 import ctypes
+import time
+import threading
 from pathlib import Path
 
 from src.config import settings
@@ -232,8 +234,53 @@ def setup_video_capture(width=1280, height=720, fps=60):
     cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
     cap.set(cv2.CAP_PROP_FPS, fps)
+    cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
     
     return cap
+
+
+class CameraThread:
+    """Thread de captura contínua — sempre disponibiliza o frame mais recente."""
+    def __init__(self, cap):
+        self._cap = cap
+        self._lock = threading.Lock()
+        self._frame = None
+        self._grab_ts = 0.0
+        self._running = True
+        self._thread = threading.Thread(target=self._loop, daemon=True)
+        self._thread.start()
+
+    def _loop(self):
+        while self._running:
+            ret, frame = self._cap.read()
+            if not ret:
+                continue
+            ts = time.perf_counter()
+            with self._lock:
+                self._frame = frame
+                self._grab_ts = ts
+
+    def get_latest(self):
+        """Retorna (frame, grab_timestamp) ou (None, 0)."""
+        with self._lock:
+            if self._frame is None:
+                return None, 0.0
+            return self._frame.copy(), self._grab_ts
+
+    def stop(self):
+        self._running = False
+        self._thread.join(timeout=2.0)
+
+
+def prepare_mediapipe_frame(frame_rgb, logical_w, logical_h, mp_input_height=480):
+    """Reduz resolução do frame RGB para inferência MediaPipe (landmarks normalizados).
+
+    Retorna o frame reduzido ou o original se já for menor ou igual a mp_input_height.
+    """
+    if logical_h <= mp_input_height:
+        return frame_rgb
+    mp_w = int(logical_w * mp_input_height / logical_h)
+    return cv2.resize(frame_rgb, (mp_w, mp_input_height))
 
 
 # ========================

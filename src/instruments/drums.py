@@ -17,7 +17,8 @@ from src.engines.recorder import MidiRecorder
 from src.instruments.common import (
     init_fluidsynth, load_single_soundfont, select_instrument,
     setup_video_capture, setup_pygame_with_scaling, fit_resolution_to_screen,
-    draw_text, draw_recording_indicator, draw_playback_indicator
+    draw_text, draw_recording_indicator, draw_playback_indicator,
+    CameraThread, prepare_mediapipe_frame,
 )
 
 # Import fluidsynth AFTER common.py setup has run
@@ -839,6 +840,7 @@ def start_drums(chosen_instrument=None, user_tolerance=None, rec_options=None, t
     LOGICAL_W, LOGICAL_H = DISPLAY_W, DISPLAY_H
 
     cap = setup_video_capture(width=LOGICAL_W, height=LOGICAL_H, fps=TARGET_FPS)
+    cam_thread = CameraThread(cap)
 
     window_display, main_surface, font = setup_pygame_with_scaling(
         logical_width=LOGICAL_W,
@@ -945,8 +947,10 @@ def start_drums(chosen_instrument=None, user_tolerance=None, rec_options=None, t
                     elif event.key == pygame.K_SPACE:
                         audio_queue.put((36, 127)) # 36 = Kick
 
-            ret, frame = cap.read()
-            if not ret: break
+            frame, grab_ts = cam_thread.get_latest()
+            if frame is None:
+                time.sleep(0.001)
+                continue
 
             fps_tracker.update()
             
@@ -967,8 +971,9 @@ def start_drums(chosen_instrument=None, user_tolerance=None, rec_options=None, t
                 names_font=names_font,
             )
             
-            results = hands.process(frame_rgb)
-            pose_results = pose.process(frame_rgb) if pose is not None else None
+            frame_mp = prepare_mediapipe_frame(frame_rgb, LOGICAL_W, LOGICAL_H)
+            results = hands.process(frame_mp)
+            pose_results = pose.process(frame_mp) if pose is not None else None
             
             if results.multi_hand_landmarks:
                 for idx, landmarks in enumerate(results.multi_hand_landmarks):
@@ -995,6 +1000,7 @@ def start_drums(chosen_instrument=None, user_tolerance=None, rec_options=None, t
                 pose.close()
         except Exception:
             pass
+        cam_thread.stop()
         cap.release()
         pygame.quit()
         audio_queue.put(None)

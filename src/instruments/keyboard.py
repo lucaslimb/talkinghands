@@ -20,7 +20,7 @@ from src.instruments.common import (
     init_fluidsynth, load_all_soundfonts, select_instrument,
     setup_video_capture, setup_pygame_with_scaling, fit_resolution_to_screen,
     draw_text, draw_recording_indicator, draw_playback_indicator,
-    process_frame_to_pygame
+    process_frame_to_pygame, CameraThread, prepare_mediapipe_frame
 )
 
 # Import fluidsynth AFTER common.py setup has run
@@ -37,6 +37,7 @@ DEFAULT_EXPRESSION = int(getattr(settings, 'KEYBOARD_DEFAULT_EXPRESSION', 127))
 VOLUME_LEVEL_MIN = int(getattr(settings, 'KEYBOARD_VOLUME_LEVEL_MIN', -50))
 VOLUME_LEVEL_MAX = int(getattr(settings, 'KEYBOARD_VOLUME_LEVEL_MAX', 50))
 KEYBOARD_MAX_DIGITAL_GAIN = float(getattr(settings, 'KEYBOARD_MAX_DIGITAL_GAIN', 2.0))
+MP_INPUT_HEIGHT = int(getattr(settings, 'KEYBOARD_MP_INPUT_HEIGHT', 480))
 
 # Barra de volume lateral (coordenadas normalizadas)
 VOLUME_BAR_X_LEFT   = float(getattr(settings, 'KEYBOARD_VOLUME_BAR_X_LEFT',   0.944))
@@ -93,11 +94,22 @@ def audio_thread_target():
         item = audio_queue.get()
         if item is None:
             break
-        action, note = item
         try:
+            if len(item) == 3:
+                action, note, enqueue_ts = item
+            else:
+                action, note = item
+                enqueue_ts = None
+
             if action == "on":
+                t_dequeue = time.perf_counter()
+                if enqueue_ts is not None:
+                    latency_tracker.add_audio_queue((t_dequeue - enqueue_ts) * 1000.0)
+                t0 = time.perf_counter()
                 fs.noteon(0, note, 127)
-                recorder.record_note_on(note) 
+                latency_tracker.add_fluidsynth((time.perf_counter() - t0) * 1000.0)
+                latency_tracker.total_notes += 1
+                recorder.record_note_on(note)
             elif action == "off":
                 fs.noteoff(0, note)
                 recorder.record_note_off(note)
@@ -509,7 +521,7 @@ def processar_dedo(label, fid, y_current, x_current, table_y, cx, cy, screen, h_
             key_idx = get_key_index_from_x(x_current)
             key_data = PIANO_KEYS[key_idx]
             note = key_data["note"]
-            audio_queue.put(("on", note))
+            audio_queue.put(("on", note, time.perf_counter()))
             state["active_notes"][fid] = note
             state["finger_status"][fid] = "TOUCHING"
             state["finger_timers"][fid] = current_time
@@ -536,7 +548,7 @@ def processar_dedo(label, fid, y_current, x_current, table_y, cx, cy, screen, h_
                 if k["note"] == active_note:
                     k["is_active"] = False
                     break
-            audio_queue.put(("on", new_note))
+            audio_queue.put(("on", new_note, time.perf_counter()))
             state["active_notes"][fid] = new_note
             state["finger_timers"][fid] = current_time
             PIANO_KEYS[current_key_idx]["last_hit"] = current_time
@@ -669,6 +681,149 @@ class FPSTracker:
         return self.current_fps
 
 fps_tracker = FPSTracker(update_interval=10)
+
+
+# ------------------------
+# LATENCY TRACKER
+# ------------------------
+class LatencyTracker:
+    """Rastreia latências por camada de processamento (janela deslizante)."""
+    def __init__(self, window_size=120):
+        self._ws = window_size
+        self.camera_buffer_samples = [] # idade do frame (driver timestamp)
+        self.webcam_samples = []        # captura + resize + flip + cvtColor
+        self.mediapipe_samples = []     # hands.process()
+        self.finger_proc_samples = []   # processar_dedo loop
+        self.pygame_render_samples = [] # draw_ui + flip
+        self.audio_queue_samples = []   # fila enqueue → dequeue
+        self.fluidsynth_samples = []    # fs.noteon() chamada
+        self.loop_time_samples = []     # tempo total do loop
+        self.frame_interval_samples = [] # intervalo entre frames
+        self.total_notes = 0
+        self.camera_buffer_available = None  # None=não testado, True/False
+
+    def _add(self, lst, value_ms):
+        lst.append(value_ms)
+        if len(lst) > self._ws * 2:
+            del lst[:len(lst) - self._ws]
+
+    def add_camera_buffer(self, ms): self._add(self.camera_buffer_samples, ms)
+    def add_webcam(self, ms):        self._add(self.webcam_samples, ms)
+    def add_mediapipe(self, ms):     self._add(self.mediapipe_samples, ms)
+    def add_finger_proc(self, ms):   self._add(self.finger_proc_samples, ms)
+    def add_pygame(self, ms):        self._add(self.pygame_render_samples, ms)
+    def add_audio_queue(self, ms):   self._add(self.audio_queue_samples, ms)
+    def add_fluidsynth(self, ms):    self._add(self.fluidsynth_samples, ms)
+    def add_loop_time(self, ms):     self._add(self.loop_time_samples, ms)
+    def add_frame_interval(self, ms): self._add(self.frame_interval_samples, ms)
+
+    def _avg(self, lst):
+        tail = lst[-self._ws:] if lst else []
+        return sum(tail) / len(tail) if tail else 0.0
+
+    def _p95(self, lst):
+        tail = sorted(lst[-self._ws:]) if lst else []
+        if not tail:
+            return 0.0
+        idx = int(len(tail) * 0.95)
+        return tail[min(idx, len(tail) - 1)]
+
+    def _min(self, lst):
+        tail = lst[-self._ws:] if lst else []
+        return min(tail) if tail else 0.0
+
+    def avg_camera_buffer(self):  return self._avg(self.camera_buffer_samples)
+    def avg_webcam(self):         return self._avg(self.webcam_samples)
+    def avg_mediapipe(self):      return self._avg(self.mediapipe_samples)
+    def avg_finger_proc(self):    return self._avg(self.finger_proc_samples)
+    def avg_pygame(self):         return self._avg(self.pygame_render_samples)
+    def avg_audio_queue(self):    return self._avg(self.audio_queue_samples)
+    def avg_fluidsynth(self):     return self._avg(self.fluidsynth_samples)
+    def avg_loop_time(self):      return self._avg(self.loop_time_samples)
+    def avg_frame_interval(self): return self._avg(self.frame_interval_samples)
+
+    def avg_total_visual(self):
+        """Latência visual: webcam + mediapipe + finger + pygame."""
+        return self.avg_webcam() + self.avg_mediapipe() + self.avg_finger_proc() + self.avg_pygame()
+
+    def avg_touch_to_sound(self):
+        """Latência toque→som: finger_proc + audio_queue + fluidsynth."""
+        return self.avg_finger_proc() + self.avg_audio_queue() + self.avg_fluidsynth()
+
+    def print_summary(self):
+        sep = "=" * 70
+        print(f"\n{sep}")
+        print("   RELATÓRIO DE LATÊNCIA — TALKING HANDS KEYBOARD")
+        print(sep)
+
+        # --- Seção 1: Câmera e Frame Timing ---
+        print("\n  [CÂMERA / FRAME TIMING]")
+        print(f"  {'Camada':<30} {'Média':>8}  {'P95':>8}  {'Min':>8}  {'N':>6}")
+        print(f"  {'-'*30} {'-'*8}  {'-'*8}  {'-'*8}  {'-'*6}")
+        if self.camera_buffer_available is False:
+            print(f"  {'Camera Buffer (idade)':<30} {'N/A':>8}  {'N/A':>8}  {'N/A':>8}  {'':>6}")
+            print(f"  {'':>4}(driver não suporta timestamp)")
+        else:
+            self._print_row_full("Camera Buffer (idade)", self.camera_buffer_samples)
+        self._print_row_full("Frame Interval (entre reads)", self.frame_interval_samples)
+        self._print_row_full("Loop Time (total/frame)", self.loop_time_samples)
+        if self.loop_time_samples:
+            avg_loop = self.avg_loop_time()
+            effective_fps = 1000.0 / avg_loop if avg_loop > 0 else 0
+            print(f"  {'':>4}→ FPS efetivo do loop: {effective_fps:.1f}")
+
+        # --- Seção 2: Pipeline de Processamento ---
+        print(f"\n  [PIPELINE DE PROCESSAMENTO]")
+        print(f"  {'Camada':<30} {'Média':>8}  {'P95':>8}  {'Min':>8}  {'N':>6}")
+        print(f"  {'-'*30} {'-'*8}  {'-'*8}  {'-'*8}  {'-'*6}")
+        self._print_row_full("Webcam (read+resize+flip+cvt)", self.webcam_samples)
+        self._print_row_full("MediaPipe (inferência)", self.mediapipe_samples)
+        self._print_row_full("Finger Processing", self.finger_proc_samples)
+        self._print_row_full("Pygame (render+flip)", self.pygame_render_samples)
+
+        # --- Seção 3: Audio ---
+        print(f"\n  [ÁUDIO]")
+        print(f"  {'Camada':<30} {'Média':>8}  {'P95':>8}  {'Min':>8}  {'N':>6}")
+        print(f"  {'-'*30} {'-'*8}  {'-'*8}  {'-'*8}  {'-'*6}")
+        self._print_row_full("Audio Queue (fila)", self.audio_queue_samples)
+        self._print_row_full("FluidSynth (noteon)", self.fluidsynth_samples)
+
+        # --- Seção 4: Totais ---
+        print(f"\n  [TOTAIS]")
+        print(f"  {'-'*30} {'-'*8}")
+        total_visual = self.avg_total_visual()
+        total_audio = self.avg_touch_to_sound()
+        print(f"  {'Pipeline Visual (total)':<30} {total_visual:>7.2f}ms")
+        print(f"  {'Toque → Som (total)':<30} {total_audio:>7.2f}ms")
+
+        # --- Latência ajustada ---
+        adjusted = self.avg_webcam() + self.avg_mediapipe() + self.avg_audio_queue() + self.avg_fluidsynth()
+        camera_note = ""
+        if self.camera_buffer_samples:
+            avg_cam_buf = self.avg_camera_buffer()
+            adjusted_with_cam = avg_cam_buf + self.avg_mediapipe() + self.avg_audio_queue() + self.avg_fluidsynth()
+            camera_note = f"\n  ★  COM BUFFER CÂMERA:          {adjusted_with_cam:.2f} ms  ★"
+            camera_note += f"\n     (camera_buffer + mediapipe + queue + fluidsynth)"
+
+        print(f"\n  {'='*50}")
+        print(f"  ★  LATÊNCIA AJUSTADA (base):  {adjusted:.2f} ms  ★")
+        print(f"     (webcam + mediapipe + queue + fluidsynth)")
+        if camera_note:
+            print(camera_note)
+        print(f"  {'='*50}")
+        print(f"     Notas tocadas na sessão: {self.total_notes}")
+        print(f"{sep}\n")
+
+    def _print_row_full(self, label, samples):
+        avg = self._avg(samples)
+        p95 = self._p95(samples)
+        mn = self._min(samples)
+        n = len(samples)
+        print(f"  {label:<30} {avg:>7.2f}ms {p95:>7.2f}ms {mn:>7.2f}ms {n:>6}")
+
+
+latency_tracker = LatencyTracker()
+
 
 def draw_ui_fast_pygame(screen, table_y, w, h, font, show_note_names=False, names_font=None, volume_state=None):
     table_px = int(table_y * h)
@@ -845,6 +1000,8 @@ def start_piano(chosen_instrument, user_sustain=None, lift_threshold=None, touch
     # DISPLAY_W, DISPLAY_H = 1920, 1080
     
     cap = setup_video_capture(width=LOGICAL_W, height=LOGICAL_H, fps=TARGET_FPS)
+    cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)  # Minimizar buffer da câmera
+    cam_thread = CameraThread(cap)
     
     window_display, main_surface, main_font = setup_pygame_with_scaling(
         logical_width=LOGICAL_W, logical_height=LOGICAL_H,
@@ -859,11 +1016,18 @@ def start_piano(chosen_instrument, user_sustain=None, lift_threshold=None, touch
         "display_until": 0.0,
     }
 
+    # MediaPipe: entrada reduzida para acelerar inferência sem perder qualidade
+    if LOGICAL_H > MP_INPUT_HEIGHT:
+        print(f">>> MediaPipe: entrada reduzida para {MP_INPUT_HEIGHT}p (display {LOGICAL_W}x{LOGICAL_H})")
+
     print(">>> TECLADO INICIADO (Pygame)")
     running = True
+    last_frame_time = None
 
     try:
         while running:
+            t_loop_start = time.perf_counter()
+
             # 1. EVENTOS PYGAME
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
@@ -919,20 +1083,42 @@ def start_piano(chosen_instrument, user_sustain=None, lift_threshold=None, touch
                     elif event.key == pygame.K_0:
                         show_menu = not show_menu
 
-            ret, frame = cap.read()
-            if not ret:
-                break
+            # --- WEBCAM (camera thread) ---
+            t_webcam_start = time.perf_counter()
+            frame, grab_ts = cam_thread.get_latest()
+            if frame is None:
+                time.sleep(0.001)
+                continue
+
+            # --- CAMERA BUFFER (idade real do frame) ---
+            frame_age_ms = (t_webcam_start - grab_ts) * 1000.0
+            if frame_age_ms >= 0:
+                latency_tracker.add_camera_buffer(frame_age_ms)
+            latency_tracker.camera_buffer_available = True
+
+            # --- FRAME INTERVAL ---
+            if last_frame_time is not None:
+                latency_tracker.add_frame_interval((t_webcam_start - last_frame_time) * 1000.0)
+            last_frame_time = t_webcam_start
 
             fps_tracker.update()
 
             frame = cv2.resize(frame, (LOGICAL_W, LOGICAL_H))
             frame = cv2.flip(frame, 1)
             frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            latency_tracker.add_webcam((time.perf_counter() - t_webcam_start) * 1000.0)
+
             frame_surface = pygame.image.frombuffer(frame_rgb.tobytes(), (LOGICAL_W, LOGICAL_H), 'RGB')
             main_surface.blit(frame_surface, (0, 0))
 
-            results = hands.process(frame_rgb)
+            # --- MEDIAPIPE (entrada reduzida) ---
+            t_mp_start = time.perf_counter()
+            frame_mp = prepare_mediapipe_frame(frame_rgb, LOGICAL_W, LOGICAL_H, MP_INPUT_HEIGHT)
+            results = hands.process(frame_mp)
+            latency_tracker.add_mediapipe((time.perf_counter() - t_mp_start) * 1000.0)
 
+            # --- FINGER PROCESSING ---
+            t_finger_start = time.perf_counter()
             current_lowest = None
             if results.multi_hand_landmarks:
                 for idx, lm in enumerate(results.multi_hand_landmarks):
@@ -958,7 +1144,10 @@ def start_piano(chosen_instrument, user_sustain=None, lift_threshold=None, touch
                     volume_state["is_grabbed"] = False
                     volume_state["grab_hand"] = None
                     volume_state["display_until"] = time.time() + 1.0
+            latency_tracker.add_finger_proc((time.perf_counter() - t_finger_start) * 1000.0)
 
+            # --- PYGAME RENDER ---
+            t_pygame_start = time.perf_counter()
             draw_ui_fast_pygame(
                 main_surface,
                 global_state["table_y"],
@@ -989,6 +1178,10 @@ def start_piano(chosen_instrument, user_sustain=None, lift_threshold=None, touch
             window_display.blit(main_surface, (0, 0))
             
             pygame.display.flip()
+            latency_tracker.add_pygame((time.perf_counter() - t_pygame_start) * 1000.0)
+
+            # --- LOOP TIME ---
+            latency_tracker.add_loop_time((time.perf_counter() - t_loop_start) * 1000.0)
             # pygame.time.Clock().tick(60) limitar FPS se necessário
 
     finally:
@@ -1001,9 +1194,12 @@ def start_piano(chosen_instrument, user_sustain=None, lift_threshold=None, touch
                     pass
                 key["is_active"] = False
 
+        cam_thread.stop()
         cap.release()
         pygame.quit()
         audio_queue.put(None)
+
+        latency_tracker.print_summary()
         print(">>> Sessão encerrada.")
 
 if __name__ == "__main__":

@@ -55,6 +55,8 @@ from src.instruments.common import (
     setup_pygame_with_scaling,
     fit_resolution_to_screen,
     draw_text,
+    CameraThread,
+    prepare_mediapipe_frame,
 )
 from src.engines.game_genius import GeniusGame
 from src.config import settings
@@ -613,6 +615,7 @@ def start_drums_game(
     LOGICAL_W, LOGICAL_H = DISPLAY_W, DISPLAY_H
 
     cap = setup_video_capture(width=LOGICAL_W, height=LOGICAL_H, fps=TARGET_FPS)
+    cam_thread = CameraThread(cap)
     window_display, main_surface, font = setup_pygame_with_scaling(
         logical_width=LOGICAL_W, logical_height=LOGICAL_H,
         display_width=DISPLAY_W, display_height=DISPLAY_H,
@@ -665,9 +668,10 @@ def start_drums_game(
                                       f"({len(unique_avail)} elementos)")
 
             # ── grab frame ────────────────────────────────────────────────
-            ret, frame = cap.read()
-            if not ret:
-                break
+            frame, grab_ts = cam_thread.get_latest()
+            if frame is None:
+                time.sleep(0.001)
+                continue
 
             fps_tracker.update()
 
@@ -692,7 +696,8 @@ def start_drums_game(
                              names_font, game, indexed_elements)
 
             # ── hand tracking (only process input during player turn / feedback) ──
-            results = hands.process(frame_rgb)
+            frame_mp = prepare_mediapipe_frame(frame_rgb, LOGICAL_W, LOGICAL_H)
+            results = hands.process(frame_mp)
             if results.multi_hand_landmarks:
                 for idx, landmarks in enumerate(results.multi_hand_landmarks):
                     lbl = results.multi_handedness[idx].classification[0].label
@@ -720,6 +725,7 @@ def start_drums_game(
             hands.close()
         except Exception:
             pass
+        cam_thread.stop()
         cap.release()
         pygame.quit()
         audio_queue.put(None)
