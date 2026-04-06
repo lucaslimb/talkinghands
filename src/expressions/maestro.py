@@ -960,7 +960,7 @@ def start_maestro(
         _cooldown_ok   = (now - last_instr_swap) > INSTR_SWAP_COOLDOWN
 
         # Right hand → NEXT
-        if right_lm is not None and right_lm[0].x < RIGHT_HAND_X_MAX and _cooldown_ok:
+        if right_lm is not None and _cooldown_ok:
             r_open_swap = _hand_openness(right_lm)
             if r_open_swap >= INSTR_SWIPE_OPEN_MIN:
                 rx_now = right_lm[0].x
@@ -993,7 +993,7 @@ def start_maestro(
             swipe_origin_t = None
 
         # Left hand → PREVIOUS
-        if left_lm is not None and left_lm[0].x > LEFT_HAND_X_MIN and _cooldown_ok:
+        if left_lm is not None and _cooldown_ok:
             l_open_swap = _hand_openness(left_lm)
             if l_open_swap >= INSTR_SWIPE_OPEN_MIN:
                 lx_now = left_lm[0].x

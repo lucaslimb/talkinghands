@@ -51,7 +51,7 @@ INDEX_GRAB_Y_MARGIN = float(getattr(settings, 'KEYBOARD_INDEX_GRAB_Y_MARGIN', 0.
 
 # Gesto de troca de instrumento (swipe com palma aberta)
 SWIPE_OPEN_MIN = 0.7      # abertura mínima da mão para ativar swipe
-SWIPE_DIST     = 0.25     # deslocamento X mínimo para confirmar (coords display)
+SWIPE_DIST     = 0.25    # deslocamento X mínimo para confirmar (coords display)
 SWIPE_MAX_TIME = 1.5      # janela de tempo máxima (s)
 SWIPE_COOLDOWN = 1.0      # cooldown após cada troca
 
