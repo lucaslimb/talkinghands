@@ -3,6 +3,7 @@ import mediapipe as mp
 import threading
 import queue
 import time
+import math
 import numpy as np
 import sys
 import os
@@ -52,6 +53,28 @@ COLOR_TEXT = (255, 255, 255)   # Branco
 COLOR_GREEN = (0, 255, 0)      # Verde
 
 show_menu = False
+
+# Gesto de troca de kit (swipe com palma aberta)
+DRUMS_SWIPE_OPEN_MIN = 0.7
+DRUMS_SWIPE_DIST     = 0.25
+DRUMS_SWIPE_MAX_TIME = 1.5
+DRUMS_SWIPE_COOLDOWN = 1.0
+
+DRUMS_SWIPE_KITS = [
+    "Classic",
+    "Power",
+    "Vintage",
+    "Bright",
+    "Power Tight",
+    "Power Wide",
+    "Latin",
+]
+
+
+def _drum_swipe_openness(lm):
+    tips = [4, 8, 12, 16, 20]
+    avg = sum(math.sqrt((lm[t].x - lm[0].x) ** 2 + (lm[t].y - lm[0].y) ** 2) for t in tips) / 5
+    return max(0.0, min(1.0, (avg - 0.08) / 0.17))
 
 
 class FPSTracker:
@@ -865,6 +888,14 @@ def start_drums(chosen_instrument=None, user_tolerance=None, rec_options=None, t
     names_visible = False
     names_font = pygame.font.SysFont("Arial", 12, bold=False)
 
+    # Estado de swipe de kit
+    swipe_kit_idx   = DRUMS_SWIPE_KITS.index(chosen_instrument) \
+                      if chosen_instrument in DRUMS_SWIPE_KITS else 0
+    swipe_state     = {"Right": {"ox": None, "ot": None}, "Left": {"ox": None, "ot": None}}
+    last_swipe_ts   = 0.0
+    swipe_progress  = 0.0
+    swipe_direction = 0
+
     running = True
     try:
         while running:
@@ -944,6 +975,12 @@ def start_drums(chosen_instrument=None, user_tolerance=None, rec_options=None, t
                         tracker_visible = not tracker_visible
                     elif event.key == pygame.K_0:
                         show_menu = not show_menu
+                    elif event.key == pygame.K_LEFTBRACKET:
+                        swipe_kit_idx = (swipe_kit_idx - 1) % len(DRUMS_SWIPE_KITS)
+                        select_kit_by_name(DRUMS_SWIPE_KITS[swipe_kit_idx])
+                    elif event.key == pygame.K_RIGHTBRACKET:
+                        swipe_kit_idx = (swipe_kit_idx + 1) % len(DRUMS_SWIPE_KITS)
+                        select_kit_by_name(DRUMS_SWIPE_KITS[swipe_kit_idx])
                     elif event.key == pygame.K_SPACE:
                         audio_queue.put((36, 127)) # 36 = Kick
 
@@ -979,6 +1016,63 @@ def start_drums(chosen_instrument=None, user_tolerance=None, rec_options=None, t
                 for idx, landmarks in enumerate(results.multi_hand_landmarks):
                     lbl = results.multi_handedness[idx].classification[0].label
                     process_hand(lbl, landmarks.landmark, LOGICAL_W, LOGICAL_H, main_surface, font, show_trackers=tracker_visible)
+
+            # --- SWIPE KIT ────────────────────────────────────────────────
+            # Frame já espelhado: "Right" = mão direita no display
+            # Right R→L (dx<0) = PRÓXIMO  |  Left L→R (dx>0) = ANTERIOR
+            _t_now = time.perf_counter()
+            swipe_progress, swipe_direction = 0.0, 0
+            if results.multi_hand_landmarks and (_t_now - last_swipe_ts) > DRUMS_SWIPE_COOLDOWN:
+                for _si2, _lm2 in enumerate(results.multi_hand_landmarks):
+                    _lbl2 = results.multi_handedness[_si2].classification[0].label
+                    _op   = _drum_swipe_openness(_lm2.landmark)
+                    if _op >= DRUMS_SWIPE_OPEN_MIN:
+                        _st   = swipe_state[_lbl2]
+                        _xnow = _lm2.landmark[0].x
+                        if _st["ox"] is None:
+                            _st["ox"], _st["ot"] = _xnow, _t_now
+                        else:
+                            _dx = _xnow - _st["ox"]
+                            _dt = _t_now - _st["ot"]
+                            if _dt <= DRUMS_SWIPE_MAX_TIME:
+                                if _lbl2 == "Right" and _dx <= -DRUMS_SWIPE_DIST:
+                                    swipe_kit_idx = (swipe_kit_idx + 1) % len(DRUMS_SWIPE_KITS)
+                                    select_kit_by_name(DRUMS_SWIPE_KITS[swipe_kit_idx])
+                                    last_swipe_ts = _t_now
+                                    _st["ox"] = None
+                                elif _lbl2 == "Left" and _dx >= DRUMS_SWIPE_DIST:
+                                    swipe_kit_idx = (swipe_kit_idx - 1) % len(DRUMS_SWIPE_KITS)
+                                    select_kit_by_name(DRUMS_SWIPE_KITS[swipe_kit_idx])
+                                    last_swipe_ts = _t_now
+                                    _st["ox"] = None
+                                else:
+                                    _p = abs(_dx) / DRUMS_SWIPE_DIST
+                                    if _p > swipe_progress:
+                                        swipe_progress  = min(1.0, _p)
+                                        swipe_direction = -1 if _lbl2 == "Right" else 1
+                            else:
+                                _st["ox"], _st["ot"] = _xnow, _t_now
+                    else:
+                        swipe_state[_lbl2]["ox"] = None
+            else:
+                swipe_state["Right"]["ox"] = None
+                swipe_state["Left"]["ox"]  = None
+
+            # Kit atual
+            _kname = DRUMS_SWIPE_KITS[swipe_kit_idx]
+            draw_text(main_surface, f"[ {_kname.upper()} ]",
+                      (LOGICAL_W // 2 - 70, LOGICAL_H - 40), font, (220, 210, 255))
+            if swipe_progress > 0.01:
+                _bw   = 200
+                _bx   = LOGICAL_W // 2 - _bw // 2
+                _by   = LOGICAL_H - 62
+                _fill = int(_bw * swipe_progress)
+                _col  = (120, 190, 255) if swipe_direction < 0 else (200, 160, 255)
+                _fx   = _bx if swipe_direction < 0 else _bx + _bw - _fill
+                pygame.draw.rect(main_surface, (50, 80, 160), (_bx, _by, _bw, 7), 1)
+                pygame.draw.rect(main_surface, _col, (_fx, _by, _fill, 7))
+                _lbl  = "PROXIMO ▶" if swipe_direction < 0 else "◀ ANTERIOR"
+                draw_text(main_surface, _lbl, (LOGICAL_W // 2 - 50, _by - 16), font, _col)
 
             if pose_results and pose_results.pose_landmarks:
                 foot_lm = pose_results.pose_landmarks.landmark

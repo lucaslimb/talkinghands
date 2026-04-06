@@ -86,6 +86,10 @@ INSTRUMENTS = {
     "Ambient Bell":   ("master", 1, 51),
     "Bamboo Forest":  ("master", 1, 52),
 
+    "Arms":         ("master", 1, 6),   # Warm Pad — theremin multi-eixo com gestos
+    "Maestro":      ("master", 1, 6),   # Warm Pad — instrumento gestual expressivo multi-dimensional
+    "Face":         ("master", 1, 6),   # Warm Pad — instrumento dirigido por emoção
+
     "Classic":     ("drums", 128, 0),
     "Power":       ("drums", 128, 16),
     "Vintage":     ("drums", 128, 0),
@@ -186,6 +190,16 @@ DRUMS_PREDEFINED_ELEMENTS = [
 ]
 DRUMS_DEFAULT_ELEMENTS = ["crash", "ride", "tom_hi", "tom_low", "hihat", "snare", "floor", "kick"]
 DRUMS_COMPLETE_EXTRA_ELEMENTS = ["hh_pedal"]
+
+# Arms beat-creator defaults
+ARMS_BEAT_CHANNEL = 9                  # canal MIDI para percussão (9 = GM drums)
+ARMS_KICK_NOTE = 36                    # nota MIDI do kick
+ARMS_KICK_VELOCITY = 110               # velocidade do kick (0..127)
+ARMS_KICK_DURATION = 0.12              # duração do noteOn do kick (segundos)
+ARMS_MIN_BPM = 40                      # BPM mínimo aceito
+ARMS_MAX_BPM = 240                     # BPM máximo aceito
+ARMS_HIT_VEL_THRESHOLD = 0.8           # velocidade vertical mínima (norm/s) para detectar batida
+ARMS_HIT_COOLDOWN = 0.18               # tempo mínimo entre duas batidas (segundos)
 
 # Legacy aliases (compatibility)
 SUSTAIN_DECAY = KEYBOARD_SUSTAIN_DECAY

@@ -210,11 +210,16 @@ def parse_drums_elements_arg(value):
 def get_instrument_type(instrument_name):
     """Determine instrument type from name"""
     catalog = get_available_instruments()
-    
+
     if instrument_name in catalog["drums"]:
         return "drums"
-    else:
-        return "keyboard"
+    if instrument_name == "Arms":
+        return "arms"
+    if instrument_name == "Maestro":
+        return "maestro"
+    if instrument_name == "Face":
+        return "face"
+    return "keyboard"
 
 def print_documentation():
     """Print comprehensive documentation and exit"""
@@ -269,9 +274,52 @@ DRUMS OPTIONS:
     --drm-tt TOUCH_TOLERANCE            Touch tolerance (float > 0, default: 0.01; suggested: 0.001..0.10)
     --drm-tv TOUCH_VELOCITY             Touch velocity threshold (float > 0, default: 0.012; suggested: 0.001..0.10)
 
+ARMS (theremin multi-eixo com gestos):
+    python src/main.py -i "Arms"
+    python src/main.py -i "Arms" -t
+    Controles:
+      Mão direita Y → pitch  |  X → vibrato  |  Z → brilho  |  inclinação → prof.vibrato
+      Mão esquerda Y → volume  |  X → pan  |  Z → reverb  |  abertura → chorus
+      Emoção facial modifica: pitch, brilho, reverb, velocity e vibrato
+      1 → iniciar gravação
+      2 → parar gravação
+      3 → playback
+      0 → ocultar/mostrar menu
+      ESC → sair
+
+MAESTRO (instrumento gestual expressivo multi-dimensional):
+    python src/main.py -i "Maestro"
+    python src/main.py -i "Maestro" -t
+    Mapeamento:
+      Mão direita  Y → pitch  |  X → pan  |  abertura → timbre
+                   Oscilação rápida (4-10 Hz) → vibrato (pitch LFO)
+                   Oscilação lenta  (1-4  Hz) → tremolo (amplitude LFO)
+                   Descida rápida  → kick  |  Lateral rápido → snare
+      Mão esquerda Y → volume  |  X → reverb  |  abertura → chorus
+                   Fechar mão → accent  |  Abrir mão → reverb swell
+      1 → iniciar gravação
+      2 → parar gravação
+      3 → playback
+      0 → ocultar/mostrar menu
+      ESC → sair
+
+FACE (instrumento dirigido por emoção facial):
+    python src/main.py -i "Face"
+    Controles:
+      Aponte o rosto para a câmera — expressões controlam o som.
+      Mistura ponderada de todos os scores de emoção em simultâneo.
+      Cada emoção modifica: pitch, brilho, reverb e vibrato.
+      1 → iniciar gravação
+      2 → parar gravação
+      3 → playback
+      0 → ocultar/mostrar menu
+      ESC → sair
+
 EXAMPLES:
     python src/main.py -i "Classic" -tf
     python src/main.py -i "Piano" -r 108030
+    python src/main.py -i "Arms"
+    python src/main.py -i "Face"
     THEngine.exe -i "Grand Piano" --kbd-sd 0.5 --kbd-lf 0.025
 """
     print(doc)
@@ -715,6 +763,48 @@ def start_keyboard(args, rec_opts, resolution_profile, runtime_config):
     )
 
 
+def start_arms(args, rec_opts, resolution_profile, runtime_config):
+    """Start Arms instrument (multi-axis theremin with gesture control)."""
+    print(f"\n>>> STARTING ARMS: {args.instrument}")
+
+    arms = safe_import_module("src.expressions.arms")
+    arms.start_arms(
+        chosen_instrument=args.instrument,
+        rec_options=rec_opts,
+        resolution_profile=resolution_profile,
+        show_trackers=args.trackers,
+        hand_model_complexity=runtime_config["hand_model_complexity"],
+    )
+
+
+def start_maestro_instrument(args, rec_opts, resolution_profile, runtime_config):
+    """Start Maestro instrument (multi-dimensional gestural theremin)."""
+    print(f"\n>>> STARTING MAESTRO: {args.instrument}")
+
+    maestro = safe_import_module("src.expressions.maestro")
+    maestro.start_maestro(
+        chosen_instrument=args.instrument,
+        rec_options=rec_opts,
+        resolution_profile=resolution_profile,
+        show_trackers=args.trackers,
+        hand_model_complexity=runtime_config["hand_model_complexity"],
+    )
+
+
+def start_face_instrument(args, rec_opts, resolution_profile, runtime_config):
+    """Start Face instrument (emotion-driven sound, no hands required)."""
+    print(f"\n>>> STARTING FACE: {args.instrument}")
+
+    face = safe_import_module("src.expressions.face")
+    face.start_face(
+        chosen_instrument=args.instrument,
+        rec_options=rec_opts,
+        resolution_profile=resolution_profile,
+        show_trackers=args.trackers,
+        hand_model_complexity=runtime_config["hand_model_complexity"],
+    )
+
+
 def main():
     """Main CLI entry point"""
     try:
@@ -784,6 +874,12 @@ def main():
         
         if instrument_type == "drums":
             start_drums(args, rec_opts, effective_resolution, runtime_config)
+        elif instrument_type == "arms":
+            start_arms(args, rec_opts, effective_resolution, runtime_config)
+        elif instrument_type == "maestro":
+            start_maestro_instrument(args, rec_opts, effective_resolution, runtime_config)
+        elif instrument_type == "face":
+            start_face_instrument(args, rec_opts, effective_resolution, runtime_config)
         else:  # keyboard
             start_keyboard(args, rec_opts, effective_resolution, runtime_config)
         

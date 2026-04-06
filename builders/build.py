@@ -107,9 +107,11 @@ def main():
             "--add-data", "assets/fonts:assets/fonts",      
             "--add-data", "assets/fluidsynth-v2.5.1:assets/fluidsynth-v2.5.1",
             "--add-binary", "assets/fluidsynth-v2.5.1/bin/*.dll:assets/fluidsynth-v2.5.1/bin",
+            "--add-data", "assets/sounds:assets/sounds",
             "--add-data", "src/config/:src/config",
             "--add-data", "src/instruments/:src/instruments",
             "--add-data", "src/engines/:src/engines",
+            "--add-data", "src/expressions/:src/expressions",
             "--add-data", "src/utils/:src/utils",
             # MediaPipe data files (critical for hand/face tracking)
             "--add-data", f"{mediapipe_path}:mediapipe",
@@ -129,12 +131,17 @@ def main():
             "--hidden-import=fluidsynth",
             "--hidden-import=pyfluidsynth",
             "--hidden-import=pygame",
-            "--hidden-import=customtkinter",
             "--hidden-import=mido",
             "--hidden-import=sounddevice",
             "--hidden-import=numpy",
+            "--hidden-import=onnx",
+            "--hidden-import=onnxruntime",
+            "--hidden-import=hsemotion_onnx",
+            "--hidden-import=opensimplex",
             # MediaPipe submodules
             "--collect-submodules", "mediapipe",
+            # hsemotion_onnx ships ONNX model files as package data
+            "--collect-data", "hsemotion_onnx",
             "src/main.py"
         ]
         

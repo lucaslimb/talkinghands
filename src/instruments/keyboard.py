@@ -9,6 +9,7 @@ import time
 import ctypes
 import pygame
 import numpy as np
+import math
 
 FILE_PATH = Path(__file__).resolve()
 PROJECT_ROOT = FILE_PATH.parent.parent.parent
@@ -47,6 +48,40 @@ VOLUME_BAR_Y_BOTTOM = float(getattr(settings, 'KEYBOARD_VOLUME_BAR_Y_BOTTOM', 0.
 # Gesto de índicador para controle de volume
 INDEX_GRAB_X_MARGIN = float(getattr(settings, 'KEYBOARD_INDEX_GRAB_X_MARGIN', 0.03))
 INDEX_GRAB_Y_MARGIN = float(getattr(settings, 'KEYBOARD_INDEX_GRAB_Y_MARGIN', 0.055))
+
+# Gesto de troca de instrumento (swipe com palma aberta)
+SWIPE_OPEN_MIN = 0.7      # abertura mínima da mão para ativar swipe
+SWIPE_DIST     = 0.25     # deslocamento X mínimo para confirmar (coords display)
+SWIPE_MAX_TIME = 1.5      # janela de tempo máxima (s)
+SWIPE_COOLDOWN = 1.0      # cooldown após cada troca
+
+KEYBOARD_SWIPE_INSTRUMENTS = [
+    "Piano",
+    "Piano 2",
+    "EP1",
+    "Soft EP",
+    "Drawbar",
+    "Lite Organ",
+    "Rotary Organ",
+    "Vibraphone",
+    "Celesta",
+    "Atmosphere",
+    "Warm Pad",
+    "Crystal",
+    "Santur",
+    "Flute Bell",
+    "Oohs",
+    "Guitar Chimes",
+    "Synth Bass",
+    "Square",
+]
+
+
+def _kb_swipe_openness(lm):
+    """Abertura da mão: 0=fechada, 1=aberta (para detecção de swipe)."""
+    tips = [4, 8, 12, 16, 20]
+    avg = sum(math.sqrt((lm[t].x - lm[0].x) ** 2 + (lm[t].y - lm[0].y) ** 2) for t in tips) / 5
+    return max(0.0, min(1.0, (avg - 0.08) / 0.17))
 
 DEFAULT_NUM_KEYS = int(getattr(settings, 'KEYBOARD_DEFAULT_NUM_KEYS', 30))
 MIN_NUM_KEYS = int(getattr(settings, 'KEYBOARD_MIN_NUM_KEYS', 12))
@@ -1024,6 +1059,14 @@ def start_piano(chosen_instrument, user_sustain=None, lift_threshold=None, touch
     running = True
     last_frame_time = None
 
+    # Estado de swipe de instrumento
+    swipe_instr_idx = KEYBOARD_SWIPE_INSTRUMENTS.index(chosen_instrument) \
+                      if chosen_instrument in KEYBOARD_SWIPE_INSTRUMENTS else 0
+    swipe_state     = {"Right": {"ox": None, "ot": None}, "Left": {"ox": None, "ot": None}}
+    last_swipe_ts   = 0.0
+    swipe_progress  = 0.0
+    swipe_direction = 0
+
     try:
         while running:
             t_loop_start = time.perf_counter()
@@ -1082,6 +1125,12 @@ def start_piano(chosen_instrument, user_sustain=None, lift_threshold=None, touch
                         names_visible = not names_visible
                     elif event.key == pygame.K_0:
                         show_menu = not show_menu
+                    elif event.key == pygame.K_LEFTBRACKET:
+                        swipe_instr_idx = (swipe_instr_idx - 1) % len(KEYBOARD_SWIPE_INSTRUMENTS)
+                        select_instrument_by_name(KEYBOARD_SWIPE_INSTRUMENTS[swipe_instr_idx])
+                    elif event.key == pygame.K_RIGHTBRACKET:
+                        swipe_instr_idx = (swipe_instr_idx + 1) % len(KEYBOARD_SWIPE_INSTRUMENTS)
+                        select_instrument_by_name(KEYBOARD_SWIPE_INSTRUMENTS[swipe_instr_idx])
 
             # --- WEBCAM (camera thread) ---
             t_webcam_start = time.perf_counter()
@@ -1146,7 +1195,45 @@ def start_piano(chosen_instrument, user_sustain=None, lift_threshold=None, touch
                     volume_state["display_until"] = time.time() + 1.0
             latency_tracker.add_finger_proc((time.perf_counter() - t_finger_start) * 1000.0)
 
-            # --- PYGAME RENDER ---
+            # --- SWIPE INSTRUMENTO ────────────────────────────────────────────
+            # Frame já espelhado: "Right" = mão direita no display
+            # Right R→L (dx<0) = PRÓXIMO  |  Left L→R (dx>0) = ANTERIOR
+            swipe_progress, swipe_direction = 0.0, 0
+            if results.multi_hand_landmarks and (t_loop_start - last_swipe_ts) > SWIPE_COOLDOWN:
+                for _si2, _lm2 in enumerate(results.multi_hand_landmarks):
+                    _lbl2 = results.multi_handedness[_si2].classification[0].label
+                    _op   = _kb_swipe_openness(_lm2.landmark)
+                    if _op >= SWIPE_OPEN_MIN:
+                        _st   = swipe_state[_lbl2]
+                        _xnow = _lm2.landmark[0].x
+                        if _st["ox"] is None:
+                            _st["ox"], _st["ot"] = _xnow, t_loop_start
+                        else:
+                            _dx  = _xnow - _st["ox"]
+                            _dt  = t_loop_start - _st["ot"]
+                            if _dt <= SWIPE_MAX_TIME:
+                                if _lbl2 == "Right" and _dx <= -SWIPE_DIST:
+                                    swipe_instr_idx = (swipe_instr_idx + 1) % len(KEYBOARD_SWIPE_INSTRUMENTS)
+                                    select_instrument_by_name(KEYBOARD_SWIPE_INSTRUMENTS[swipe_instr_idx])
+                                    last_swipe_ts = t_loop_start
+                                    _st["ox"] = None
+                                elif _lbl2 == "Left" and _dx >= SWIPE_DIST:
+                                    swipe_instr_idx = (swipe_instr_idx - 1) % len(KEYBOARD_SWIPE_INSTRUMENTS)
+                                    select_instrument_by_name(KEYBOARD_SWIPE_INSTRUMENTS[swipe_instr_idx])
+                                    last_swipe_ts = t_loop_start
+                                    _st["ox"] = None
+                                else:
+                                    _p = abs(_dx) / SWIPE_DIST
+                                    if _p > swipe_progress:
+                                        swipe_progress  = min(1.0, _p)
+                                        swipe_direction = -1 if _lbl2 == "Right" else 1
+                            else:
+                                _st["ox"], _st["ot"] = _xnow, t_loop_start
+                    else:
+                        swipe_state[_lbl2]["ox"] = None
+            else:
+                swipe_state["Right"]["ox"] = None
+                swipe_state["Left"]["ox"]  = None
             t_pygame_start = time.perf_counter()
             draw_ui_fast_pygame(
                 main_surface,
@@ -1174,7 +1261,23 @@ def start_piano(chosen_instrument, user_sustain=None, lift_threshold=None, touch
 
             check_lost_fingers()
             check_active_keys_integrity()
-            
+
+            # Instrumento atual (swipe)
+            _sname = KEYBOARD_SWIPE_INSTRUMENTS[swipe_instr_idx]
+            draw_text(main_surface, f"[ {_sname.upper()} ]",
+                      (LOGICAL_W // 2 - 85, LOGICAL_H - 40), main_font, (220, 210, 255))
+            if swipe_progress > 0.01:
+                _bw   = 200
+                _bx   = LOGICAL_W // 2 - _bw // 2
+                _by   = LOGICAL_H - 62
+                _fill = int(_bw * swipe_progress)
+                _col  = (120, 190, 255) if swipe_direction < 0 else (200, 160, 255)
+                _fx   = _bx if swipe_direction < 0 else _bx + _bw - _fill
+                pygame.draw.rect(main_surface, (50, 80, 160), (_bx, _by, _bw, 7), 1)
+                pygame.draw.rect(main_surface, _col, (_fx, _by, _fill, 7))
+                _lbl  = "PROXIMO ▶" if swipe_direction < 0 else "◀ ANTERIOR"
+                draw_text(main_surface, _lbl, (LOGICAL_W // 2 - 50, _by - 16), main_font, _col)
+
             window_display.blit(main_surface, (0, 0))
             
             pygame.display.flip()
