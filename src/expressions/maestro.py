@@ -103,9 +103,9 @@ VOL_Y_PAD_BOT = 0.75   # Y abaixo disto = volume zero   (75% do topo)
 # Gesto de apontar (kick / snare) — velocidade mínima do jab
 POINT_VY_THRESHOLD = 0.8   # jab vertical   (kick e snare)
 POINT_VX_THRESHOLD = 0.8   # jab lateral    (snare alternativo)
-PERC_COOLDOWN      = 0.35  # cooldown independente para kick/snare (evita double-hit)
+PERC_COOLDOWN      = 0.20  # cooldown independente para kick/snare (evita double-hit)
 # Gesto de deslocamento vertical explícito para kick/snare
-PERC_SWIPE_DIST     = 0.20  # deslocamento vertical mínimo para baixo (20% da tela)
+PERC_SWIPE_DIST     = 0.25  # deslocamento vertical mínimo para baixo (20% da tela)
 PERC_SWIPE_MAX_TIME = 0.80  # janela de tempo máxima para o gesto (s)
 ACCENT_CLOSE_RATE  = -3.0  # taxa de fechamento — mais negativo = mais difícil
 SWELL_OPEN_RATE    = 3.0   # taxa de abertura   — maior = mais difícil de acionar
@@ -554,7 +554,7 @@ def _render_ui(
             col = tuple(max(0, min(255, int(c * best_alpha))) for c in ecolor)
             draw_text(surface, elabel, (ex_base + idx * 100, h - 46), font, col)
 
-    draw_text(surface, "1=Gravar  2=Parar  3=Playback  V=Visual  0=Menu  ESC=Sair",
+    draw_text(surface, "1=Gravar  2=Parar  3=Playback  ESPACO=Alternar GUI  ESC=Sair",
               (20, h - 26), font, (140, 140, 155))
 
     # ── Instrumento + emoção — centro inferior ─────────────────────────────
@@ -658,7 +658,8 @@ def start_maestro(
 
     # ── Visualizador neural (face) ──────────────────────────────────────
     brain_viz = BrainVisualizer(logical_w, logical_h)
-    show_viz = True
+    # gui_state: 0=viz+menu, 1=menu only, 2=none, 3=viz only
+    gui_state = 0
 
     # ── Sinais suavizados — Mão direita ─────────────────────────────────────
     s_pitch    = SignalSmoother(SMOOTH_MED,  float((PITCH_LOW + PITCH_HIGH) / 2))
@@ -689,7 +690,6 @@ def start_maestro(
     trem_phase    = 0.0
     last_right_ts = 0.0
     last_time     = time.perf_counter()
-    show_menu     = True
     vib_hold      = 0     # frames de histerese para manter vibrato ativo
 
     accent_decay  = 0.0   # 0..1, decai ao longo de ACCENT_DURATION
@@ -707,7 +707,7 @@ def start_maestro(
     print("    Mao E: Y=volume  X=reverb  abertura=chorus")
     print("    Gestos: descida D=kick | descida E=snare | fechar=accent | abrir=swell")
     print("    Face: emoção detectada define o timbre automaticamente.")
-    print("    1=gravar  2=parar  3=playback  V=visual  0=menu  ESC=sair")
+    print("    1=gravar  2=parar  3=playback  ESPACO=alternar GUI  ESC=sair")
 
     # ── Loop principal ───────────────────────────────────────────────────────
     running = True
@@ -718,10 +718,8 @@ def start_maestro(
             elif event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_ESCAPE:
                     running = False
-                elif event.key == pygame.K_0:
-                    show_menu = not show_menu
-                elif event.key == pygame.K_v:
-                    show_viz = not show_viz
+                elif event.key == pygame.K_SPACE:
+                    gui_state = (gui_state + 1) % 4
                 elif event.key == pygame.K_1:
                     if not _recorder.is_recording:
                         _recorder.start_recording()
@@ -988,6 +986,9 @@ def start_maestro(
             ),
             (0, 0),
         )
+
+        show_viz  = gui_state in (0, 3)
+        show_menu = gui_state in (0, 1)
 
         if show_viz:
             brain_viz.draw_overlay(surface, darken_alpha=60)

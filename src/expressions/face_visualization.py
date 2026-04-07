@@ -258,7 +258,7 @@ class BrainVisualizer:
         for sector in self.sectors:
             sector.update(dt)
 
-    def draw(self, surface: pygame.Surface):
+    def draw(self, surface: pygame.Surface, bg_color=None):
         """Renderiza a visualização completa no surface fornecido."""
         t = self.t
 
@@ -270,7 +270,7 @@ class BrainVisualizer:
         cy = self.cy
 
         # ── Fundo ──────────────────────────────────────────────────────
-        surface.fill(BACKGROUND)
+        surface.fill(BACKGROUND if bg_color is None else bg_color)
 
         # ── Arcos dos setores ──────────────────────────────────────────
         for sector in self.sectors:
@@ -301,7 +301,7 @@ class BrainVisualizer:
             target.blit(dark, (0, 0))
 
         # Renderizar visualização no surface preto interno
-        self.draw(self._overlay_surf)
+        self.draw(self._overlay_surf, bg_color=(0, 0, 0))
 
         # Compor aditivamente: preto (0,0,0) não altera nada,
         # pixels brilhantes (partículas, glow, arcos) se somam ao vídeo
