@@ -1,12 +1,19 @@
 """
-Maestro — instrumento gestual expressivo multi-dimensional inspirado no theremin.
+Maestro — modo principal: mãos + expressão facial.
 
-Módulos internos:
-  SignalSmoother          — filtro EMA de suavização adaptativa por canal
-  OscillationDetector     — extrai frequência e amplitude de oscilações (vibrato/tremolo)
-  GestureVelocityTracker  — rastreia velocidade e aceleração 2D da mão
-  DiscreteGestureDetector — detecta eventos discretos (kick, snare, acento, swell)
-  start_maestro()         — loop principal câmera + MediaPipe + FluidSynth
+Combina o controle gestual (pitch, pan, effects, percussão) com detecção
+de emoção facial para seleção automática do timbre. Cada emoção mapeia
+para um som diferente; a transição é automática e suavizada.
+
+EMOÇÃO → SOM:
+  Neutral   → Warm Pad     (neutro, base)
+  Happiness → Crystal      (brilhante)
+  Sadness   → Eventide     (melancólico)
+  Anger     → Goblin       (tenso)
+  Fear      → Rain         (perturbador)
+  Surprise  → Space Voices (etéreo)
+  Contempt  → Metallic Pad (frio)
+  Disgust   → Atmosphere   (opressivo)
 
 MAPEAMENTO GESTUAL:
   Mão direita (melodia):
@@ -54,6 +61,9 @@ from src.instruments.common import (
 )
 import fluidsynth
 
+from src.expressions.face import EmotionTracker, EMOTION_COLORS
+from src.expressions.face_visualization import BrainVisualizer
+
 # ── Constantes ─────────────────────────────────────────────────────────────────
 MELODY_CH   = 0
 DRUMS_CH    = 9
@@ -94,6 +104,9 @@ VOL_Y_PAD_BOT = 0.75   # Y abaixo disto = volume zero   (75% do topo)
 POINT_VY_THRESHOLD = 0.8   # jab vertical   (kick e snare)
 POINT_VX_THRESHOLD = 0.8   # jab lateral    (snare alternativo)
 PERC_COOLDOWN      = 0.35  # cooldown independente para kick/snare (evita double-hit)
+# Gesto de deslocamento vertical explícito para kick/snare
+PERC_SWIPE_DIST     = 0.20  # deslocamento vertical mínimo para baixo (20% da tela)
+PERC_SWIPE_MAX_TIME = 0.80  # janela de tempo máxima para o gesto (s)
 ACCENT_CLOSE_RATE  = -3.0  # taxa de fechamento — mais negativo = mais difícil
 SWELL_OPEN_RATE    = 3.0   # taxa de abertura   — maior = mais difícil de acionar
 GESTURE_COOLDOWN   = 0.28  # segundos mínimos entre dois triggers do mesmo tipo
@@ -116,33 +129,18 @@ EVENT_FADE_SECS  = 1.8
 
 NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
 
-# Troca de instrumento — swipe com palma aberta na mão direita
-INSTR_SWIPE_OPEN_MIN = 0.7   # abertura mínima de mão para ativar modo swipe
-INSTR_SWIPE_DIST     = 0.25   # deslocamento X mínimo para confirmar (coords câmera)
-INSTR_SWIPE_MAX_TIME = 1.5    # janela de tempo máxima para completar o swipe (s)
-INSTR_SWAP_COOLDOWN  = 1.0    # cooldown após cada troca
-
-# Lista de sons disponíveis no Maestro ([ = anterior, ] = próximo, ou gesto)
-MAESTRO_INSTRUMENTS = [
-    "Warm Pad",
-    "Atmosphere",
-    "Rain",
-    "Ocean Pad",
-    "Goblin",
-    "Space Voices",
-    "Warm Voices",
-    "Crystal",
-    "Metallic Pad",
-    "Koto LA",
-    "Flute Bell",
-    "Oohs",
-    "Glass Trem",
-    "Eventide",
-    "Fantasy LA",
-    "Polysynth",
-    "Ambient Bell",
-    "Bamboo Forest"
-]
+# Emoção → instrumento automático (a face define o timbre)
+EMOTION_INSTRUMENTS = {
+    "Neutral":   "Warm Pad",
+    "Happiness": "Crystal",
+    "Sadness":   "Eventide",
+    "Anger":     "Goblin",
+    "Fear":      "Rain",
+    "Surprise":  "Space Voices",
+    "Contempt":  "Metallic Pad",
+    "Disgust":   "Atmosphere",
+}
+EMOTION_INTERVAL = 0.05   # submissão de frames ao tracker (~20 fps)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -452,7 +450,7 @@ def _render_ui(
     vib_phase, trem_phase,
     accent_decay, swell_decay,
     event_log, now,
-    current_instrument="", swap_progress=0.0, swap_direction=0,
+    current_instrument="", current_emotion="Neutral",
 ):
     # ── Painel direito — Mão direita (aparece visual-direita no display espelhado) ──
     px = w - 260
@@ -556,25 +554,14 @@ def _render_ui(
             col = tuple(max(0, min(255, int(c * best_alpha))) for c in ecolor)
             draw_text(surface, elabel, (ex_base + idx * 100, h - 46), font, col)
 
-    draw_text(surface, "1=Gravar  2=Parar  3=Playback  0=Menu  ESC=Sair",
+    draw_text(surface, "1=Gravar  2=Parar  3=Playback  V=Visual  0=Menu  ESC=Sair",
               (20, h - 26), font, (140, 140, 155))
 
-    # ── Instrumento atual — centro inferior ────────────────────────────────
+    # ── Instrumento + emoção — centro inferior ─────────────────────────────
+    emo_color = EMOTION_COLORS.get(current_emotion, (180, 180, 180))
     instr_label = current_instrument.upper()
     draw_text(surface, f"[ {instr_label} ]", (w // 2 - 90, h - 48), font, (220, 210, 255))
-
-    if swap_progress > 0.01:
-        bar_total = 220
-        bar_x     = w // 2 - bar_total // 2
-        bar_y     = h - 68
-        fill_w    = int(bar_total * swap_progress)
-        if swap_direction >= 0:
-            lbl, col, fill_x = "PROXIMO  ▶", (120, 190, 255), bar_x
-        else:
-            lbl, col, fill_x = "◀  ANTERIOR", (200, 160, 255), bar_x + bar_total - fill_w
-        pygame.draw.rect(surface, (50, 80, 160), (bar_x, bar_y, bar_total, 7), 1)
-        pygame.draw.rect(surface, col, (fill_x, bar_y, fill_w, 7))
-        draw_text(surface, lbl, (w // 2 - 55, bar_y - 16), font, col)
+    draw_text(surface, current_emotion.upper(), (w // 2 - 90, h - 66), font, emo_color)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -614,7 +601,8 @@ def start_maestro(
         return
 
     loaded_sfids = load_all_soundfonts(_fs)
-    select_instrument(_fs, chosen_instrument, loaded_sfids, _recorder,
+    initial_instr = EMOTION_INSTRUMENTS.get("Neutral", "Warm Pad")
+    select_instrument(_fs, initial_instr, loaded_sfids, _recorder,
                       channel=MELODY_CH, is_drum=False)
 
     # Canal de percussão (canal 9, banco 128)
@@ -646,6 +634,12 @@ def start_maestro(
     cap = setup_video_capture(logical_w, logical_h, target_fps)
     cam = CameraThread(cap)
 
+    # ── EmotionTracker (face → timbre) ──────────────────────────────────────
+    emotion_tracker = EmotionTracker()
+    last_emotion_ts = 0.0
+    current_emotion = "Neutral"
+    current_instr_name = initial_instr
+
     # ── MediaPipe Hands ─────────────────────────────────────────────────────
     mp_hands = mp.solutions.hands
     hands = mp_hands.Hands(
@@ -658,9 +652,13 @@ def start_maestro(
     # ── Pygame ──────────────────────────────────────────────────────────────
     screen, surface, font = setup_pygame_with_scaling(
         logical_w, logical_h, display_w, display_h,
-        title=f"Maestro — {chosen_instrument}",
+        title="Maestro",
     )
     clock = pygame.time.Clock()
+
+    # ── Visualizador neural (face) ──────────────────────────────────────
+    brain_viz = BrainVisualizer(logical_w, logical_h)
+    show_viz = True
 
     # ── Sinais suavizados — Mão direita ─────────────────────────────────────
     s_pitch    = SignalSmoother(SMOOTH_MED,  float((PITCH_LOW + PITCH_HIGH) / 2))
@@ -673,8 +671,8 @@ def start_maestro(
 
     # ── Sinais suavizados — Mão esquerda ────────────────────────────────────
     s_volume = SignalSmoother(SMOOTH_MED,  127.0)
-    s_reverb = SignalSmoother(SMOOTH_MED,  20.0)
-    s_chorus = SignalSmoother(SMOOTH_SLOW, 0.0)
+    s_reverb = SignalSmoother(SMOOTH_FAST, 20.0)
+    s_chorus = SignalSmoother(SMOOTH_MED,  0.0)
 
     # ── Detectores de feature ────────────────────────────────────────────────
     right_osc     = OscillationDetector(window=32)
@@ -699,23 +697,17 @@ def start_maestro(
     event_log     = []    # lista de (name, timestamp)
     last_kick_ts  = 0.0   # cooldown kick  (gesto de apontar mão direita)
     last_snare_ts = 0.0   # cooldown snare (gesto de apontar mão esquerda)
+    kick_origin_y  = None  # origem Y para gesto de kick
+    kick_origin_t  = None
+    snare_origin_y = None  # origem Y para gesto de snare
+    snare_origin_t = None
 
-    # ── Estado de troca de instrumento ──────────────────────────────────────
-    instr_idx        = MAESTRO_INSTRUMENTS.index(chosen_instrument) \
-                       if chosen_instrument in MAESTRO_INSTRUMENTS else 0
-    # right hand (R→L on display, câmera dx>0) = NEXT
-    swipe_origin_x   = None
-    swipe_origin_t   = None
-    # left hand  (L→R on display, câmera dx<0) = PREV
-    l_swipe_origin_x = None
-    l_swipe_origin_t = None
-    last_instr_swap  = 0.0    # timestamp da última troca (cooldown)
-
-    print(">>> Maestro pronto.")
+    print(">>> Maestro pronto (mãos + face).")
     print("    Mao D: Y=pitch   X=pan   abertura=timbre   oscilacao=vibrato/tremolo")
     print("    Mao E: Y=volume  X=reverb  abertura=chorus")
-    print("    Gestos: apontar+jab D=kick | apontar+jab E=snare | fechar=accent | abrir=swell")
-    print("    1=gravar  2=parar  3=playback  0=menu  ESC=sair")
+    print("    Gestos: descida D=kick | descida E=snare | fechar=accent | abrir=swell")
+    print("    Face: emoção detectada define o timbre automaticamente.")
+    print("    1=gravar  2=parar  3=playback  V=visual  0=menu  ESC=sair")
 
     # ── Loop principal ───────────────────────────────────────────────────────
     running = True
@@ -728,6 +720,8 @@ def start_maestro(
                     running = False
                 elif event.key == pygame.K_0:
                     show_menu = not show_menu
+                elif event.key == pygame.K_v:
+                    show_viz = not show_viz
                 elif event.key == pygame.K_1:
                     if not _recorder.is_recording:
                         _recorder.start_recording()
@@ -739,15 +733,6 @@ def start_maestro(
                         _recorder.stop_playback()
                     else:
                         _recorder.start_playback(_fs, MELODY_CH)
-                elif event.key == pygame.K_LEFTBRACKET:
-                    instr_idx = (instr_idx - 1) % len(MAESTRO_INSTRUMENTS)
-                    select_instrument(_fs, MAESTRO_INSTRUMENTS[instr_idx],
-                                      loaded_sfids, _recorder, MELODY_CH)
-                elif event.key == pygame.K_RIGHTBRACKET:
-                    instr_idx = (instr_idx + 1) % len(MAESTRO_INSTRUMENTS)
-                    select_instrument(_fs, MAESTRO_INSTRUMENTS[instr_idx],
-                                      loaded_sfids, _recorder, MELODY_CH)
-
         frame, _ = cam.get_latest()
         if frame is None:
             clock.tick(target_fps)
@@ -771,9 +756,27 @@ def start_maestro(
         if len(event_log) > 20:
             event_log = [(n, t) for n, t in event_log if (now - t) < EVENT_FADE_SECS * 2]
 
-        # ── Processamento MediaPipe ────────────────────────────────────────
+        # ── Submissão de frame ao EmotionTracker ───────────────────────────
         frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         mp_frame  = prepare_mediapipe_frame(frame_rgb, logical_w, logical_h, MP_INPUT_HEIGHT)
+        if now - last_emotion_ts >= EMOTION_INTERVAL:
+            emotion_tracker.submit_frame(mp_frame)
+            last_emotion_ts = now
+
+        # Emoção dominante → troca automática de timbre
+        detected_emotion, emotion_scores = emotion_tracker.get_state()
+        if detected_emotion != current_emotion:
+            new_instr = EMOTION_INSTRUMENTS.get(detected_emotion)
+            if new_instr and new_instr != current_instr_name:
+                select_instrument(_fs, new_instr, loaded_sfids, _recorder, MELODY_CH)
+                current_instr_name = new_instr
+                current_emotion = detected_emotion
+                event_log.append(("emotion", now))
+
+        brain_viz.update_emotions(emotion_scores)
+        brain_viz.update(dt)
+
+        # ── Processamento MediaPipe Hands ──────────────────────────────────
         results   = hands.process(mp_frame)
 
         right_lm = None
@@ -847,15 +850,26 @@ def start_maestro(
             s_pan_r.update(rx_norm * 127.0)
             _audio_queue.put(("cc", MELODY_CH, 10, int(s_pan_r.value)))
 
-            # Timbre: abertura da mão → CC 74 (brightness)
-            s_bright_r.update(r_open * 127.0)
+            # Timbre: abertura da mão → CC 74 (brightness) — curva ^0.6 para resposta mais forte
+            s_bright_r.update(pow(r_open, 0.6) * 127.0)
             _audio_queue.put(("cc", MELODY_CH, 74, int(s_bright_r.value)))
 
-            # Kick: jab rápido da mão direita (sem exigir pose específica)
-            if abs(vy_r) > POINT_VY_THRESHOLD and (now - last_kick_ts) >= PERC_COOLDOWN:
-                last_kick_ts = now
-                _trigger_perc(KICK_NOTE)
-                event_log.append(("kick", now))
+            # Kick: deslocamento vertical ≥ 30% da tela em 0.8 s (mão direita)
+            ry_now = right_lm[0].y
+            if kick_origin_y is None:
+                kick_origin_y, kick_origin_t = ry_now, now
+            else:
+                dy_k = ry_now - kick_origin_y   # positivo = descida
+                dt_k = now - kick_origin_t
+                if dt_k <= PERC_SWIPE_MAX_TIME:
+                    if dy_k >= PERC_SWIPE_DIST and (now - last_kick_ts) >= PERC_COOLDOWN:
+                        last_kick_ts  = now
+                        kick_origin_y = None
+                        kick_origin_t = None
+                        _trigger_perc(KICK_NOTE)
+                        event_log.append(("kick", now))
+                else:
+                    kick_origin_y, kick_origin_t = ry_now, now
 
             # Accent / Swell (abertura ou fechamento rápido da mão)
             for evt in right_gesture.update(vx_r, vy_r, r_open, now):
@@ -889,6 +903,8 @@ def start_maestro(
                 _audio_queue.put(("bend", total_bend))
 
         else:
+            kick_origin_y = None
+            kick_origin_t = None
             right_vel.reset()
             right_osc.reset()
             vib_hold = 0
@@ -914,12 +930,21 @@ def start_maestro(
 
             vx_l, vy_l = left_vel.update(lx, ly, now)
 
-            # Snare: jab rápido da mão esquerda (sem exigir pose específica)
-            if (abs(vy_l) > POINT_VY_THRESHOLD or abs(vx_l) > POINT_VX_THRESHOLD) \
-                    and (now - last_snare_ts) >= PERC_COOLDOWN:
-                last_snare_ts = now
-                _trigger_perc(SNARE_NOTE)
-                event_log.append(("snare", now))
+            # Snare: deslocamento vertical ≥ 30% da tela em 0.8 s (mão esquerda)
+            if snare_origin_y is None:
+                snare_origin_y, snare_origin_t = ly, now
+            else:
+                dy_s = ly - snare_origin_y   # positivo = descida
+                dt_s = now - snare_origin_t
+                if dt_s <= PERC_SWIPE_MAX_TIME:
+                    if dy_s >= PERC_SWIPE_DIST and (now - last_snare_ts) >= PERC_COOLDOWN:
+                        last_snare_ts  = now
+                        snare_origin_y = None
+                        snare_origin_t = None
+                        _trigger_perc(SNARE_NOTE)
+                        event_log.append(("snare", now))
+                else:
+                    snare_origin_y, snare_origin_t = ly, now
 
             # Accent / Swell
             for evt in left_gesture.update(vx_l, vy_l, l_open, now):
@@ -933,12 +958,12 @@ def start_maestro(
             vol_raw = 1.0 - (ly - VOL_Y_PAD_TOP) / (VOL_Y_PAD_BOT - VOL_Y_PAD_TOP)
             s_volume.update(max(0.0, min(127.0, vol_raw * 127.0)))
 
-            # Reverb: lx_norm dentro da metade esquerda + boost de swell
-            base_reverb = lx_norm * 127.0 + swell_decay * 60.0
+            # Reverb: lx_norm → curva ^0.6 para resposta mais forte + boost de swell
+            base_reverb = pow(lx_norm, 0.6) * 127.0 + swell_decay * 80.0
             s_reverb.update(min(127.0, base_reverb))
 
-            # Chorus: abertura
-            s_chorus.update(l_open * 127.0)
+            # Chorus: abertura → curva ^0.6 para resposta mais forte
+            s_chorus.update(pow(l_open, 0.6) * 127.0)
 
             # Volume final modulado pelo tremolo LFO
             trem_mod    = (s_trem_depth.value or 0.0) * TREM_DEPTH
@@ -950,80 +975,9 @@ def start_maestro(
             _audio_queue.put(("cc", MELODY_CH, 93, int(s_chorus.value or 0)))
 
         else:
+            snare_origin_y = None
+            snare_origin_t = None
             left_vel.reset()
-
-        # ── Gesto de troca de instrumento — swipe palma aberta ────────────────
-        # Mão direita: palma aberta + câmera dx>0 (display R→L) = PRÓXIMO
-        # Mão esquerda: palma aberta + câmera dx<0 (display L→R) = ANTERIOR
-        swap_progress  = 0.0
-        swap_direction = 0
-        _cooldown_ok   = (now - last_instr_swap) > INSTR_SWAP_COOLDOWN
-
-        # Right hand → NEXT
-        if right_lm is not None and _cooldown_ok:
-            r_open_swap = _hand_openness(right_lm)
-            if r_open_swap >= INSTR_SWIPE_OPEN_MIN:
-                rx_now = right_lm[0].x
-                if swipe_origin_x is None:
-                    swipe_origin_x = rx_now
-                    swipe_origin_t = now
-                else:
-                    dx      = rx_now - swipe_origin_x
-                    elapsed = now - swipe_origin_t
-                    if elapsed <= INSTR_SWIPE_MAX_TIME:
-                        if dx >= INSTR_SWIPE_DIST:          # câmera dx>0 = display R→L = PRÓXIMO
-                            instr_idx = (instr_idx + 1) % len(MAESTRO_INSTRUMENTS)
-                            select_instrument(_fs, MAESTRO_INSTRUMENTS[instr_idx],
-                                              loaded_sfids, _recorder, MELODY_CH)
-                            last_instr_swap = now
-                            swipe_origin_x  = None
-                            swipe_origin_t  = None
-                            event_log.append(("instr", now))
-                        elif dx > 0:
-                            swap_progress  = min(1.0, dx / INSTR_SWIPE_DIST)
-                            swap_direction = 1
-                    else:
-                        swipe_origin_x = rx_now
-                        swipe_origin_t = now
-            else:
-                swipe_origin_x = None
-                swipe_origin_t = None
-        else:
-            swipe_origin_x = None
-            swipe_origin_t = None
-
-        # Left hand → PREVIOUS
-        if left_lm is not None and _cooldown_ok:
-            l_open_swap = _hand_openness(left_lm)
-            if l_open_swap >= INSTR_SWIPE_OPEN_MIN:
-                lx_now = left_lm[0].x
-                if l_swipe_origin_x is None:
-                    l_swipe_origin_x = lx_now
-                    l_swipe_origin_t = now
-                else:
-                    dx      = lx_now - l_swipe_origin_x
-                    elapsed = now - l_swipe_origin_t
-                    if elapsed <= INSTR_SWIPE_MAX_TIME:
-                        if dx <= -INSTR_SWIPE_DIST:         # câmera dx<0 = display L→R = ANTERIOR
-                            instr_idx = (instr_idx - 1) % len(MAESTRO_INSTRUMENTS)
-                            select_instrument(_fs, MAESTRO_INSTRUMENTS[instr_idx],
-                                              loaded_sfids, _recorder, MELODY_CH)
-                            last_instr_swap = now
-                            l_swipe_origin_x = None
-                            l_swipe_origin_t = None
-                            event_log.append(("instr", now))
-                        elif dx < 0:
-                            swap_progress  = max(swap_progress, min(1.0, -dx / INSTR_SWIPE_DIST))
-                            swap_direction = -1
-                    else:
-                        l_swipe_origin_x = lx_now
-                        l_swipe_origin_t = now
-            else:
-                l_swipe_origin_x = None
-                l_swipe_origin_t = None
-        else:
-            l_swipe_origin_x = None
-            l_swipe_origin_t = None
 
         # ── Render ────────────────────────────────────────────────────────
         frame_display = cv2.resize(frame_rgb, (logical_w, logical_h))
@@ -1034,6 +988,9 @@ def start_maestro(
             ),
             (0, 0),
         )
+
+        if show_viz:
+            brain_viz.draw_overlay(surface, darken_alpha=60)
 
         if show_menu:
             _render_ui(
@@ -1046,9 +1003,8 @@ def start_maestro(
                 vib_phase, trem_phase,
                 accent_decay, swell_decay,
                 event_log, now,
-                current_instrument=MAESTRO_INSTRUMENTS[instr_idx],
-                swap_progress=swap_progress,
-                swap_direction=swap_direction,
+                current_instrument=current_instr_name,
+                current_emotion=current_emotion,
             )
 
         if _recorder.is_recording:
@@ -1073,6 +1029,7 @@ def start_maestro(
     _audio_queue.put(None)
     audio_thread.join(timeout=2.0)
 
+    emotion_tracker.stop()
     hands.close()
     cam.stop()
     cap.release()
