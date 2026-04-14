@@ -283,6 +283,133 @@ def prepare_mediapipe_frame(frame_rgb, logical_w, logical_h, mp_input_height=480
     return cv2.resize(frame_rgb, (mp_w, mp_input_height))
 
 
+class _EmptyHandsResult:
+    """Sentinel retornado antes do primeiro resultado real de MediaPipeHandsThread."""
+    multi_hand_landmarks = None
+    multi_handedness = None
+    multi_hand_world_landmarks = None
+
+
+class _EmptyPoseResult:
+    """Sentinel retornado antes do primeiro resultado real de MediaPipePoseThread."""
+    pose_landmarks = None
+    pose_world_landmarks = None
+    segmentation_mask = None
+
+
+class MediaPipeHandsThread:
+    """Executa inferência MediaPipe Hands em thread de fundo (modo stream).
+
+    O frame mais recente é sempre processado; frames antigos ainda não
+    consumidos são descartados automaticamente para minimizar latência.
+
+    Uso:
+        mp_hands_thread = MediaPipeHandsThread(hands_model)
+        # dentro do loop principal:
+        mp_hands_thread.submit_frame(frame_mp)
+        results = mp_hands_thread.get_latest_result()
+        # ao encerrar:
+        mp_hands_thread.close()  # para a thread E chama hands_model.close()
+    """
+
+    _EMPTY = _EmptyHandsResult()
+
+    def __init__(self, hands_model):
+        self._hands = hands_model
+        self._frame_lock = threading.Lock()
+        self._pending_frame = None
+        self._frame_event = threading.Event()
+        self._result_lock = threading.Lock()
+        self._result = self._EMPTY
+        self._running = True
+        self._thread = threading.Thread(target=self._loop, daemon=True)
+        self._thread.start()
+
+    def _loop(self):
+        while self._running:
+            self._frame_event.wait(timeout=0.05)
+            self._frame_event.clear()
+            with self._frame_lock:
+                frame = self._pending_frame
+                self._pending_frame = None
+            if frame is None:
+                continue
+            result = self._hands.process(frame)
+            with self._result_lock:
+                self._result = result
+
+    def submit_frame(self, frame):
+        """Armazena o frame mais recente; descarta o frame pendente anterior."""
+        with self._frame_lock:
+            self._pending_frame = frame
+        self._frame_event.set()
+
+    def get_latest_result(self):
+        """Retorna o resultado mais recente disponível (nunca None)."""
+        with self._result_lock:
+            return self._result
+
+    def stop(self):
+        self._running = False
+        self._frame_event.set()
+        self._thread.join(timeout=2.0)
+
+    def close(self):
+        self.stop()
+        self._hands.close()
+
+
+class MediaPipePoseThread:
+    """Executa inferência MediaPipe Pose em thread de fundo (modo stream).
+
+    Mesma semântica de MediaPipeHandsThread.
+    """
+
+    _EMPTY = _EmptyPoseResult()
+
+    def __init__(self, pose_model):
+        self._pose = pose_model
+        self._frame_lock = threading.Lock()
+        self._pending_frame = None
+        self._frame_event = threading.Event()
+        self._result_lock = threading.Lock()
+        self._result = self._EMPTY
+        self._running = True
+        self._thread = threading.Thread(target=self._loop, daemon=True)
+        self._thread.start()
+
+    def _loop(self):
+        while self._running:
+            self._frame_event.wait(timeout=0.05)
+            self._frame_event.clear()
+            with self._frame_lock:
+                frame = self._pending_frame
+                self._pending_frame = None
+            if frame is None:
+                continue
+            result = self._pose.process(frame)
+            with self._result_lock:
+                self._result = result
+
+    def submit_frame(self, frame):
+        with self._frame_lock:
+            self._pending_frame = frame
+        self._frame_event.set()
+
+    def get_latest_result(self):
+        with self._result_lock:
+            return self._result
+
+    def stop(self):
+        self._running = False
+        self._frame_event.set()
+        self._thread.join(timeout=2.0)
+
+    def close(self):
+        self.stop()
+        self._pose.close()
+
+
 # ========================
 # PYGAME INITIALIZATION
 # ========================

@@ -21,7 +21,8 @@ from src.instruments.common import (
     init_fluidsynth, load_all_soundfonts, select_instrument,
     setup_video_capture, setup_pygame_with_scaling, fit_resolution_to_screen,
     draw_text, draw_recording_indicator, draw_playback_indicator,
-    process_frame_to_pygame, CameraThread, prepare_mediapipe_frame
+    process_frame_to_pygame, CameraThread, prepare_mediapipe_frame,
+    MediaPipeHandsThread
 )
 
 # Import fluidsynth AFTER common.py setup has run
@@ -1013,8 +1014,10 @@ def start_piano(chosen_instrument, user_sustain=None, lift_threshold=None, touch
     reset_hands_state()
 
     model_complexity = max(0, min(1, int(hand_model_complexity)))
-    hands = mp.solutions.hands.Hands(max_num_hands=2, model_complexity=model_complexity,
-                                     min_detection_confidence=0.3, min_tracking_confidence=0.3)
+    hands = MediaPipeHandsThread(
+        mp.solutions.hands.Hands(max_num_hands=2, model_complexity=model_complexity,
+                                 min_detection_confidence=0.3, min_tracking_confidence=0.3)
+    )
     
     if resolution_profile:
         DISPLAY_W = int(resolution_profile["display_width"])
@@ -1163,7 +1166,8 @@ def start_piano(chosen_instrument, user_sustain=None, lift_threshold=None, touch
             # --- MEDIAPIPE (entrada reduzida) ---
             t_mp_start = time.perf_counter()
             frame_mp = prepare_mediapipe_frame(frame_rgb, LOGICAL_W, LOGICAL_H, MP_INPUT_HEIGHT)
-            results = hands.process(frame_mp)
+            hands.submit_frame(frame_mp)
+            results = hands.get_latest_result()
             latency_tracker.add_mediapipe((time.perf_counter() - t_mp_start) * 1000.0)
 
             # --- FINGER PROCESSING ---
@@ -1297,6 +1301,7 @@ def start_piano(chosen_instrument, user_sustain=None, lift_threshold=None, touch
                     pass
                 key["is_active"] = False
 
+        hands.close()
         cam_thread.stop()
         cap.release()
         pygame.quit()

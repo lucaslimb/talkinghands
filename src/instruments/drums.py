@@ -20,6 +20,7 @@ from src.instruments.common import (
     setup_video_capture, setup_pygame_with_scaling, fit_resolution_to_screen,
     draw_text, draw_recording_indicator, draw_playback_indicator,
     CameraThread, prepare_mediapipe_frame,
+    MediaPipeHandsThread, MediaPipePoseThread,
 )
 
 # Import fluidsynth AFTER common.py setup has run
@@ -876,10 +877,14 @@ def start_drums(chosen_instrument=None, user_tolerance=None, rec_options=None, t
     hand_complexity = max(0, min(1, int(hand_model_complexity)))
     pose_complexity = max(0, min(2, int(pose_model_complexity)))
 
-    hands = mp.solutions.hands.Hands(max_num_hands=2, model_complexity=hand_complexity, min_detection_confidence=0.3, min_tracking_confidence=0.3)
+    hands = MediaPipeHandsThread(
+        mp.solutions.hands.Hands(max_num_hands=2, model_complexity=hand_complexity, min_detection_confidence=0.3, min_tracking_confidence=0.3)
+    )
     pose = None
     if use_feet_model:
-        pose = mp.solutions.pose.Pose(model_complexity=pose_complexity, min_detection_confidence=0.3, min_tracking_confidence=0.3)
+        pose = MediaPipePoseThread(
+            mp.solutions.pose.Pose(model_complexity=pose_complexity, min_detection_confidence=0.3, min_tracking_confidence=0.3)
+        )
         
     dragging_drum = None
     resizing_drum = None
@@ -1009,8 +1014,11 @@ def start_drums(chosen_instrument=None, user_tolerance=None, rec_options=None, t
             )
             
             frame_mp = prepare_mediapipe_frame(frame_rgb, LOGICAL_W, LOGICAL_H)
-            results = hands.process(frame_mp)
-            pose_results = pose.process(frame_mp) if pose is not None else None
+            hands.submit_frame(frame_mp)
+            results = hands.get_latest_result()
+            if pose is not None:
+                pose.submit_frame(frame_mp)
+            pose_results = pose.get_latest_result() if pose is not None else None
             
             if results.multi_hand_landmarks:
                 for idx, landmarks in enumerate(results.multi_hand_landmarks):

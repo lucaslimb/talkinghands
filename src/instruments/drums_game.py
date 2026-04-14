@@ -57,6 +57,7 @@ from src.instruments.common import (
     draw_text,
     CameraThread,
     prepare_mediapipe_frame,
+    MediaPipeHandsThread,
 )
 from src.engines.game_genius import GeniusGame
 from src.config import settings
@@ -631,11 +632,13 @@ def start_drums_game(
 
     # ── MediaPipe setup ───────────────────────────────────────────────────
     hand_complexity = max(0, min(1, int(hand_model_complexity)))
-    hands = mp.solutions.hands.Hands(
-        max_num_hands=2,
-        model_complexity=hand_complexity,
-        min_detection_confidence=0.3,
-        min_tracking_confidence=0.3,
+    hands = MediaPipeHandsThread(
+        mp.solutions.hands.Hands(
+            max_num_hands=2,
+            model_complexity=hand_complexity,
+            min_detection_confidence=0.3,
+            min_tracking_confidence=0.3,
+        )
     )
 
     reset_hands_state()
@@ -697,7 +700,8 @@ def start_drums_game(
 
             # ── hand tracking (only process input during player turn / feedback) ──
             frame_mp = prepare_mediapipe_frame(frame_rgb, LOGICAL_W, LOGICAL_H)
-            results = hands.process(frame_mp)
+            hands.submit_frame(frame_mp)
+            results = hands.get_latest_result()
             if results.multi_hand_landmarks:
                 for idx, landmarks in enumerate(results.multi_hand_landmarks):
                     lbl = results.multi_handedness[idx].classification[0].label

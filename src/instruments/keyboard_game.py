@@ -47,6 +47,7 @@ from src.instruments.common import (
     draw_text,
     CameraThread,
     prepare_mediapipe_frame,
+    MediaPipeHandsThread,
 )
 from src.engines.game_tiles import TilesGame, SONG_NAMES
 from src.config import settings
@@ -558,11 +559,13 @@ def start_piano_tiles(
     _load_error_sounds()
 
     # ── MediaPipe ────────────────────────────────────────────────────────
-    hands = mp.solutions.hands.Hands(
-        max_num_hands=2,
-        model_complexity=max(0, min(1, int(hand_model_complexity))),
-        min_detection_confidence=0.3,
-        min_tracking_confidence=0.3,
+    hands = MediaPipeHandsThread(
+        mp.solutions.hands.Hands(
+            max_num_hands=2,
+            model_complexity=max(0, min(1, int(hand_model_complexity))),
+            min_detection_confidence=0.3,
+            min_tracking_confidence=0.3,
+        )
     )
     _reset_finger_state()
 
@@ -639,7 +642,8 @@ def start_piano_tiles(
 
             # ── hand tracking ─────────────────────────────────────────────
             frame_mp = prepare_mediapipe_frame(frame_rgb, LOGICAL_W, LOGICAL_H)
-            results = hands.process(frame_mp)
+            hands.submit_frame(frame_mp)
+            results = hands.get_latest_result()
             if results.multi_hand_landmarks:
                 for idx, lm in enumerate(results.multi_hand_landmarks):
                     lbl = results.multi_handedness[idx].classification[0].label
