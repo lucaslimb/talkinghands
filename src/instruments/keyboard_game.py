@@ -21,9 +21,9 @@ from typing import Optional
 
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QHBoxLayout, QVBoxLayout,
-    QLabel, QPushButton, QSizePolicy,
+    QLabel, QPushButton, QSizePolicy, QStackedWidget, QFrame,
 )
-from PySide6.QtCore import Qt, QTimer, Signal, Slot
+from PySide6.QtCore import Qt, QTimer, Signal, Slot, QSize
 from PySide6.QtGui import QImage, QPainter, QColor, QFont, QPen, QBrush
 
 FILE_PATH     = Path(__file__).resolve()
@@ -82,12 +82,14 @@ GAME_TEXT_PRIMARY   = "#EDE7F6"   # light lavender (vs dark #2C2C2C in practice)
 GAME_TEXT_SECONDARY = "#6C6080"   # muted purple (vs #8A8A8A)
 GAME_TEXT_LIGHT     = "#FFFFFF"
 GAME_BORDER_LIGHT   = "#231E33"   # dark purple border (vs #D5D2CD light)
+GAME_CARD_BORDER    = "#211D2E"   # slightly lighter than BG_PANEL_ALT for card edges
 GAME_KEY_ACTIVE     = "#746292"   # same as accent
 GAME_KEY_WHITE      = "#1C1830"   # dark "white" key surface
 GAME_KEY_BLACK      = "#0C0A18"   # very dark black key surface
 GAME_DIFF_EASY      = "#4E7C5E"   # muted forest green
 GAME_DIFF_MEDIUM    = "#7A6830"   # muted gold
 GAME_DIFF_HARD      = "#8A3A50"   # deep rose
+GAME_DIFF_SELECTED  = "#7ECBA1"   # keyboard.py green - all diff levels when selected
 
 _DIFF_LABELS = {"easy": "NORMAL", "medium": "HARD", "hard": "IMPOSSIBLE"}
 
@@ -218,7 +220,6 @@ class GameCameraOverlayWidget(QWidget):
         self._results   = None
         self._piano_keys = []
         self._table_y   = DEFAULT_TABLE_Y
-        self._show_trackers = True
         self._detecting = False
 
         self._game = None
@@ -227,8 +228,9 @@ class GameCameraOverlayWidget(QWidget):
         self._last_result    = None
         self._last_result_ts = 0.0
 
-        self._state_overlay = None
-        self._final_score   = 0
+        self._state_overlay  = None
+        self._final_score    = 0
+        self._countdown_num  = 0   # 0 = hidden
 
     def set_frame(self, frame_rgb):
         self._frame_rgb = frame_rgb
@@ -245,9 +247,6 @@ class GameCameraOverlayWidget(QWidget):
     def set_table_y(self, y):
         self._table_y = y
 
-    def set_show_trackers(self, v):
-        self._show_trackers = v
-
     def set_game(self, game):
         self._game = game
 
@@ -261,6 +260,11 @@ class GameCameraOverlayWidget(QWidget):
     def set_state_overlay(self, state, final_score=0):
         self._state_overlay = state
         self._final_score   = final_score
+
+    def set_countdown(self, n: int) -> None:
+        """Show countdown digit n (1-3). 0 = hidden."""
+        self._countdown_num = n
+        self.update()
 
     def paintEvent(self, event):
         painter = QPainter(self)
@@ -278,30 +282,21 @@ class GameCameraOverlayWidget(QWidget):
 
         table_px = int(self._table_y * h)
         painter.fillRect(0, 0, w, table_px, QColor(0, 0, 0, 70))
-        painter.fillRect(0, 0, w, h, QColor(15, 8, 28, 25))
-
-        pen = QPen(QColor(0, 0, 0, 12), 1)
-        painter.setPen(pen)
-        for y_line in range(0, h, 8):
-            painter.drawLine(0, y_line, w, y_line)
 
         if self._game is not None and not self._is_paused:
             self._draw_tiles(painter, w, h)
 
         self._draw_piano_keys(painter, w, h)
 
-        if self._show_trackers and self._results and self._results.multi_hand_landmarks:
-            self._draw_hand_connections(painter, w, h)
-
-        self._draw_detecting_indicator(painter)
         self._draw_precision_message(painter, w, h)
 
         if self._is_paused:
             self._draw_pause_overlay(painter, w, h)
-        elif self._state_overlay == "ready":
-            self._draw_ready_overlay(painter, w, h)
         elif self._state_overlay in ("gameover_win", "gameover_lose"):
-            self._draw_gameover_overlay(painter, w, h)
+            painter.fillRect(0, 0, w, h, QColor(0, 0, 0, 160))
+
+        if self._countdown_num > 0:
+            self._draw_countdown(painter, w, h)
 
         painter.end()
 
@@ -449,35 +444,6 @@ class GameCameraOverlayWidget(QWidget):
                 py = int(pt.y * h)
                 painter.drawEllipse(px - 3, py - 3, 6, 6)
 
-    def _draw_detecting_indicator(self, painter):
-        if not self._detecting:
-            return
-        label = "DETECTANDO"
-        f = QFont(FONT_FAMILY, FONT_SIZE_SM)
-        f.setBold(True)
-        painter.setFont(f)
-        fm = painter.fontMetrics()
-        text_w = fm.horizontalAdvance(label)
-
-        dot_r, pad_l, dot_gap, pad_r = 10, 10, 8, 12
-        card_w = pad_l + dot_r + dot_gap + text_w + pad_r
-        card_h = 28
-        card_x = self.width() - card_w - 12
-
-        bg_c = QColor(GAME_BG_PANEL)
-        bg_c.setAlpha(210)
-        painter.setPen(Qt.NoPen)
-        painter.setBrush(QBrush(bg_c))
-        painter.drawRoundedRect(card_x, 12, card_w, card_h, 14, 14)
-
-        painter.setBrush(QBrush(QColor(GAME_ACCENT)))
-        painter.drawEllipse(card_x + pad_l, 12 + (card_h - dot_r) // 2, dot_r, dot_r)
-
-        painter.setPen(QColor(GAME_ACCENT))
-        painter.setFont(f)
-        painter.drawText(card_x + pad_l + dot_r + dot_gap,
-                         12 + card_h // 2 + fm.ascent() // 2 - 1, label)
-
     def _draw_precision_message(self, painter, w, h):
         if not self._last_result:
             return
@@ -518,6 +484,31 @@ class GameCameraOverlayWidget(QWidget):
         painter.setPen(col)
         painter.drawText(cx, msg_y, text)
 
+    def _draw_countdown(self, painter, w, h):
+        n = self._countdown_num
+        if n <= 0:
+            return
+        text = str(n)
+        f = QFont(FONT_FAMILY, 120)
+        f.setBold(True)
+        painter.setFont(f)
+        fm = painter.fontMetrics()
+        tw = fm.horizontalAdvance(text)
+        cx = w // 2 - tw // 2
+        cy = h // 2 + fm.ascent() // 2 - 10
+
+        # glow layers
+        glow_col = QColor(116, 98, 146)
+        for r_offset, alpha in ((28, 30), (18, 60), (10, 100)):
+            gc = QColor(glow_col)
+            gc.setAlpha(alpha)
+            painter.setPen(gc)
+            painter.drawText(cx - r_offset // 2, cy - r_offset // 2, text)
+            painter.drawText(cx + r_offset // 2, cy + r_offset // 2, text)
+
+        painter.setPen(QColor(220, 200, 255))
+        painter.drawText(cx, cy, text)
+
     def _draw_pause_overlay(self, painter, w, h):
         painter.fillRect(0, 0, w, h, QColor(0, 0, 0, 160))
 
@@ -536,51 +527,128 @@ class GameCameraOverlayWidget(QWidget):
         fm2 = painter.fontMetrics()
         painter.drawText(w // 2 - fm2.horizontalAdvance(sub) // 2, h // 2 + 42, sub)
 
-    def _draw_ready_overlay(self, painter, w, h):
-        painter.fillRect(0, 0, w, h, QColor(0, 0, 0, 140))
 
-        f = QFont(FONT_FAMILY, 32)
-        f.setBold(True)
-        painter.setFont(f)
-        painter.setPen(QColor(GAME_ACCENT))
-        text = "PIANO TILES"
-        fm   = painter.fontMetrics()
-        painter.drawText(w // 2 - fm.horizontalAdvance(text) // 2, h // 2 - 20, text)
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
 
-        f2 = QFont(FONT_FAMILY, FONT_SIZE_MD)
-        painter.setFont(f2)
-        painter.setPen(QColor(GAME_TEXT_SECONDARY))
-        sub = "Iniciando..."
-        fm2 = painter.fontMetrics()
-        painter.drawText(w // 2 - fm2.horizontalAdvance(sub) // 2, h // 2 + 28, sub)
+def _fmt_score(score: int) -> str:
+    """Brazilian-style thousands separator: 2840 → '2.840'."""
+    return f"{score:,}".replace(",", ".")
 
-    def _draw_gameover_overlay(self, painter, w, h):
-        painter.fillRect(0, 0, w, h, QColor(0, 0, 0, 150))
 
-        won   = (self._state_overlay == "gameover_win")
-        title = "VOCE VENCEU!" if won else "FIM DE JOGO"
-        tcol  = QColor(180, 155, 220) if won else QColor(196, 78, 106)
+# ---------------------------------------------------------------------------
+# Lives indicator widget
+# ---------------------------------------------------------------------------
 
-        f = QFont(FONT_FAMILY, 32)
-        f.setBold(True)
-        painter.setFont(f)
-        painter.setPen(tcol)
-        fm = painter.fontMetrics()
-        painter.drawText(w // 2 - fm.horizontalAdvance(title) // 2, h // 2 - 24, title)
+class LivesWidget(QWidget):
+    """Draws filled/empty circles to represent lives remaining."""
 
-        f2 = QFont(FONT_FAMILY, FONT_SIZE_LG)
-        painter.setFont(f2)
-        painter.setPen(QColor(GAME_TEXT_PRIMARY))
-        sc = f"Score: {self._final_score}"
-        fm2 = painter.fontMetrics()
-        painter.drawText(w // 2 - fm2.horizontalAdvance(sc) // 2, h // 2 + 22, sc)
+    _R   = 7    # dot radius
+    _GAP = 10   # gap between dots
 
-        f3 = QFont(FONT_FAMILY, FONT_SIZE_SM)
-        painter.setFont(f3)
-        painter.setPen(QColor(GAME_TEXT_SECONDARY))
-        hint = "Use o painel para reiniciar"
-        fm3 = painter.fontMetrics()
-        painter.drawText(w // 2 - fm3.horizontalAdvance(hint) // 2, h // 2 + 56, hint)
+    def __init__(self, max_lives: int = 5, parent=None):
+        super().__init__(parent)
+        self._max_lives = max_lives
+        self._lives     = max_lives
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+
+    def set_lives(self, lives: int, max_lives: int | None = None) -> None:
+        if max_lives is not None:
+            self._max_lives = max_lives
+        self._lives = max(0, min(self._max_lives, lives))
+        self.update()
+
+    def sizeHint(self):
+        r, gap = self._R, self._GAP
+        w = self._max_lives * (r * 2) + (self._max_lives - 1) * gap
+        return QSize(w, r * 2 + 4)
+
+    def paintEvent(self, event):
+        r, gap = self._R, self._GAP
+        w, h   = self.width(), self.height()
+        n      = self._max_lives
+        total_w = n * (r * 2) + (n - 1) * gap
+        x0      = (w - total_w) // 2
+        cy      = h // 2
+
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+        for i in range(n):
+            cx = x0 + i * (r * 2 + gap) + r
+            p.setPen(Qt.NoPen)
+            if i < self._lives:
+                p.setBrush(QBrush(QColor(GAME_ACCENT)))
+            else:
+                p.setBrush(QBrush(QColor(GAME_CARD_BORDER)))
+            p.drawEllipse(cx - r, cy - r, r * 2, r * 2)
+        p.end()
+
+
+# ---------------------------------------------------------------------------
+# Progress bar widget
+# ---------------------------------------------------------------------------
+
+class ProgressBarWidget(QWidget):
+    """Horizontal progress bar painted with QPainter — avoids QSS conflicts."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._value = 0.0   # 0.0 .. 1.0
+        self.setFixedHeight(22)
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+
+    def set_progress(self, value: float) -> None:
+        self._value = max(0.0, min(1.0, value))
+        self.update()
+
+    def paintEvent(self, event):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+        w, h = self.width(), self.height()
+        r = h // 2
+
+        # track
+        p.setPen(Qt.NoPen)
+        p.setBrush(QBrush(QColor(GAME_CARD_BORDER)))
+        p.drawRoundedRect(0, 0, w, h, r, r)
+
+        # fill
+        fill_w = int(w * self._value)
+        if fill_w > 0:
+            p.setBrush(QBrush(QColor(GAME_ACCENT)))
+            p.drawRoundedRect(0, 0, fill_w, h, r, r)
+
+        # label
+        pct = int(self._value * 100)
+        p.setPen(QColor(GAME_TEXT_LIGHT if self._value > 0.5 else GAME_TEXT_SECONDARY))
+        font = QFont(FONT_FAMILY, 9)
+        font.setBold(True)
+        p.setFont(font)
+        txt = f"{pct}%"
+        fm  = p.fontMetrics()
+        p.drawText(w // 2 - fm.horizontalAdvance(txt) // 2,
+                   h // 2 + fm.ascent() // 2 - 1, txt)
+        p.end()
+
+
+# ---------------------------------------------------------------------------
+# Scaling label — font-size tracks widget height
+# ---------------------------------------------------------------------------
+
+class ScalingLabel(QLabel):
+    """QLabel that resizes its font dynamically to fill available height."""
+
+    def __init__(self, text="", scale=0.45, parent=None):
+        super().__init__(text, parent)
+        self._scale = scale
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        h = self.height()
+        if h > 8:
+            px = max(10, int(h * self._scale))
+            self.setStyleSheet(f"font-size: {px}px; font-weight: bold;")
 
 
 # ---------------------------------------------------------------------------
@@ -588,108 +656,254 @@ class GameCameraOverlayWidget(QWidget):
 # ---------------------------------------------------------------------------
 
 class GamePanel(QWidget):
-    """Left panel with score, combo, lives, song selector, difficulty, pause."""
+    """Left panel — two stacked views:
+    • Playing   : live stats (score, combo, lives, precision, progress) + song/diff info bar
+    • Game-over : results summary + new-game options (song, difficulty, play button)
+    """
 
     restart_clicked    = Signal()
     end_clicked        = Signal()
+    pause_toggled      = Signal(bool)
     difficulty_changed = Signal(str)
     song_prev          = Signal()
     song_next          = Signal()
-    pause_toggled      = Signal(bool)
-    tracker_toggled    = Signal(bool)
 
     def __init__(self, song_names, parent=None):
         super().__init__(parent)
         self.setObjectName("gamePanel")
         self.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Expanding)
 
-        self._song_names         = song_names
-        self._current_difficulty = "easy"
-        self._is_paused          = False
-        self._trackers_on        = True
+        self._song_names          = song_names
+        self._current_difficulty  = "easy"
+        self._current_song_idx    = 0
+        self._prec_hits           = 0
+        self._prec_total          = 0
+        self._last_seen_result_ts = 0.0
 
         self._init_ui()
 
-    def _init_ui(self):
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(24, 16, 24, 16)
-        layout.setSpacing(10)
+    # ── layout ────────────────────────────────────────────────────────────
 
-        header_row = QHBoxLayout()
-        hdr = QLabel("Piano Tiles")
-        hdr.setObjectName("gameHeaderLabel")
-        header_row.addWidget(hdr)
-        header_row.addStretch()
+    def _init_ui(self):
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(0)
+
+        outer.addWidget(self._build_title_block())
+
+        self._stack = QStackedWidget()
+        self._playing_page  = self._build_playing_page()
+        self._gameover_page = self._build_gameover_page()
+        self._stack.addWidget(self._playing_page)   # idx 0
+        self._stack.addWidget(self._gameover_page)  # idx 1
+        outer.addWidget(self._stack, 1)
+
+        # ── Bottom buttons: Encerrar + Pausar, centered ─────────────
+        btn_area = QVBoxLayout()
+        btn_area.setContentsMargins(12, 8, 12, 12)
+        btn_area.setSpacing(6)
+
+        self._pause_btn = QPushButton("⏸  Pausar")
+        self._pause_btn.setObjectName("gamePauseBtn")
+        self._pause_btn.setCheckable(True)
+        self._pause_btn.clicked.connect(self._on_pause_click)
+        btn_area.addWidget(self._pause_btn)
 
         self._end_btn = QPushButton("Encerrar")
         self._end_btn.setObjectName("gameEndBtn")
         self._end_btn.clicked.connect(self.end_clicked.emit)
-        header_row.addWidget(self._end_btn)
-        layout.addLayout(header_row)
+        btn_area.addWidget(self._end_btn)
 
-        self._score_label = QLabel("0")
-        self._score_label.setObjectName("gameScoreLabel")
-        layout.addWidget(self._score_label)
+        outer.addLayout(btn_area)
 
-        score_sub = QLabel("pontos")
-        score_sub.setObjectName("gameScoreSub")
-        layout.addWidget(score_sub)
+    def _build_title_block(self) -> QWidget:
+        """Title + icon block — card-sized visually, no border, no separator."""
+        w = QWidget()
+        w.setObjectName("gameTitleBlock")
+        vl = QVBoxLayout(w)
+        vl.setContentsMargins(12, 14, 12, 14)
+        vl.setAlignment(Qt.AlignCenter)
+        vl.setSpacing(2)
 
-        layout.addSpacing(2)
+        icon = QLabel("✦")
+        icon.setObjectName("gameIconLabel")
+        icon.setAlignment(Qt.AlignCenter)
+        vl.addWidget(icon)
 
-        cr = QHBoxLayout()
-        self._combo_label = QLabel("Combo: 0")
-        self._combo_label.setObjectName("gameComboLabel")
-        cr.addWidget(self._combo_label)
-        cr.addStretch()
-        self._best_label = QLabel("Melhor: 0")
-        self._best_label.setObjectName("gameBestLabel")
-        cr.addWidget(self._best_label)
-        layout.addLayout(cr)
+        title = QLabel("Talking Hands")
+        title.setObjectName("gameHeaderLabel")
+        title.setAlignment(Qt.AlignCenter)
+        vl.addWidget(title)
+        return w
 
-        layout.addSpacing(4)
+    def _make_stat_card(self, value_obj_name: str, sub_text: str):
+        """Returns (card_widget, value_ScalingLabel)."""
+        card = QFrame()
+        card.setObjectName("gameStatCard")
+        card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        vl = QVBoxLayout(card)
+        vl.setContentsMargins(8, 6, 8, 6)
+        vl.setSpacing(2)
+        val = ScalingLabel("0", scale=0.42)
+        val.setObjectName(value_obj_name)
+        val.setAlignment(Qt.AlignCenter)
+        val.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        vl.addWidget(val, 1)
+        sub = QLabel(sub_text)
+        sub.setObjectName("gameStatCardSub")
+        sub.setAlignment(Qt.AlignCenter)
+        vl.addWidget(sub)
+        return card, val
 
-        self._add_section_title(layout, "Vidas")
-        self._lives_label = QLabel("v v v v v")
-        self._lives_label.setObjectName("gameLivesLabel")
-        layout.addWidget(self._lives_label)
+    def _build_playing_page(self) -> QWidget:
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(8, 6, 8, 6)
+        layout.setSpacing(5)
 
-        layout.addSpacing(6)
+        card, self._score_label = self._make_stat_card("gameScoreValue", "PONTOS")
+        layout.addWidget(card, 1)
 
-        self._progress_label = QLabel("Progresso: 0%")
-        self._progress_label.setObjectName("gameProgressLabel")
-        layout.addWidget(self._progress_label)
+        card, self._combo_label = self._make_stat_card("gameComboValue", "COMBO")
+        layout.addWidget(card, 1)
 
-        layout.addSpacing(6)
+        lives_card = QFrame()
+        lives_card.setObjectName("gameStatCard")
+        lives_card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        lives_vl = QVBoxLayout(lives_card)
+        lives_vl.setContentsMargins(8, 6, 8, 6)
+        lives_vl.setSpacing(4)
+        self._lives_widget = LivesWidget()
+        lives_vl.addWidget(self._lives_widget, 1, Qt.AlignHCenter | Qt.AlignVCenter)
+        lives_sub = QLabel("VIDAS")
+        lives_sub.setObjectName("gameStatCardSub")
+        lives_sub.setAlignment(Qt.AlignCenter)
+        lives_vl.addWidget(lives_sub)
+        layout.addWidget(lives_card, 1)
 
-        self._add_section_title(layout, "Musica")
+        card, self._precision_label = self._make_stat_card("gamePrecisionValue", "PRECISÃO")
+        layout.addWidget(card, 1)
+
+        # Progress bar
+        prog_frame = QFrame()
+        prog_frame.setObjectName("gameStatCard")
+        prog_frame.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        prog_vl = QVBoxLayout(prog_frame)
+        prog_vl.setContentsMargins(10, 8, 10, 8)
+        prog_vl.setSpacing(4)
+        self._progress_bar = ProgressBarWidget()
+        prog_vl.addWidget(self._progress_bar)
+        prog_sub = QLabel("PROGRESSO")
+        prog_sub.setObjectName("gameStatCardSub")
+        prog_sub.setAlignment(Qt.AlignCenter)
+        prog_vl.addWidget(prog_sub)
+        layout.addWidget(prog_frame)
+
+        # Bottom info bar: current song + difficulty badge
+        info_bar = QFrame()
+        info_bar.setObjectName("gameInfoBar")
+        bar_row = QHBoxLayout(info_bar)
+        bar_row.setContentsMargins(10, 8, 10, 8)
+        bar_row.setSpacing(8)
+
+        self._play_song_label = QLabel("-")
+        self._play_song_label.setObjectName("gamePlaySongLabel")
+        self._play_song_label.setWordWrap(True)
+        bar_row.addWidget(self._play_song_label, 1)
+
+        self._play_diff_label = QLabel("NORMAL")
+        self._play_diff_label.setObjectName("gamePlayDiffLabel")
+        bar_row.addWidget(self._play_diff_label)
+        layout.addWidget(info_bar)
+
+        self._fps_label = QLabel("FPS: --")
+        self._fps_label.setObjectName("gameFpsLabel")
+        layout.addWidget(self._fps_label)
+
+        return page
+
+    def _build_gameover_page(self) -> QWidget:
+        page = QWidget()
+        outer = QVBoxLayout(page)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(0)
+
+        # ── Top half: results ─────────────────────────────────────────────
+        results_w = QWidget()
+        results_l = QVBoxLayout(results_w)
+        results_l.setContentsMargins(8, 6, 8, 4)
+        results_l.setSpacing(5)
+
+        self._result_title = QLabel("FIM DE JOGO")
+        self._result_title.setObjectName("gameResultTitle")
+        self._result_title.setAlignment(Qt.AlignCenter)
+        results_l.addWidget(self._result_title)
+
+        card, self._result_score_label = self._make_stat_card("gameScoreValue", "PONTOS")
+        results_l.addWidget(card, 2)
+
+        side_row = QHBoxLayout()
+        side_row.setSpacing(5)
+        ccard, self._result_combo_label = self._make_stat_card("gameComboValue", "COMBO")
+        pcard, self._result_prec_label  = self._make_stat_card("gamePrecisionValue", "PRECISÃO")
+        side_row.addWidget(ccard)
+        side_row.addWidget(pcard)
+        results_l.addLayout(side_row, 1)
+
+        res_lives_card = QFrame()
+        res_lives_card.setObjectName("gameStatCard")
+        res_lives_card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        res_lives_vl = QVBoxLayout(res_lives_card)
+        res_lives_vl.setContentsMargins(8, 6, 8, 6)
+        res_lives_vl.setSpacing(4)
+        self._result_lives_widget = LivesWidget()
+        res_lives_vl.addWidget(self._result_lives_widget, 1, Qt.AlignHCenter | Qt.AlignVCenter)
+        res_lives_sub = QLabel("VIDAS RESTANTES")
+        res_lives_sub.setObjectName("gameStatCardSub")
+        res_lives_sub.setAlignment(Qt.AlignCenter)
+        res_lives_vl.addWidget(res_lives_sub)
+        results_l.addWidget(res_lives_card, 1)
+
+        outer.addWidget(results_w, 1)
+
+        # ── Divider ───────────────────────────────────────────────────────
+        div = QFrame()
+        div.setFixedHeight(1)
+        div.setStyleSheet(f"background-color: {GAME_BORDER_LIGHT};")
+        outer.addWidget(div)
+
+        # ── Bottom half: new game options ─────────────────────────────────
+        newgame_w = QWidget()
+        newgame_l = QVBoxLayout(newgame_w)
+        newgame_l.setContentsMargins(8, 6, 8, 6)
+        newgame_l.setSpacing(5)
+
+        new_lbl = QLabel("NOVA PARTIDA")
+        new_lbl.setObjectName("gameStatSectionLabel")
+        new_lbl.setAlignment(Qt.AlignCenter)
+        newgame_l.addWidget(new_lbl)
+
         song_row = QHBoxLayout()
-        song_row.setSpacing(6)
-
+        song_row.setSpacing(5)
         prev_btn = QPushButton("<")
         prev_btn.setObjectName("gameNavBtn")
-        prev_btn.setFixedWidth(40)
+        prev_btn.setFixedWidth(34)
         prev_btn.clicked.connect(self.song_prev.emit)
         song_row.addWidget(prev_btn)
-
         self._song_label = QLabel(self._song_names[0] if self._song_names else "-")
         self._song_label.setObjectName("gameSongLabel")
         self._song_label.setAlignment(Qt.AlignCenter)
         self._song_label.setWordWrap(True)
         song_row.addWidget(self._song_label, 1)
-
         next_btn = QPushButton(">")
         next_btn.setObjectName("gameNavBtn")
-        next_btn.setFixedWidth(40)
+        next_btn.setFixedWidth(34)
         next_btn.clicked.connect(self.song_next.emit)
         song_row.addWidget(next_btn)
-        layout.addLayout(song_row)
+        newgame_l.addLayout(song_row)
 
-        layout.addSpacing(6)
-
-        self._add_section_title(layout, "Dificuldade")
         diff_row = QHBoxLayout()
-        diff_row.setSpacing(6)
+        diff_row.setSpacing(5)
         self._diff_btns = {}
         for diff, lbl in _DIFF_LABELS.items():
             btn = QPushButton(lbl)
@@ -699,96 +913,113 @@ class GamePanel(QWidget):
             btn.clicked.connect(lambda _checked, d=diff: self._on_difficulty(d))
             diff_row.addWidget(btn)
             self._diff_btns[diff] = btn
-        layout.addLayout(diff_row)
+        newgame_l.addLayout(diff_row)
 
-        layout.addSpacing(8)
+        start_btn = QPushButton("▶  Jogar Novamente")
+        start_btn.setObjectName("gameStartBtn")
+        start_btn.setFixedHeight(BTN_HEIGHT + 2)
+        start_btn.clicked.connect(self.restart_clicked.emit)
+        newgame_l.addWidget(start_btn, 1)
 
-        self._pause_btn = QPushButton("|| Pausar")
-        self._pause_btn.setObjectName("gamePauseBtn")
-        self._pause_btn.setCheckable(True)
-        self._pause_btn.setFixedHeight(BTN_HEIGHT)
-        self._pause_btn.clicked.connect(self._on_pause_toggle)
+        self._fps_label_go = QLabel("FPS: --")
+        self._fps_label_go.setObjectName("gameFpsLabel")
+        newgame_l.addWidget(self._fps_label_go)
 
-        if not TilesGame.STATE_GAME_OVER:
-            layout.addWidget(self._pause_btn)
+        outer.addWidget(newgame_w, 1)
 
-        self._restart_btn = QPushButton("Reiniciar")
-        self._restart_btn.setObjectName("gameRestartBtn")
-        self._restart_btn.setFixedHeight(BTN_HEIGHT)
-        self._restart_btn.clicked.connect(self.restart_clicked.emit)
-        layout.addWidget(self._restart_btn)
+        return page
 
-        layout.addSpacing(8)
+    # ── public API ────────────────────────────────────────────────────────
 
-        self._add_section_title(layout, "Configuracões")
+    def switch_to_playing(self) -> None:
+        """Show the live-gameplay stats view and reset precision counters."""
+        self._prec_hits           = 0
+        self._prec_total          = 0
+        self._last_seen_result_ts = 0.0
+        self._update_diff_badge_color(self._current_difficulty)
+        self._stack.setCurrentIndex(0)
 
-        self._tracker_btn = QPushButton("Trackers: ON")
-        self._tracker_btn.setObjectName("gameTrackerBtn")
-        self._tracker_btn.setCheckable(True)
-        self._tracker_btn.setChecked(True)
-        self._tracker_btn.setFixedHeight(BTN_HEIGHT)
-        self._tracker_btn.clicked.connect(self._on_tracker_toggle)
-        layout.addWidget(self._tracker_btn)
+    def switch_to_gameover(self, game, won: bool) -> None:
+        """Populate results and switch to the game-over view."""
+        title = "VOCÊ VENCEU!" if won else "FIM DE JOGO"
+        self._result_title.setText(title)
+        obj = "gameResultTitleWin" if won else "gameResultTitle"
+        self._result_title.setObjectName(obj)
+        self._result_title.style().unpolish(self._result_title)
+        self._result_title.style().polish(self._result_title)
 
-        self._fps_label = QLabel("FPS: --")
-        self._fps_label.setObjectName("gameFpsLabel")
-        layout.addWidget(self._fps_label)
+        self._result_score_label.setText(_fmt_score(game.score))
+        self._result_combo_label.setText(f"×{game.combo}")
+        precision = int(self._prec_hits / max(1, self._prec_total) * 100)
+        self._result_prec_label.setText(f"{precision}%")
+        self._result_lives_widget.set_lives(game.lives_remaining, game.MAX_MISTAKES)
+        self._stack.setCurrentIndex(1)
 
-        layout.addStretch()
+    def update_game_state(self, game) -> None:
+        self._score_label.setText(_fmt_score(game.score))
+        self._combo_label.setText(f"×{game.combo}")
+        self._lives_widget.set_lives(game.lives_remaining, game.MAX_MISTAKES)
+
+        if game.last_result_ts != self._last_seen_result_ts and game.last_result:
+            self._last_seen_result_ts = game.last_result_ts
+            if game.last_result in ("perfect", "good"):
+                self._prec_hits += 1
+            self._prec_total += 1
+
+        precision = int(self._prec_hits / max(1, self._prec_total) * 100)
+        self._precision_label.setText(f"{precision}%")
+
+        self._progress_bar.set_progress(game.progress)
+
+    def update_song(self, idx: int) -> None:
+        if 0 <= idx < len(self._song_names):
+            name = self._song_names[idx]
+            self._song_label.setText(name)
+            self._play_song_label.setText(name)
+        self._current_song_idx = idx
+
+    def update_fps(self, fps: float) -> None:
+        txt = f"FPS: {fps:.0f}"
+        self._fps_label.setText(txt)
+        self._fps_label_go.setText(txt)
+
+    def reset_pause(self) -> None:
+        self._pause_btn.setChecked(False)
+        self._pause_btn.setText("⏸  Pausar")
+
+    def _on_pause_click(self, checked: bool) -> None:
+        self._pause_btn.setText("▶  Retomar" if checked else "⏸  Pausar")
+        self.pause_toggled.emit(checked)
+
+    def get_difficulty(self) -> str:
+        return self._current_difficulty
+
+    # ── private helpers ───────────────────────────────────────────────────
 
     def _add_section_title(self, layout, text):
         lbl = QLabel(text)
         lbl.setObjectName("gameSectionTitle")
         layout.addWidget(lbl)
 
-    def _on_difficulty(self, diff):
+    def _on_difficulty(self, diff: str) -> None:
         self._current_difficulty = diff
         for d, btn in self._diff_btns.items():
             btn.setChecked(d == diff)
+        self._update_diff_badge_color(diff)
         self.difficulty_changed.emit(diff)
 
-    def _on_pause_toggle(self):
-        self._is_paused = not self._is_paused
-        self._pause_btn.setText("Retomar" if self._is_paused else "|| Pausar")
-        self.pause_toggled.emit(self._is_paused)
-
-    def _on_tracker_toggle(self):
-        self._trackers_on = self._tracker_btn.isChecked()
-        self._tracker_btn.setText(f"Trackers: {'ON' if self._trackers_on else 'OFF'}")
-        self.tracker_toggled.emit(self._trackers_on)
-
-    def update_game_state(self, game):
-        self._score_label.setText(str(game.score))
-
-        combo_text = f"Combo: {game.combo}"
-        self._combo_label.setText(combo_text)
-
-        if game.best_score > 0:
-            self._best_label.setText(f"Melhor: {game.best_score}")
-
-        lives     = game.lives_remaining
-        max_lives = game.MAX_MISTAKES
-        hearts_on  = "v " * lives
-        hearts_off = "o " * (max_lives - lives)
-        self._lives_label.setText((hearts_on + hearts_off).strip())
-
-        pct = int(game.progress * 100)
-        self._progress_label.setText(f"Progresso: {pct}%")
-
-    def update_song(self, idx):
-        if 0 <= idx < len(self._song_names):
-            self._song_label.setText(self._song_names[idx])
-
-    def update_fps(self, fps):
-        self._fps_label.setText(f"FPS: {fps:.0f}")
-
-    def reset_pause(self):
-        self._is_paused = False
-        self._pause_btn.setChecked(False)
-        self._pause_btn.setText("|| Pausar")
-
-    def get_difficulty(self):
-        return self._current_difficulty
+    def _update_diff_badge_color(self, diff: str) -> None:
+        color_map = {
+            "easy":   GAME_DIFF_EASY,
+            "medium": GAME_DIFF_MEDIUM,
+            "hard":   GAME_DIFF_HARD,
+        }
+        col = color_map.get(diff, GAME_ACCENT)
+        self._play_diff_label.setStyleSheet(
+            f"background-color: {col}; color: {GAME_TEXT_LIGHT}; "
+            f"border-radius: 6px; padding: 2px 8px; "
+            f"font-size: {FONT_SIZE_SM}px; font-family: {FONT_FAMILY}; font-weight: bold;"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -811,38 +1042,60 @@ QMainWindow {{
     font-family: {FONT_FAMILY};
 }}
 
+/* ── Header ─────────────────────────────────────────────────────────── */
+QFrame#gamePanelHeader {{
+    background-color: {GAME_BG_PANEL};
+}}
+
+/* ── Title block (no card frame, no separator) ───────────────────────── */
+QWidget#gameTitleBlock {{
+    background-color: {GAME_BG_PANEL};
+}}
+
+QLabel#gameIconLabel {{
+    font-size: 20px;
+    color: {GAME_ACCENT};
+}}
+
 QLabel#gameHeaderLabel {{
-    font-size: {FONT_SIZE_LG}px;
-    font-weight: bold;
-    color: {GAME_TEXT_PRIMARY};
-}}
-
-QLabel#gameScoreLabel {{
-    font-size: {FONT_SIZE_TIMER}px;
-    font-weight: bold;
-    color: {GAME_ACCENT};
-}}
-
-QLabel#gameScoreSub {{
     font-size: {FONT_SIZE_SM}px;
-    color: {GAME_TEXT_SECONDARY};
-}}
-
-QLabel#gameComboLabel {{
-    font-size: {FONT_SIZE_MD}px;
     font-weight: bold;
-    color: {GAME_TEXT_PRIMARY};
-}}
-
-QLabel#gameBestLabel {{
-    font-size: {FONT_SIZE_SM}px;
     color: {GAME_TEXT_SECONDARY};
-}}
-
-QLabel#gameLivesLabel {{
-    font-size: {FONT_SIZE_LG}px;
-    color: {GAME_ACCENT};
     letter-spacing: 2px;
+}}
+
+/* ── Stat cards ──────────────────────────────────────────────────────── */
+QFrame#gameStatCard {{
+    background-color: {GAME_BG_PANEL_ALT};
+    border: 1px solid {GAME_CARD_BORDER};
+    border-radius: {BORDER_RAD}px;
+}}
+
+QLabel#gameStatCardSub {{
+    font-size: {FONT_SIZE_SM}px;
+    color: {GAME_TEXT_SECONDARY};
+    letter-spacing: 2px;
+}}
+
+/* value labels — font-size set dynamically by ScalingLabel.resizeEvent */
+QLabel#gameScoreValue {{
+    color: {GAME_ACCENT};
+}}
+
+QLabel#gameComboValue {{
+    color: {GAME_TEXT_PRIMARY};
+}}
+
+QLabel#gamePrecisionValue {{
+    color: {GAME_TEXT_PRIMARY};
+}}
+
+/* ── Section labels ─────────────────────────────────────────────────── */
+QLabel#gameStatSectionLabel {{
+    font-size: {FONT_SIZE_SM}px;
+    font-weight: bold;
+    color: {GAME_TEXT_SECONDARY};
+    letter-spacing: 1px;
 }}
 
 QLabel#gameProgressLabel {{
@@ -850,30 +1103,51 @@ QLabel#gameProgressLabel {{
     color: {GAME_TEXT_SECONDARY};
 }}
 
-QLabel#gameSectionTitle {{
-    font-size: {FONT_SIZE_SM}px;
-    font-weight: bold;
-    color: {GAME_TEXT_SECONDARY};
-    letter-spacing: 1px;
-}}
-
-QLabel#gameSongLabel {{
-    font-size: {FONT_SIZE_MD}px;
-    font-weight: bold;
-    color: {GAME_TEXT_PRIMARY};
-}}
-
 QLabel#gameFpsLabel {{
     font-size: {FONT_SIZE_SM}px;
     color: {GAME_TEXT_SECONDARY};
 }}
 
+/* ── Playing info bar (song + diff badge) ───────────────────────────── */
+QFrame#gameInfoBar {{
+    background-color: {GAME_BG_PANEL_ALT};
+    border: 1px solid {GAME_CARD_BORDER};
+    border-radius: {BORDER_RAD}px;
+}}
+
+QLabel#gamePlaySongLabel {{
+    font-size: {FONT_SIZE_SM}px;
+    font-weight: bold;
+    color: {GAME_TEXT_PRIMARY};
+}}
+
+/* ── Game-over result title ─────────────────────────────────────────── */
+QLabel#gameResultTitle {{
+    font-size: {FONT_SIZE_MD}px;
+    font-weight: bold;
+    color: {GAME_ACCENT_RED};
+}}
+
+QLabel#gameResultTitleWin {{
+    font-size: {FONT_SIZE_MD}px;
+    font-weight: bold;
+    color: {GAME_ACCENT};
+}}
+
+/* ── Song label in gameover page ────────────────────────────────────── */
+QLabel#gameSongLabel {{
+    font-size: {FONT_SIZE_SM}px;
+    font-weight: bold;
+    color: {GAME_TEXT_PRIMARY};
+}}
+
+/* ── Buttons ─────────────────────────────────────────────────────────── */
 QPushButton#gameEndBtn {{
     background-color: transparent;
     color: {GAME_ACCENT_RED};
-    border: none;
+    border: 1px solid {GAME_ACCENT_RED};
     border-radius: {BORDER_RAD}px;
-    padding: 6px 16px;
+    padding: 8px 10px;
     font-size: {FONT_SIZE_SM}px;
     font-family: {FONT_FAMILY};
 }}
@@ -882,45 +1156,60 @@ QPushButton#gameEndBtn:hover {{
     color: white;
 }}
 
-QPushButton#gameNavBtn {{
+QPushButton#gamePauseBtn {{
     background-color: {GAME_BG_PANEL_ALT};
     color: {GAME_TEXT_PRIMARY};
-    border: 1px solid {GAME_BORDER_LIGHT};
+    border: 1px solid {GAME_CARD_BORDER};
     border-radius: {BORDER_RAD}px;
-    font-size: {FONT_SIZE_MD}px;
+    padding: 10px;
+    font-size: {FONT_SIZE_SM}px;
     font-family: {FONT_FAMILY};
-    height: {BTN_HEIGHT}px;
-    padding: 4px;
 }}
-QPushButton#gameNavBtn:hover {{
+QPushButton#gamePauseBtn:checked {{
     background-color: {GAME_ACCENT};
     color: {GAME_TEXT_LIGHT};
     border-color: {GAME_ACCENT};
+}}
+QPushButton#gamePauseBtn:hover {{
+    border-color: {GAME_ACCENT};
+    color: {GAME_ACCENT};
+}}
+QPushButton#gamePauseBtn:checked:hover {{
+    background-color: #8B74A8;
+    color: {GAME_TEXT_LIGHT};
+}}
+
+QPushButton#gameNavBtn {{
+    background-color: {GAME_BG_PANEL_ALT};
+    color: {GAME_TEXT_PRIMARY};
+    border: 1px solid {GAME_CARD_BORDER};
+    border-radius: {BORDER_RAD}px;
+    font-size: {FONT_SIZE_MD}px;
+    font-family: {FONT_FAMILY};
+    height: {BTN_HEIGHT - 10}px;
+    padding: 2px;
+}}
+QPushButton#gameNavBtn:hover {{
+    border-color: {GAME_ACCENT};
+    color: {GAME_ACCENT};
 }}
 
 QPushButton#gameDiffBtn_easy, QPushButton#gameDiffBtn_medium, QPushButton#gameDiffBtn_hard {{
     background-color: {GAME_BG_PANEL_ALT};
     color: {GAME_TEXT_PRIMARY};
-    border: 1px solid {GAME_BORDER_LIGHT};
+    border: 1px solid {GAME_CARD_BORDER};
     border-radius: {BORDER_RAD}px;
-    padding: 8px 4px;
+    padding: 6px 4px;
     font-size: {FONT_SIZE_SM}px;
     font-family: {FONT_FAMILY};
 }}
-QPushButton#gameDiffBtn_easy:checked {{
-    background-color: {GAME_DIFF_EASY};
-    color: {GAME_TEXT_LIGHT};
-    border-color: {GAME_DIFF_EASY};
-}}
-QPushButton#gameDiffBtn_medium:checked {{
-    background-color: {GAME_DIFF_MEDIUM};
-    color: {GAME_TEXT_LIGHT};
-    border-color: {GAME_DIFF_MEDIUM};
-}}
+QPushButton#gameDiffBtn_easy:checked,
+QPushButton#gameDiffBtn_medium:checked,
 QPushButton#gameDiffBtn_hard:checked {{
-    background-color: {GAME_DIFF_HARD};
-    color: {GAME_TEXT_LIGHT};
-    border-color: {GAME_DIFF_HARD};
+    background-color: {GAME_DIFF_SELECTED};
+    color: #0F1A14;
+    border-color: {GAME_DIFF_SELECTED};
+    font-weight: bold;
 }}
 QPushButton#gameDiffBtn_easy:hover,
 QPushButton#gameDiffBtn_medium:hover,
@@ -928,49 +1217,18 @@ QPushButton#gameDiffBtn_hard:hover {{
     border-color: {GAME_ACCENT};
 }}
 
-QPushButton#gamePauseBtn {{
+QPushButton#gameStartBtn {{
     background-color: {GAME_ACCENT};
     color: {GAME_TEXT_LIGHT};
     border: none;
     border-radius: {BORDER_RAD}px;
-    padding: 12px;
+    padding: 10px;
     font-size: {FONT_SIZE_MD}px;
     font-weight: bold;
     font-family: {FONT_FAMILY};
 }}
-QPushButton#gamePauseBtn:checked {{
-    background-color: {GAME_BG_PANEL_ALT};
-    color: {GAME_ACCENT};
-    border: 1px solid {GAME_ACCENT};
-}}
-
-QPushButton#gameRestartBtn {{
-    background-color: {GAME_BG_PANEL_ALT};
-    color: {GAME_TEXT_PRIMARY};
-    border: 1px solid {GAME_BORDER_LIGHT};
-    border-radius: {BORDER_RAD}px;
-    padding: 12px;
-    font-size: {FONT_SIZE_MD}px;
-    font-family: {FONT_FAMILY};
-}}
-QPushButton#gameRestartBtn:hover {{
-    border-color: {GAME_ACCENT};
-    color: {GAME_ACCENT};
-}}
-
-QPushButton#gameTrackerBtn {{
-    background-color: {GAME_BG_PANEL_ALT};
-    color: {GAME_TEXT_PRIMARY};
-    border: 1px solid {GAME_BORDER_LIGHT};
-    border-radius: {BORDER_RAD}px;
-    padding: 8px 16px;
-    font-size: {FONT_SIZE_SM}px;
-    font-family: {FONT_FAMILY};
-}}
-QPushButton#gameTrackerBtn:checked {{
-    background-color: {GAME_ACCENT};
-    color: {GAME_TEXT_LIGHT};
-    border-color: {GAME_ACCENT};
+QPushButton#gameStartBtn:hover {{
+    background-color: #8B74A8;
 }}
 """
 
@@ -1016,6 +1274,9 @@ class PianoTilesWindow(QMainWindow):
         self._is_paused          = False
         self._table_y            = DEFAULT_TABLE_Y
 
+        self._countdown_val   = 0
+        self._countdown_timer = None
+
         self._finger_prev_y     = {}
         self._active_held_notes = {}
         self._pending_note_offs = []
@@ -1060,8 +1321,8 @@ class PianoTilesWindow(QMainWindow):
             self._recorder, channel=0, is_drum=False,
         )
 
-        self._camera_widget.set_state_overlay("ready")
-        QTimer.singleShot(900, self._start_game)
+        self._camera_widget.set_state_overlay(None)
+        QTimer.singleShot(400, self._start_game)
 
     def _init_audio(self):
         self._fs, self._loaded_sfids = init_fluidsynth(driver="dsound")
@@ -1092,20 +1353,18 @@ class PianoTilesWindow(QMainWindow):
         self._panel = GamePanel(song_names=SONG_NAMES)
         self._panel.restart_clicked.connect(self._on_restart)
         self._panel.end_clicked.connect(self._on_end)
+        self._panel.pause_toggled.connect(self._on_pause_toggled)
         self._panel.difficulty_changed.connect(self._on_difficulty_changed)
         self._panel.song_prev.connect(lambda: self._on_song_changed(-1))
         self._panel.song_next.connect(lambda: self._on_song_changed(+1))
-        self._panel.pause_toggled.connect(self._on_pause_toggled)
-        self._panel.tracker_toggled.connect(self._on_tracker_toggled)
 
         self._camera_widget = GameCameraOverlayWidget()
         self._camera_widget.set_piano_keys(self._piano_keys)
         self._camera_widget.set_table_y(self._table_y)
-        self._camera_widget.set_show_trackers(show_trackers)
         self._camera_widget.set_game(self._game)
 
-        main_layout.addWidget(self._panel,         1)
-        main_layout.addWidget(self._camera_widget, 2)
+        main_layout.addWidget(self._panel,         18)
+        main_layout.addWidget(self._camera_widget, 82)
 
         self._panel.update_song(self._current_song_idx)
 
@@ -1115,17 +1374,33 @@ class PianoTilesWindow(QMainWindow):
         self._pending_note_offs.clear()
         self._is_paused = False
         self._panel.reset_pause()
+        self._panel.switch_to_playing()
         self._camera_widget.set_paused(False)
         self._camera_widget.set_state_overlay(None)
+        self._panel.update_song(self._current_song_idx)
 
-        self._game.start(
-            self._piano_keys,
-            song=SONG_NAMES[self._current_song_idx],
-            difficulty=self._current_difficulty,
-        )
-        self._panel.update_game_state(self._game)
-        print(f">>> Piano Tiles [{self._current_difficulty.upper()}]"
-              f" - {SONG_NAMES[self._current_song_idx]}")
+        self._countdown_val = 3
+        self._camera_widget.set_countdown(self._countdown_val)
+        self._countdown_timer = QTimer(self)
+        self._countdown_timer.setSingleShot(False)
+        self._countdown_timer.timeout.connect(self._on_countdown_tick)
+        self._countdown_timer.start(1000)
+
+    def _on_countdown_tick(self):
+        self._countdown_val -= 1
+        if self._countdown_val > 0:
+            self._camera_widget.set_countdown(self._countdown_val)
+        else:
+            self._countdown_timer.stop()
+            self._camera_widget.set_countdown(0)
+            self._game.start(
+                self._piano_keys,
+                song=SONG_NAMES[self._current_song_idx],
+                difficulty=self._current_difficulty,
+            )
+            self._panel.update_game_state(self._game)
+            print(f">>> Piano Tiles [{self._current_difficulty.upper()}]"
+                  f" - {SONG_NAMES[self._current_song_idx]}")
 
     @Slot()
     def _on_frame_tick(self):
@@ -1168,11 +1443,6 @@ class PianoTilesWindow(QMainWindow):
         if self._game.state == TilesGame.STATE_PLAYING and not self._is_paused:
             self._game.update(now=now)
 
-            if self._game.pending_play_note is not None:
-                demo = self._game.pending_play_note
-                self._audio_queue.put(("on", demo))
-                self._pending_note_offs.append((demo, now + 0.28))
-
             if results.multi_hand_landmarks:
                 for idx, lm in enumerate(results.multi_hand_landmarks):
                     label = results.multi_handedness[idx].classification[0].label
@@ -1190,6 +1460,7 @@ class PianoTilesWindow(QMainWindow):
                 won   = self._game.mistakes < self._game.MAX_MISTAKES
                 state = "gameover_win" if won else "gameover_lose"
                 self._camera_widget.set_state_overlay(state, self._game.score)
+                self._panel.switch_to_gameover(self._game, won)
 
         self._camera_widget.set_frame(frame_rgb)
         self._camera_widget.set_results(results)
@@ -1245,12 +1516,16 @@ class PianoTilesWindow(QMainWindow):
     def _on_difficulty_changed(self, diff):
         self._current_difficulty = diff
         if self._game.state == TilesGame.STATE_PLAYING:
+            if self._countdown_timer:
+                self._countdown_timer.stop()
             self._start_game()
 
     def _on_song_changed(self, delta):
         self._current_song_idx = (self._current_song_idx + delta) % len(SONG_NAMES)
         self._panel.update_song(self._current_song_idx)
         if self._game.state == TilesGame.STATE_PLAYING:
+            if self._countdown_timer:
+                self._countdown_timer.stop()
             self._start_game()
 
     @Slot(bool)
@@ -1258,13 +1533,12 @@ class PianoTilesWindow(QMainWindow):
         self._is_paused = paused
         self._camera_widget.set_paused(paused)
         if paused:
+            self._game.pause()
             for note in list(self._active_held_notes.values()):
                 self._audio_queue.put(("off", note))
             self._active_held_notes.clear()
-
-    @Slot(bool)
-    def _on_tracker_toggled(self, enabled):
-        self._camera_widget.set_show_trackers(enabled)
+        else:
+            self._game.unpause()
 
     def keyPressEvent(self, event):
         if event.key() == Qt.Key_Escape:

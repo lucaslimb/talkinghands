@@ -781,9 +781,8 @@ def start_maestro_instrument(args, rec_opts, resolution_profile, runtime_config)
     """Start Maestro instrument (multi-dimensional gestural theremin)."""
     print(f"\n>>> STARTING MAESTRO: {args.instrument}")
 
-    maestro = safe_import_module("src.expressions.maestro")
-    maestro.start_maestro(
-        chosen_instrument=args.instrument,
+    maestro_ui = safe_import_module("src.instruments.maestro_ui")
+    maestro_ui.start_maestro_ui(
         rec_options=rec_opts,
         resolution_profile=resolution_profile,
         show_trackers=args.trackers,

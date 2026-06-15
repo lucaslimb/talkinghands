@@ -101,7 +101,7 @@ class TilesGame:
         "easy": {
             "bpm":             60,
             "fall_duration":   2.5,     # seconds a tile takes from top → hit-line
-            "max_mistakes":    5,
+            "max_mistakes":    10,
             "hit_window":      0.45,    # ±s around arrive_time counts as hit
             "perfect_window":  0.15,
             "perfect_pts":     100,
@@ -110,7 +110,7 @@ class TilesGame:
         "medium": {
             "bpm":             90,
             "fall_duration":   1.8,
-            "max_mistakes":    3,
+            "max_mistakes":    6,
             "hit_window":      0.35,
             "perfect_window":  0.10,
             "perfect_pts":     150,
@@ -119,7 +119,7 @@ class TilesGame:
         "hard": {
             "bpm":             130,
             "fall_duration":   1.2,
-            "max_mistakes":    2,
+            "max_mistakes":    4,
             "hit_window":      0.22,
             "perfect_window":  0.07,
             "perfect_pts":     200,
@@ -148,6 +148,7 @@ class TilesGame:
         self.last_result:    Optional[str]   = None   # "perfect"|"good"|"miss"
         self.last_result_ts: float           = 0.0
         self.pending_play_note: Optional[int] = None  # engine → audio bridge
+        self._paused_at: float               = 0.0   # wall-clock time when paused
 
         # difficulty attrs (overwritten by _apply_difficulty)
         self.difficulty     = "easy"
@@ -198,6 +199,7 @@ class TilesGame:
         self._song_name = song
         self.last_result       = None
         self.pending_play_note = None
+        self._paused_at        = 0.0
 
         if song == "Random":
             self._sequence = _generate_random(40)
@@ -287,7 +289,25 @@ class TilesGame:
         if self.score > self.best_score:
             self.best_score = self.score
 
-    # ── player input ──────────────────────────────────────────────────────
+    # ── pause / unpause ───────────────────────────────────────────────────
+
+    def pause(self) -> None:
+        """Freeze the game clock."""
+        if self.state == self.STATE_PLAYING:
+            self._paused_at = time.time()
+
+    def unpause(self) -> None:
+        """Shift all timestamps forward by the paused duration so tiles don't expire."""
+        if self.state == self.STATE_PLAYING and self._paused_at > 0:
+            elapsed = time.time() - self._paused_at
+            self._paused_at = 0.0
+            # shift spawn schedule
+            self._next_spawn_time += elapsed
+            # shift every active tile's timestamps
+            for tile in self.tiles:
+                if tile.state == "active":
+                    tile.spawn_time  += elapsed
+                    tile.arrive_time += elapsed
 
     def player_hit(self, note: int, now: float | None = None) -> str:
         """
