@@ -1,163 +1,149 @@
-"""
-Genius-style drum game mode.
+﻿"""
+Talking Hands — Genius Drums Game UI (PySide6)
 
-Wraps the drums infrastructure (DRUM_KIT, audio_queue, hand tracking)
-around GeniusGame to produce a Simon-says / Genius style challenge.
+Split layout: panel on the LEFT (1/3), camera + drum overlays on the RIGHT (2/3).
+Dark/purple palette matching keyboard_game.py.
+
+The Genius / Simon-says logic is unchanged — only the renderer was ported
+from pygame to PySide6.
 
 Entry point: start_drums_game(...)
 """
 
-import cv2
-import mediapipe as mp
-import threading
-import time
 import sys
 import os
+import time
+import threading
+import queue
 import math
-import pygame
+import numpy as np
+import cv2
+import mediapipe as mp
 from pathlib import Path
 
-FILE_PATH = Path(__file__).resolve()
-PROJECT_ROOT = FILE_PATH.parent.parent.parent
-sys.path.append(str(PROJECT_ROOT))
-
-# ── drums infrastructure (audio, kit, tracking helpers) ──────────────────
-# Import the module itself so we always see the current DRUM_KIT reference
-# (configure_drum_kit *reassigns* the global, so a direct ``from … import``
-# would leave us with a stale list).
-import src.instruments.drums as _drums_mod
-
-from src.instruments.drums import (
-    configure_drum_kit,
-    apply_drum_note_profile,
-    audio_queue,
-    hands_state,
-    reset_hands_state,
-    check_collision,
-    VELOCITY_THRESHOLD,
-    TOUCH_VELOCITY,
-    DRUM_MIN_VELOCITY,
-    DRUM_MIN_HIT_INTERVAL_SEC,
-    MIN_REHIT_PIXELS,
-    DRUMS_INSTRUMENT_ELEMENT_PRESETS,
-    DRUMS_INSTRUMENT_REPLACE_BASE,
-    DRUM_ELEMENT_LIBRARY,
-    FPSTracker,
+from PySide6.QtWidgets import (
+    QApplication, QMainWindow, QWidget, QHBoxLayout, QVBoxLayout,
+    QLabel, QPushButton, QSizePolicy, QStackedWidget, QFrame,
 )
+from PySide6.QtCore import Qt, QTimer, Signal, Slot, QSize
+from PySide6.QtGui import QImage, QPainter, QColor, QFont, QPen, QBrush
 
-# Convenience accessor – always reads the live reference
-def _kit() -> list:
-    return _drums_mod.DRUM_KIT
-from src.instruments.common import (
-    init_fluidsynth,
-    load_single_soundfont,
-    setup_video_capture,
-    setup_pygame_with_scaling,
-    fit_resolution_to_screen,
-    draw_text,
-    CameraThread,
-    prepare_mediapipe_frame,
-    MediaPipeHandsThread,
-)
-from src.engines.game_genius import GeniusGame
+FILE_PATH     = Path(__file__).resolve()
+PROJECT_ROOT  = FILE_PATH.parent.parent.parent
+sys.path.insert(0, str(PROJECT_ROOT))
+
+# --- FluidSynth path setup BEFORE any module that imports fluidsynth ---
+def _setup_fluidsynth_path():
+    fluidsynth_bin = PROJECT_ROOT / "assets" / "fluidsynth-v2.5.1" / "bin"
+    if fluidsynth_bin.exists():
+        bin_str = str(fluidsynth_bin)
+        os.environ["FLUIDSYNTH_PATH"] = bin_str
+        if hasattr(os, "add_dll_directory"):
+            try:
+                os.add_dll_directory(bin_str)
+            except Exception:
+                pass
+        current = os.environ.get("PATH", "")
+        if bin_str not in current:
+            os.environ["PATH"] = f"{bin_str};{current}"
+    _orig = getattr(os, "add_dll_directory", None)
+    if _orig:
+        def _safe_add(p):
+            if p.lower() == r"c:\tools\fluidsynth\bin":
+                return None
+            return _orig(p)
+        os.add_dll_directory = _safe_add
+
+_setup_fluidsynth_path()
+
 from src.config import settings
+from src.engines.game_genius import GeniusGame
+from src.instruments.common import (
+    init_fluidsynth, load_single_soundfont,
+    setup_video_capture, fit_resolution_to_screen,
+    CameraThread, prepare_mediapipe_frame, MediaPipeHandsThread,
+)
+from src.instruments.drums_ui import (
+    build_drum_kit, apply_drum_note_profile, check_collision,
+    DRUM_ELEMENT_LIBRARY,
+    DRUMS_INSTRUMENT_ELEMENT_PRESETS, DRUMS_INSTRUMENT_REPLACE_BASE,
+    VELOCITY_THRESHOLD, TOUCH_VELOCITY, DRUM_MIN_VELOCITY,
+    DRUM_MIN_HIT_INTERVAL, MIN_REHIT_PIXELS,
+    FIXED_SF2_PATH, POLYPHONY_CHANNELS,
+)
+from src.instruments.ui_shared import (
+    load_custom_font, FONT_FAMILY,
+    FONT_SIZE_SM, FONT_SIZE_MD, FONT_SIZE_LG, FONT_SIZE_XL,
+    BTN_HEIGHT, BORDER_RAD,
+)
 
-import fluidsynth
+import fluidsynth as _fluidsynth  # noqa: side-effect DLL already in PATH
 
-# ── per-element game colours (Genius style) ──────────────────────────────
-_ELEMENT_GAME_COLORS: dict[str, tuple[int, int, int]] = {
-    "crash":      (255,  70,  70),
-    "ride":       ( 70, 150, 255),
-    "tom_hi":     (255, 210,  50),
-    "tom_low":    ( 70, 230, 120),
-    "hihat":      (255, 130,   0),
-    "snare":      (200,  80, 255),
-    "floor":      (  0, 210, 200),
-    "kick":       (255,  60, 180),
-    "open_hh":    (255, 180,   0),
-    "splash":     (255, 100, 100),
-    "china":      (100, 255, 180),
-    "tom_mid":    (180, 255,  80),
-    "rimshot":    (255, 255, 100),
-    "snare_alt":  (160, 100, 255),
-    "kick_alt":   (255, 100, 130),
-    "hh_pedal":   (200, 200, 200),
-    "cowbell":    (255, 200, 100),
-    "clap":       (255, 130, 200),
-    "tamb":       (255, 160,  60),
-    "ride_bell":  ( 80, 220, 240),
-    "crash2":     (255,  90,  90),
-    "ride2":      ( 90, 160, 255),
-    "vibra_slap": (220, 220,  60),
-    "shaker":     (180, 255, 150),
-    "cabasa":     (255, 150, 100),
-    "maracas":    (150, 255, 200),
-    "bongo_hi":   (255, 120,  80),
-    "bongo_mid":  (200, 180, 255),
-    "bongo_lo":   (100, 240, 180),
-    "bongo_deep": ( 60, 180, 255),
-    "conga_hi":   (255, 200,  60),
-    "conga_mid":  (200, 255, 100),
-    "conga_lo":   ( 80, 200, 255),
-    "timbale_hi": (255, 100, 200),
+# ---------------------------------------------------------------------------
+# Palette
+# ---------------------------------------------------------------------------
+GAME_BG_PANEL       = "#0F0D18"
+GAME_BG_PANEL_ALT   = "#16141F"
+GAME_ACCENT         = "#746292"
+GAME_ACCENT_RED     = "#C44E6A"
+GAME_TEXT_PRIMARY   = "#EDE7F6"
+GAME_TEXT_SECONDARY = "#6C6080"
+GAME_TEXT_LIGHT     = "#FFFFFF"
+GAME_BORDER_LIGHT   = "#231E33"
+GAME_CARD_BORDER    = "#211D2E"
+GAME_DIFF_SELECTED  = "#7ECBA1"
+
+# ---------------------------------------------------------------------------
+# Per-element Genius colours
+# ---------------------------------------------------------------------------
+_ELEMENT_GAME_COLORS: dict = {
+    "crash":      (255,  70,  70), "ride":       ( 70, 150, 255),
+    "tom_hi":     (255, 210,  50), "tom_low":    ( 70, 230, 120),
+    "hihat":      (255, 130,   0), "snare":      (200,  80, 255),
+    "floor":      (  0, 210, 200), "kick":       (255,  60, 180),
+    "open_hh":    (255, 180,   0), "splash":     (255, 100, 100),
+    "china":      (100, 255, 180), "tom_mid":    (180, 255,  80),
+    "rimshot":    (255, 255, 100), "snare_alt":  (160, 100, 255),
+    "kick_alt":   (255, 100, 130), "hh_pedal":   (200, 200, 200),
+    "cowbell":    (255, 200, 100), "clap":       (255, 130, 200),
+    "tamb":       (255, 160,  60), "ride_bell":  ( 80, 220, 240),
+    "crash2":     (255,  90,  90), "ride2":      ( 90, 160, 255),
+    "vibra_slap": (220, 220,  60), "shaker":     (180, 255, 150),
+    "cabasa":     (255, 150, 100), "maracas":    (150, 255, 200),
+    "bongo_hi":   (255, 120,  80), "bongo_mid":  (200, 180, 255),
+    "bongo_lo":   (100, 240, 180), "bongo_deep": ( 60, 180, 255),
+    "conga_hi":   (255, 200,  60), "conga_mid":  (200, 255, 100),
+    "conga_lo":   ( 80, 200, 255), "timbale_hi": (255, 100, 200),
     "timbale_lo": (150, 100, 255),
 }
-
-# Fallback colour palette generated from hashed index
 _PALETTE_FALLBACK = [
-    (255, 80, 80), (80, 200, 255), (80, 255, 130), (255, 220, 50),
-    (200, 80, 255), (255, 130, 0), (0, 210, 200), (255, 60, 180),
+    (255,80,80),(80,200,255),(80,255,130),(255,220,50),
+    (200,80,255),(255,130,0),(0,210,200),(255,60,180),
 ]
 
-# ── difficulty configuration ──────────────────────────────────────────────
-# Extra elements added on top of the base kit per difficulty level.
-# 'medium' adds 3, 'hard' adds 6 (always a superset of medium's extras).
-DIFFICULTY_EXTRA_ELEMENTS: dict[str, list[str]] = {
+def _element_color(key: str, index: int = 0) -> tuple:
+    return _ELEMENT_GAME_COLORS.get(key, _PALETTE_FALLBACK[index % len(_PALETTE_FALLBACK)])
+
+# ---------------------------------------------------------------------------
+# Difficulty config
+# ---------------------------------------------------------------------------
+DIFFICULTY_EXTRA_ELEMENTS: dict = {
     "easy":   [],
     "medium": ["tom_mid", "open_hh", "cowbell"],
     "hard":   ["tom_mid", "open_hh", "cowbell", "splash", "clap", "rimshot"],
 }
+_DIFFICULTY_LABEL: dict = {"easy": "EASY", "medium": "MEDIUM", "hard": "HARD"}
+_DIFFICULTY_COLOR_QSS: dict = {"easy": "#4E7C5E", "medium": "#7A6830", "hard": "#8A3A50"}
+_DIFF_LABELS_DISPLAY: dict = {"easy": "NORMAL", "medium": "HARD", "hard": "IMPOSSIBLE"}
 
-_DIFFICULTY_COLOR: dict[str, tuple[int, int, int]] = {
-    "easy":   ( 80, 220, 100),
-    "medium": (255, 200,  50),
-    "hard":   (255,  70,  70),
-}
-
-_DIFFICULTY_LABEL: dict[str, str] = {
-    "easy":   "EASY",
-    "medium": "MEDIUM",
-    "hard":   "HARD",
-}
-
-
-def _element_color(element_key: str, index: int = 0) -> tuple[int, int, int]:
-    """Return a stable bright colour for the given drum element."""
-    if element_key in _ELEMENT_GAME_COLORS:
-        return _ELEMENT_GAME_COLORS[element_key]
-    return _PALETTE_FALLBACK[index % len(_PALETTE_FALLBACK)]
-
-
-def _merge_elements_for_difficulty(
-    base_elements: list[str] | None,
-    difficulty: str,
-) -> list[str] | None:
-    """
-    Merge the user-supplied base element list with the difficulty extras.
-    Returns None when base_elements is None (let configure_drum_kit use its own defaults).
-    When base_elements is provided, appends the difficulty extras (deduped).
-    """
+def _merge_elements_for_difficulty(base_elements, difficulty: str):
     extras = DIFFICULTY_EXTRA_ELEMENTS.get(difficulty, [])
     if not extras:
-        return base_elements   # easy or empty extras – nothing to add
-
+        return base_elements
     if base_elements is None:
-        # No explicit base – return just the extras so configure_drum_kit
-        # adds them on top of the fixed default layout.
         return list(extras)
-
     merged = list(base_elements)
-    seen   = set(merged)
+    seen = set(merged)
     for e in extras:
         if e not in seen and e in DRUM_ELEMENT_LIBRARY:
             merged.append(e)
@@ -165,353 +151,807 @@ def _merge_elements_for_difficulty(
     return merged
 
 
-# ── per-element feedback state (used by game renderer) ───────────────────
-# Maps element_key → {"result": "correct"|"wrong", "ts": float}
-_HIT_FEEDBACK: dict[str, dict] = {}
+# ---------------------------------------------------------------------------
+# Sequence Dots Widget
+# ---------------------------------------------------------------------------
 
+class SequenceDotsWidget(QWidget):
+    _R = 7
+    _GAP = 12
 
-def _record_feedback(element_key: str, result: str) -> None:
-    _HIT_FEEDBACK[element_key] = {"result": result, "ts": time.time()}
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._game = None
+        self.setFixedHeight(28)
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
 
+    def set_game(self, game) -> None:
+        self._game = game
 
-def _clear_old_feedback(ttl: float = 0.25) -> None:
-    now = time.time()
-    expired = [k for k, v in _HIT_FEEDBACK.items() if now - v["ts"] > ttl]
-    for k in expired:
-        del _HIT_FEEDBACK[k]
+    def paintEvent(self, event):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+        w, h = self.width(), self.height()
+        cy = h // 2
+        r, gap = self._R, self._GAP
 
-
-# ── game hit detection (replaces the free-play process_hand) ─────────────
-
-def _process_hand_game(
-    label: str,
-    landmarks,
-    w: int,
-    h: int,
-    screen,
-    game: GeniusGame,
-    show_trackers: bool = False,
-) -> None:
-    """Detect hand hits and route them through game logic."""
-    ref = landmarks[4]      # fingertip landmark
-    ref_x, ref_y = ref.x, ref.y
-
-    state  = hands_state[label]
-    prev_y = state["prev_y"]
-    can_hit = state["can_hit"]
-    dy = ref_y - prev_y
-
-    # find colliding drum
-    hit_drum = None
-    for drum in _kit():
-        if drum.get("foot_only", False):
-            continue
-        if check_collision(ref_x, ref_y, drum):
-            hit_drum = drum
-            break
-
-    # reset can_hit when hand leaves or moves up
-    drum_center_y = hit_drum["pos"][1] if hit_drum else 0.0
-    if hit_drum is None or dy < -VELOCITY_THRESHOLD:
-        can_hit = True
-    else:
-        if ref_y < drum_center_y and dy < -VELOCITY_THRESHOLD:
-            can_hit = True
-
-    cursor_pos    = (int(ref_x * w), int(ref_y * h))
-    cursor_color  = (100, 100, 100)
-    cursor_radius = 10
-
-    if hit_drum is not None:
-        if can_hit:
-            cursor_color = (255, 255, 0)
-
-        is_moving_down = dy > VELOCITY_THRESHOLD
-        moved_enough   = True
-        if state["last_hit_pos"] is not None and state["last_hit_drum"] == hit_drum["id"]:
-            lx, ly  = state["last_hit_pos"]
-            moved_enough = (
-                (cursor_pos[0] - lx) ** 2 + (cursor_pos[1] - ly) ** 2
-                >= MIN_REHIT_PIXELS ** 2
-            )
+        if self._game is None or self._game.state not in (
+            GeniusGame.STATE_WAIT_INPUT, GeniusGame.STATE_FEEDBACK, GeniusGame.STATE_DEMO
+        ):
+            p.end()
+            return
 
         now = time.time()
-        if (can_hit and is_moving_down and moved_enough and
-                (now - float(hit_drum.get("last_hit", 0))) >= DRUM_MIN_HIT_INTERVAL_SEC):
+        seq_len = self._game.sequence_length
+        visible = min(seq_len, max(1, (w - 20) // (r * 2 + gap)))
+        start_seq_idx = max(0, seq_len - visible)
+        total_w = visible * (r * 2) + (visible - 1) * gap
+        x0 = (w - total_w) // 2
 
-            velocity    = int(min(max((dy - TOUCH_VELOCITY) * 10000, DRUM_MIN_VELOCITY), 127))
-            elem_key    = hit_drum.get("element_key", "")
-            result      = game.player_hit(elem_key, now=now)
+        for i_local, i_global in enumerate(range(start_seq_idx, seq_len)):
+            cx = x0 + i_local * (r * 2 + gap) + r
+            p.setPen(Qt.NoPen)
 
-            if result in ("correct", "wrong"):
-                audio_queue.put((hit_drum["note"], velocity))
-                hit_drum["last_hit"] = now
-                can_hit = False
-                _record_feedback(elem_key, result)
-                cursor_color  = (0, 255, 100) if result == "correct" else (255, 50, 50)
-                cursor_radius = 15
-
-            state["last_hit_pos"]  = cursor_pos
-            state["last_hit_drum"] = hit_drum["id"]
-
-    state["prev_y"]  = ref_y
-    state["can_hit"] = can_hit
-
-    if show_trackers:
-        pygame.draw.circle(screen, cursor_color, cursor_pos, cursor_radius)
-        pygame.draw.circle(screen, (255, 255, 255), cursor_pos, cursor_radius + 2, 2)
-
-
-# ── game-mode drum renderer ───────────────────────────────────────────────
-
-def _draw_game_drums(
-    surface,
-    w: int,
-    h: int,
-    font,
-    game: GeniusGame,
-    indexed_elements: list[tuple[int, str]],    # (index, element_key)
-) -> None:
-    """
-    Draw drum pads with Genius colours.
-    Highlighted element (during DEMO) pulses brightly.
-    Player-feedback flashes green/red.
-    """
-    now    = time.time()
-    overlay = pygame.Surface((w, h), pygame.SRCALPHA)
-    _clear_old_feedback()
-
-    for drum in _kit():
-        elem_key  = drum.get("element_key", "")
-        idx       = next((i for i, k in indexed_elements if k == elem_key), 0)
-        base_color = _element_color(elem_key, idx)
-
-        cx_px = int(drum["pos"][0] * w)
-        cy_px = int(drum["pos"][1] * h)
-        rx_px = int(drum["axes"][0] * w)
-        ry_px = int(drum["axes"][1] * h)
-
-        rect = pygame.Rect(cx_px - rx_px, cy_px - ry_px, rx_px * 2, ry_px * 2)
-
-        # ── determine how to draw this pad ───────────────────────────────
-        is_highlight = (game.highlighted_element == elem_key)
-        feedback     = _HIT_FEEDBACK.get(elem_key)
-        is_correct_fb = feedback and feedback["result"] == "correct"
-        is_wrong_fb   = feedback and feedback["result"] == "wrong"
-
-        if is_highlight:
-            # pulsing bright fill
-            pulse = 0.5 + 0.5 * math.sin((now * 8))
-            alpha = int(180 + 70 * pulse)
-            fill_color  = (*base_color, alpha)
-            border_w    = 4
-            border_color = (255, 255, 255)
-        elif is_correct_fb:
-            fill_color  = (0, 255, 100, 210)
-            border_w    = 4
-            border_color = (200, 255, 200)
-        elif is_wrong_fb:
-            fill_color  = (255, 50, 50, 210)
-            border_w    = 4
-            border_color = (255, 200, 200)
-        else:
-            # dim normal state
-            fill_color  = (*base_color, 35)
-            border_w    = 2
-            border_color = tuple(max(0, c - 60) for c in base_color)
-
-        # draw
-        if drum["shape"] == "rect":
-            pygame.draw.rect(overlay, fill_color, rect)
-            pygame.draw.rect(overlay, (*border_color, 220), rect, border_w)
-        else:
-            pygame.draw.ellipse(overlay, fill_color, rect)
-            pygame.draw.ellipse(overlay, (*border_color, 220), rect, border_w)
-
-    surface.blit(overlay, (0, 0))
-
-
-def _draw_game_hud(
-    surface,
-    w: int,
-    h: int,
-    font,
-    big_font,
-    game: GeniusGame,
-    indexed_elements: list[tuple[int, str]],
-    difficulty: str = "easy",
-) -> None:
-    """Draw score, round, sequence progress, timer and state banners."""
-    now = time.time()
-
-    # ── top strip (semi-transparent) ─────────────────────────────────────
-    strip = pygame.Surface((w, 70), pygame.SRCALPHA)
-    strip.fill((0, 0, 0, 140))
-    surface.blit(strip, (0, 0))
-
-    # title (centered horizontally)
-    title_surf = big_font.render("GENIUS DRUMS", True, (255, 220, 60))
-    surface.blit(title_surf, (w // 2 - title_surf.get_width() // 2, 8))
-
-    # score
-    score_text = f"Score: {game.score}"
-    draw_text(surface, score_text, (w - 200, 10), font, (255, 255, 255))
-    if game.best_score > 0:
-        best_text = f"Best:  {game.best_score}"
-        draw_text(surface, best_text, (w - 200, 32), font, (200, 200, 200))
-
-    # ── difficulty badge (left, vertically centered in the 70 px strip) ───
-    diff_col   = _DIFFICULTY_COLOR.get(difficulty, (200, 200, 200))
-    diff_label = _DIFFICULTY_LABEL.get(difficulty, difficulty.upper())
-    diff_surf  = font.render(diff_label, True, diff_col)
-    pill_w = diff_surf.get_width() + 16
-    pill_h = diff_surf.get_height() + 8
-    pill = pygame.Surface((pill_w, pill_h), pygame.SRCALPHA)
-    pill.fill((*diff_col, 40))
-    pygame.draw.rect(pill, (*diff_col, 180), pill.get_rect(), 2)
-    pill_x = 14
-    pill_y = 35 - pill_h // 2          # vertical center of 70px strip
-    surface.blit(pill, (pill_x, pill_y))
-    surface.blit(diff_surf, (pill_x + 8, pill_y + 4))
-
-    # ── sequence progress dots ────────────────────────────────────────────
-    if game.state in (game.STATE_WAIT_INPUT, game.STATE_FEEDBACK, game.STATE_DEMO):
-        seq_len   = game.sequence_length
-        dot_r     = 8
-        spacing   = dot_r * 3
-        total_w   = seq_len * spacing
-        start_x   = w // 2 - total_w // 2
-
-        for i, elem_key in enumerate(game.sequence):
-            cx = start_x + i * spacing + dot_r
-            cy = 58
-
-            if (game.state == game.STATE_WAIT_INPUT or game.state == game.STATE_FEEDBACK):
-                if i < game.player_index:
-                    # completed hit — solid white
-                    pygame.draw.circle(surface, (220, 220, 220), (cx, cy), dot_r)
-                    pygame.draw.circle(surface, (255, 255, 255), (cx, cy), dot_r, 2)
-                elif i == game.player_index:
-                    # next expected — pulsing white border
+            if self._game.state in (GeniusGame.STATE_WAIT_INPUT, GeniusGame.STATE_FEEDBACK):
+                if i_global < self._game.player_index:
+                    p.setBrush(QBrush(QColor(220, 220, 220)))
+                    p.drawEllipse(cx - r, cy - r, r * 2, r * 2)
+                    p.setPen(QPen(QColor(255, 255, 255), 2))
+                    p.drawEllipse(cx - r, cy - r, r * 2, r * 2)
+                elif i_global == self._game.player_index:
                     pulse = 0.5 + 0.5 * math.sin(now * 7)
-                    r_anim = int(dot_r + 3 * pulse)
-                    pygame.draw.circle(surface, (60, 60, 60), (cx, cy), dot_r)
-                    pygame.draw.circle(surface, (200, 200, 200), (cx, cy), r_anim, 3)
+                    r_anim = int(r + 3 * pulse)
+                    p.setBrush(QBrush(QColor(60, 60, 60)))
+                    p.drawEllipse(cx - r, cy - r, r * 2, r * 2)
+                    p.setPen(QPen(QColor(200, 200, 200), 3))
+                    p.drawEllipse(cx - r_anim, cy - r_anim, r_anim * 2, r_anim * 2)
                 else:
-                    # future — dark
-                    pygame.draw.circle(surface, (60, 60, 60), (cx, cy), dot_r)
-                    pygame.draw.circle(surface, (100, 100, 100), (cx, cy), dot_r, 2)
+                    p.setBrush(QBrush(QColor(GAME_CARD_BORDER)))
+                    p.drawEllipse(cx - r, cy - r, r * 2, r * 2)
             else:
-                # DEMO: highlight current element, rest dark
-                if game.sequence[i] == game.highlighted_element and i == game._demo_index - 1:
-                    pygame.draw.circle(surface, (220, 220, 220), (cx, cy), dot_r)
-                    pygame.draw.circle(surface, (255, 255, 255), (cx, cy), dot_r, 2)
+                demo_idx = self._game._demo_index - 1
+                if (i_global < seq_len and
+                        self._game.sequence[i_global] == self._game.highlighted_element and
+                        i_global == demo_idx):
+                    p.setBrush(QBrush(QColor(220, 220, 220)))
+                    p.drawEllipse(cx - r, cy - r, r * 2, r * 2)
+                    p.setPen(QPen(QColor(255, 255, 255), 2))
+                    p.drawEllipse(cx - r, cy - r, r * 2, r * 2)
                 else:
-                    pygame.draw.circle(surface, (70, 70, 70), (cx, cy), dot_r)
-                    pygame.draw.circle(surface, (120, 120, 120), (cx, cy), dot_r, 2)
+                    p.setBrush(QBrush(QColor(GAME_CARD_BORDER)))
+                    p.drawEllipse(cx - r, cy - r, r * 2, r * 2)
+        p.end()
 
-    # ── timer bar (player's turn only) ───────────────────────────────────
-    if game.state == game.STATE_WAIT_INPUT:
-        remaining = game.remaining_time
-        frac      = remaining / max(0.01, game.PLAYER_TIMEOUT)
-        bar_h     = 6
-        bar_y     = 68
-        bar_w_max = w - 40
-        bar_w     = int(bar_w_max * frac)
 
-        r = int(255 * (1.0 - frac))
-        g = int(255 * frac)
-        bar_color = (min(255, r), min(255, g), 50)
+# ---------------------------------------------------------------------------
+# Timer Bar Widget
+# ---------------------------------------------------------------------------
 
-        pygame.draw.rect(surface, (40, 40, 40), (20, bar_y, bar_w_max, bar_h))
-        if bar_w > 0:
-            pygame.draw.rect(surface, bar_color, (20, bar_y, bar_w, bar_h))
+class TimerBarWidget(QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._frac = 1.0
+        self.setFixedHeight(10)
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
 
-    # ── state banners ─────────────────────────────────────────────────────
-    if game.state == game.STATE_IDLE:
-        diff_col = _DIFFICULTY_COLOR.get(difficulty, (200, 200, 200))
-        diff_lbl = _DIFFICULTY_LABEL.get(difficulty, difficulty.upper())
-        _draw_center_banner(
-            surface, w, h, big_font, font,
-            "GENIUS DRUMS",
-            f"1:EASY   2:MEDIUM   3:HARD   |   SPACE to start as [{diff_lbl}]",
-            (255, 220, 60), diff_col,
+    def set_fraction(self, frac: float) -> None:
+        self._frac = max(0.0, min(1.0, frac))
+        self.update()
+
+    def paintEvent(self, event):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+        w, h = self.width(), self.height()
+        r = h // 2
+        p.setPen(Qt.NoPen)
+        p.setBrush(QBrush(QColor(GAME_CARD_BORDER)))
+        p.drawRoundedRect(0, 0, w, h, r, r)
+        fill_w = int(w * self._frac)
+        if fill_w > 0:
+            red   = int(255 * (1.0 - self._frac))
+            green = int(255 * self._frac)
+            p.setBrush(QBrush(QColor(min(255, red), min(255, green), 50)))
+            p.drawRoundedRect(0, 0, fill_w, h, r, r)
+        p.end()
+
+
+# ---------------------------------------------------------------------------
+# Camera + Drum Overlay Widget
+# ---------------------------------------------------------------------------
+
+class DrumGameOverlayWidget(QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setMinimumWidth(120)
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self._frame_rgb  = None
+        self._results    = None
+        self._drum_kit   = []
+        self._game       = None
+        self._hit_feedback: dict = {}
+        self._show_trackers = False
+        self._detecting     = False
+
+    def set_frame(self, frame_rgb) -> None:       self._frame_rgb = frame_rgb
+    def set_results(self, results) -> None:
+        self._results   = results
+        self._detecting = results is not None and results.multi_hand_landmarks is not None
+    def set_drum_kit(self, kit: list) -> None:    self._drum_kit = kit
+    def set_game(self, game) -> None:             self._game = game
+    def set_show_trackers(self, v: bool) -> None: self._show_trackers = v
+
+    def record_feedback(self, element_key: str, result: str) -> None:
+        self._hit_feedback[element_key] = {"result": result, "ts": time.time()}
+
+    def _clear_old_feedback(self, ttl: float = 0.25) -> None:
+        now = time.time()
+        for k in [k for k, v in self._hit_feedback.items() if now - v["ts"] > ttl]:
+            del self._hit_feedback[k]
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+        w, h = self.width(), self.height()
+
+        painter.fillRect(0, 0, w, h, QColor(GAME_BG_PANEL))
+
+        if self._frame_rgb is not None:
+            frame = np.ascontiguousarray(self._frame_rgb)
+            fh, fw = frame.shape[:2]
+            qimg = QImage(frame.data, fw, fh, fw * 3, QImage.Format_RGB888)
+            painter.drawImage(0, 0, qimg.scaled(w, h, Qt.IgnoreAspectRatio, Qt.FastTransformation))
+
+        self._draw_drum_pads(painter, w, h)
+
+        if self._show_trackers and self._results and self._results.multi_hand_landmarks:
+            self._draw_hand_connections(painter, w, h)
+
+        self._draw_detecting_badge(painter)
+        self._draw_state_banner(painter, w, h)
+        painter.end()
+
+    def _draw_drum_pads(self, painter, w, h):
+        if not self._drum_kit or self._game is None:
+            return
+        self._clear_old_feedback()
+        now = time.time()
+
+        for idx, drum in enumerate(self._drum_kit):
+            key = drum.get("element_key", "")
+            r, g, b = _element_color(key, idx)
+            cx = int(drum["pos"][0] * w)
+            cy = int(drum["pos"][1] * h)
+            rx = int(drum["axes"][0] * w)
+            ry = int(drum["axes"][1] * h)
+
+            is_hl  = self._game.highlighted_element == key
+            fb     = self._hit_feedback.get(key)
+            is_ok  = fb and fb["result"] == "correct"
+            is_err = fb and fb["result"] == "wrong"
+
+            if is_hl:
+                pulse = 0.5 + 0.5 * math.sin(now * 8)
+                fill  = QColor(r, g, b, int(180 + 70 * pulse))
+                bord  = QColor(255, 255, 255, 220); bw = 4
+            elif is_ok:
+                fill = QColor(0, 255, 100, 210); bord = QColor(200, 255, 200, 220); bw = 4
+            elif is_err:
+                fill = QColor(255, 50, 50, 210);  bord = QColor(255, 200, 200, 220); bw = 4
+            else:
+                fill = QColor(r, g, b, 35)
+                bord = QColor(max(0,r-60), max(0,g-60), max(0,b-60), 180); bw = 2
+
+            painter.setPen(Qt.NoPen)
+            painter.setBrush(QBrush(fill))
+            if drum.get("shape") == "rect":
+                painter.drawRect(cx - rx, cy - ry, rx*2, ry*2)
+                painter.setPen(QPen(bord, bw)); painter.setBrush(Qt.NoBrush)
+                painter.drawRect(cx - rx, cy - ry, rx*2, ry*2)
+            else:
+                painter.drawEllipse(cx - rx, cy - ry, rx*2, ry*2)
+                painter.setPen(QPen(bord, bw)); painter.setBrush(Qt.NoBrush)
+                painter.drawEllipse(cx - rx, cy - ry, rx*2, ry*2)
+
+            f = QFont(FONT_FAMILY, FONT_SIZE_SM - 2); f.setBold(True)
+            painter.setFont(f)
+            name = drum.get("name", key.upper())
+            alpha = 200 if is_hl else (160 if (is_ok or is_err) else 80)
+            painter.setPen(QColor(255, 255, 255, alpha))
+            fm = painter.fontMetrics()
+            painter.drawText(cx - fm.horizontalAdvance(name) // 2,
+                             cy + fm.ascent() // 2 - 1, name)
+
+    def _draw_hand_connections(self, painter, w, h):
+        conns = [(0,1),(1,2),(2,3),(3,4),(0,5),(5,6),(6,7),(7,8),(0,9),(9,10),
+                 (10,11),(11,12),(0,13),(13,14),(14,15),(15,16),(0,17),(17,18),
+                 (18,19),(19,20),(5,9),(9,13),(13,17)]
+        for lm in self._results.multi_hand_landmarks:
+            pen = QPen(QColor(GAME_ACCENT), 2); pen.setCapStyle(Qt.RoundCap)
+            painter.setPen(pen)
+            for a, b in conns:
+                painter.drawLine(int(lm.landmark[a].x*w), int(lm.landmark[a].y*h),
+                                 int(lm.landmark[b].x*w), int(lm.landmark[b].y*h))
+            painter.setBrush(QBrush(QColor(GAME_ACCENT))); painter.setPen(Qt.NoPen)
+            for pt in lm.landmark:
+                painter.drawEllipse(int(pt.x*w)-3, int(pt.y*h)-3, 6, 6)
+
+    def _draw_detecting_badge(self, painter):
+        if not self._detecting:
+            return
+        label = "DETECTANDO"
+        f = QFont(FONT_FAMILY, FONT_SIZE_SM); f.setBold(True)
+        painter.setFont(f); fm = painter.fontMetrics()
+        tw = fm.horizontalAdvance(label)
+        dot_r, pad_l, gap, pad_r = 10, 10, 8, 12
+        cw, ch = pad_l + dot_r + gap + tw + pad_r, 28
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(QBrush(QColor(30, 20, 50, 210)))
+        painter.drawRoundedRect(12, 12, cw, ch, 14, 14)
+        painter.setBrush(QBrush(QColor(GAME_ACCENT)))
+        painter.drawEllipse(12 + pad_l, 12 + (ch - dot_r)//2, dot_r, dot_r)
+        painter.setPen(QColor(GAME_ACCENT)); painter.setFont(f)
+        painter.drawText(12 + pad_l + dot_r + gap, 12 + ch//2 + fm.ascent()//2 - 1, label)
+
+    def _draw_state_banner(self, painter, w, h):
+        if self._game is None:
+            return
+        state = self._game.state
+        if state == GeniusGame.STATE_DEMO:
+            self._small_banner(painter, w, h//2+30, "  WATCH  ",
+                               QColor(40,40,120,180), QColor(180,180,255))
+        elif state == GeniusGame.STATE_WAIT_INPUT:
+            self._small_banner(painter, w, h//2+30, "  YOUR TURN  ",
+                               QColor(20,80,20,180), QColor(100,255,120))
+        elif state in (GeniusGame.STATE_IDLE, GeniusGame.STATE_GAME_OVER):
+            painter.fillRect(0, 0, w, h, QColor(0, 0, 0, 155))
+            if state == GeniusGame.STATE_IDLE:
+                self._center_banner(painter, w, h, "GENIUS DRUMS",
+                    "Selecione a dificuldade e clique em Iniciar",
+                    QColor(255,220,60), QColor(180,180,255))
+            else:
+                is_new = self._game.score == self._game.best_score and self._game.score > 0
+                sc_txt = (f"NOVO RECORDE!   {self._game.score} pts" if is_new
+                          else f"Score: {self._game.score}     Recorde: {self._game.best_score}")
+                self._center_banner(painter, w, h, "FIM DE JOGO", sc_txt,
+                    QColor(255,70,70), QColor(255,230,60) if is_new else QColor(220,220,220))
+
+    def _center_banner(self, painter, w, h, title, subtitle, tc, sc):
+        f_big = QFont(FONT_FAMILY, 36); f_big.setBold(True)
+        f_sm  = QFont(FONT_FAMILY, FONT_SIZE_MD)
+        cx, cy = w//2, h//2
+        painter.setFont(f_big); fm = painter.fontMetrics()
+        painter.setPen(tc)
+        painter.drawText(cx - fm.horizontalAdvance(title)//2, cy - 30, title)
+        painter.setFont(f_sm); fm2 = painter.fontMetrics()
+        painter.setPen(sc)
+        painter.drawText(cx - fm2.horizontalAdvance(subtitle)//2, cy + 30, subtitle)
+
+    def _small_banner(self, painter, w, y, text, bg, tc):
+        f = QFont(FONT_FAMILY, FONT_SIZE_MD); f.setBold(True)
+        painter.setFont(f); fm = painter.fontMetrics()
+        pad = 14; bw = fm.horizontalAdvance(text) + pad*2; bh = fm.height() + pad
+        bx = w//2 - bw//2
+        painter.setPen(Qt.NoPen); painter.setBrush(QBrush(bg))
+        painter.drawRoundedRect(bx, y, bw, bh, BORDER_RAD, BORDER_RAD)
+        painter.setPen(tc)
+        painter.drawText(bx + pad, y + bh//2 + fm.ascent()//2 - 2, text)
+
+
+# ---------------------------------------------------------------------------
+# Scaling label
+# ---------------------------------------------------------------------------
+
+class ScalingLabel(QLabel):
+    def __init__(self, text="", scale=0.42, parent=None):
+        super().__init__(text, parent)
+        self._scale = scale
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        h = self.height()
+        if h > 8:
+            px = max(10, int(h * self._scale))
+            self.setStyleSheet(f"font-size: {px}px; font-weight: bold;")
+
+
+# ---------------------------------------------------------------------------
+# Game Panel (left side)
+# ---------------------------------------------------------------------------
+
+class GeniusGamePanel(QWidget):
+    restart_clicked    = Signal()
+    end_clicked        = Signal()
+    difficulty_changed = Signal(str)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setObjectName("gamePanel")
+        self.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Expanding)
+        self._current_difficulty = "easy"
+        self._init_ui()
+
+    def _init_ui(self):
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0); outer.setSpacing(0)
+        outer.addWidget(self._build_title_block())
+        self._stack = QStackedWidget()
+        self._playing_page  = self._build_playing_page()
+        self._gameover_page = self._build_gameover_page()
+        self._stack.addWidget(self._playing_page)
+        self._stack.addWidget(self._gameover_page)
+        outer.addWidget(self._stack, 1)
+
+        btns = QVBoxLayout(); btns.setContentsMargins(12,8,12,12); btns.setSpacing(6)
+        self._pause_btn = QPushButton("⏸  Pausar"); self._pause_btn.setObjectName("gamePauseBtn")
+        self._pause_btn.setCheckable(True); self._pause_btn.clicked.connect(self._on_pause_click)
+        btns.addWidget(self._pause_btn)
+        self._end_btn = QPushButton("Encerrar"); self._end_btn.setObjectName("gameEndBtn")
+        self._end_btn.clicked.connect(self.end_clicked.emit); btns.addWidget(self._end_btn)
+        outer.addLayout(btns)
+
+    def _build_title_block(self):
+        w = QWidget(); w.setObjectName("gameTitleBlock")
+        vl = QVBoxLayout(w); vl.setContentsMargins(12,14,12,14)
+        vl.setAlignment(Qt.AlignCenter); vl.setSpacing(2)
+        icon = QLabel("✦"); icon.setObjectName("gameIconLabel"); icon.setAlignment(Qt.AlignCenter)
+        vl.addWidget(icon)
+        title = QLabel("Genius Drums"); title.setObjectName("gameHeaderLabel")
+        title.setAlignment(Qt.AlignCenter); vl.addWidget(title)
+        return w
+
+    def _make_stat_card(self, val_obj: str, sub: str):
+        card = QFrame(); card.setObjectName("gameStatCard")
+        card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        vl = QVBoxLayout(card); vl.setContentsMargins(8,6,8,6); vl.setSpacing(2)
+        val = ScalingLabel("0", 0.42); val.setObjectName(val_obj)
+        val.setAlignment(Qt.AlignCenter)
+        val.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        vl.addWidget(val, 1)
+        s = QLabel(sub); s.setObjectName("gameStatCardSub"); s.setAlignment(Qt.AlignCenter)
+        vl.addWidget(s)
+        return card, val
+
+    def _build_playing_page(self):
+        page = QWidget(); layout = QVBoxLayout(page)
+        layout.setContentsMargins(8,6,8,6); layout.setSpacing(5)
+
+        card, self._score_label = self._make_stat_card("gameScoreValue", "PONTOS")
+        layout.addWidget(card, 2)
+        card, self._round_label = self._make_stat_card("gameComboValue", "RODADA")
+        layout.addWidget(card, 1)
+
+        seq_card = QFrame(); seq_card.setObjectName("gameStatCard")
+        seq_card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        seq_vl = QVBoxLayout(seq_card); seq_vl.setContentsMargins(8,6,8,6); seq_vl.setSpacing(4)
+        self._seq_dots = SequenceDotsWidget(); seq_vl.addWidget(self._seq_dots)
+        s = QLabel("SEQUÊNCIA"); s.setObjectName("gameStatCardSub"); s.setAlignment(Qt.AlignCenter)
+        seq_vl.addWidget(s); layout.addWidget(seq_card)
+
+        tc = QFrame(); tc.setObjectName("gameStatCard")
+        tc.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        tv = QVBoxLayout(tc); tv.setContentsMargins(8,8,8,8); tv.setSpacing(4)
+        self._timer_bar = TimerBarWidget(); tv.addWidget(self._timer_bar)
+        ts = QLabel("TEMPO"); ts.setObjectName("gameStatCardSub"); ts.setAlignment(Qt.AlignCenter)
+        tv.addWidget(ts); layout.addWidget(tc)
+
+        info = QFrame(); info.setObjectName("gameInfoBar")
+        br = QHBoxLayout(info); br.setContentsMargins(10,8,10,8); br.setSpacing(8)
+        ll = QLabel("Dificuldade"); ll.setObjectName("gamePlaySongLabel"); br.addWidget(ll, 1)
+        self._play_diff_label = QLabel("EASY"); self._play_diff_label.setObjectName("gamePlayDiffLabel")
+        br.addWidget(self._play_diff_label); layout.addWidget(info)
+
+        self._fps_label = QLabel("FPS: --"); self._fps_label.setObjectName("gameFpsLabel")
+        layout.addWidget(self._fps_label)
+        return page
+
+    def _build_gameover_page(self):
+        page = QWidget(); outer = QVBoxLayout(page)
+        outer.setContentsMargins(0,0,0,0); outer.setSpacing(0)
+
+        rw = QWidget(); rl = QVBoxLayout(rw); rl.setContentsMargins(8,6,8,4); rl.setSpacing(5)
+        self._result_title = QLabel("FIM DE JOGO"); self._result_title.setObjectName("gameResultTitle")
+        self._result_title.setAlignment(Qt.AlignCenter); rl.addWidget(self._result_title)
+        card, self._result_score_label = self._make_stat_card("gameScoreValue", "PONTOS")
+        rl.addWidget(card, 2)
+        side = QHBoxLayout(); side.setSpacing(5)
+        rc, self._result_round_label = self._make_stat_card("gameComboValue", "RODADA")
+        bc, self._result_best_label  = self._make_stat_card("gamePrecisionValue", "RECORDE")
+        side.addWidget(rc); side.addWidget(bc); rl.addLayout(side, 1)
+        outer.addWidget(rw, 1)
+
+        div = QFrame(); div.setFixedHeight(1)
+        div.setStyleSheet(f"background-color: {GAME_BORDER_LIGHT};"); outer.addWidget(div)
+
+        ng = QWidget(); ngl = QVBoxLayout(ng); ngl.setContentsMargins(8,6,8,6); ngl.setSpacing(5)
+        nl = QLabel("NOVA PARTIDA"); nl.setObjectName("gameStatSectionLabel")
+        nl.setAlignment(Qt.AlignCenter); ngl.addWidget(nl)
+
+        diff_row = QHBoxLayout(); diff_row.setSpacing(5); self._diff_btns = {}
+        for diff, lbl_text in _DIFF_LABELS_DISPLAY.items():
+            btn = QPushButton(lbl_text); btn.setObjectName(f"gameDiffBtn_{diff}")
+            btn.setCheckable(True); btn.setChecked(diff == self._current_difficulty)
+            btn.clicked.connect(lambda _c, d=diff: self._on_difficulty(d))
+            diff_row.addWidget(btn); self._diff_btns[diff] = btn
+        ngl.addLayout(diff_row)
+
+        self._start_btn = QPushButton("▶  Jogar Novamente"); self._start_btn.setObjectName("gameStartBtn")
+        self._start_btn.setFixedHeight(BTN_HEIGHT + 2); self._start_btn.clicked.connect(self.restart_clicked.emit)
+        ngl.addWidget(self._start_btn, 1)
+
+        self._fps_label_go = QLabel("FPS: --"); self._fps_label_go.setObjectName("gameFpsLabel")
+        ngl.addWidget(self._fps_label_go); outer.addWidget(ng, 1)
+        return page
+
+    # ── public API ────────────────────────────────────────────────────────
+
+    def switch_to_idle(self) -> None:
+        """Show the gameover/start page in its initial (pre-game) state."""
+        self._result_title.setText("GENIUS DRUMS")
+        self._result_title.setObjectName("gameResultTitle")
+        self._result_title.style().unpolish(self._result_title)
+        self._result_title.style().polish(self._result_title)
+        self._result_score_label.setText("—")
+        self._result_round_label.setText("—")
+        self._result_best_label.setText("—")
+        self._start_btn.setText("▶  Iniciar")
+        self._stack.setCurrentIndex(1)
+
+    def switch_to_playing(self) -> None:
+        self._update_diff_badge(self._current_difficulty)
+        self._stack.setCurrentIndex(0)
+
+    def switch_to_gameover(self, game) -> None:
+        self._start_btn.setText("▶  Jogar Novamente")
+        is_new = game.score == game.best_score and game.score > 0
+        self._result_title.setText("NOVO RECORDE!" if is_new else "FIM DE JOGO")
+        self._result_title.setObjectName("gameResultTitleWin" if is_new else "gameResultTitle")
+        self._result_title.style().unpolish(self._result_title)
+        self._result_title.style().polish(self._result_title)
+        self._result_score_label.setText(str(game.score))
+        self._result_round_label.setText(str(game.round))
+        self._result_best_label.setText(str(game.best_score))
+        self._stack.setCurrentIndex(1)
+
+    def update_game_state(self, game) -> None:
+        self._score_label.setText(str(game.score))
+        self._round_label.setText(str(game.round))
+        self._seq_dots.update()
+        if game.state == GeniusGame.STATE_WAIT_INPUT:
+            self._timer_bar.set_fraction(game.remaining_time / max(0.01, game.PLAYER_TIMEOUT))
+        else:
+            self._timer_bar.set_fraction(1.0 if game.state == GeniusGame.STATE_DEMO else 0.0)
+
+    def update_fps(self, fps: float) -> None:
+        txt = f"FPS: {fps:.0f}"
+        self._fps_label.setText(txt); self._fps_label_go.setText(txt)
+
+    def reset_pause(self) -> None:
+        self._pause_btn.setChecked(False); self._pause_btn.setText("⏸  Pausar")
+
+    def get_difficulty(self) -> str:
+        return self._current_difficulty
+
+    def set_game_for_dots(self, game) -> None:
+        self._seq_dots.set_game(game)
+
+    def _on_pause_click(self, checked: bool) -> None:
+        self._pause_btn.setText("▶  Retomar" if checked else "⏸  Pausar")
+
+    def _on_difficulty(self, diff: str) -> None:
+        self._current_difficulty = diff
+        for d, btn in self._diff_btns.items():
+            btn.setChecked(d == diff)
+        self._update_diff_badge(diff)
+        self.difficulty_changed.emit(diff)
+
+    def _update_diff_badge(self, diff: str) -> None:
+        col = _DIFFICULTY_COLOR_QSS.get(diff, GAME_ACCENT)
+        self._play_diff_label.setText(_DIFFICULTY_LABEL.get(diff, diff.upper()))
+        self._play_diff_label.setStyleSheet(
+            f"background-color: {col}; color: {GAME_TEXT_LIGHT}; border-radius: 6px;"
+            f" padding: 2px 8px; font-size: {FONT_SIZE_SM}px;"
+            f" font-family: {FONT_FAMILY}; font-weight: bold;"
         )
 
-    elif game.state == game.STATE_DEMO:
-        _draw_small_banner(surface, w, h // 2 + 30, font,
-                           "  WATCH  ", (40, 40, 120, 180), (180, 180, 255))
 
-    elif game.state == game.STATE_WAIT_INPUT:
-        _draw_small_banner(surface, w, h // 2 + 30, font,
-                           "  YOUR TURN  ", (20, 80, 20, 180), (100, 255, 120))
+# ---------------------------------------------------------------------------
+# QSS
+# ---------------------------------------------------------------------------
 
-    elif game.state == game.STATE_GAME_OVER:
-        is_new_best = game.score == game.best_score and game.score > 0
-        diff_col = _DIFFICULTY_COLOR.get(difficulty, (200, 200, 200))
-        diff_lbl = _DIFFICULTY_LABEL.get(difficulty, difficulty.upper())
+def _build_game_qss() -> str:
+    return f"""
+QMainWindow {{ background-color: {GAME_BG_PANEL}; }}
+#gamePanel {{ background-color: {GAME_BG_PANEL}; border-right: 1px solid {GAME_BORDER_LIGHT}; }}
+#gamePanel QLabel {{ color: {GAME_TEXT_PRIMARY}; font-family: {FONT_FAMILY}; }}
+QWidget#gameTitleBlock {{ background-color: {GAME_BG_PANEL}; }}
+QLabel#gameIconLabel {{ font-size: 20px; color: {GAME_ACCENT}; }}
+QLabel#gameHeaderLabel {{ font-size: {FONT_SIZE_SM}px; font-weight: bold; color: {GAME_TEXT_SECONDARY}; letter-spacing: 2px; }}
+QFrame#gameStatCard {{ background-color: {GAME_BG_PANEL_ALT}; border: 1px solid {GAME_CARD_BORDER}; border-radius: {BORDER_RAD}px; }}
+QLabel#gameStatCardSub {{ font-size: {FONT_SIZE_SM}px; color: {GAME_TEXT_SECONDARY}; letter-spacing: 2px; }}
+QLabel#gameScoreValue {{ color: {GAME_ACCENT}; }}
+QLabel#gameComboValue {{ color: {GAME_TEXT_PRIMARY}; }}
+QLabel#gamePrecisionValue {{ color: {GAME_TEXT_PRIMARY}; }}
+QLabel#gameStatSectionLabel {{ font-size: {FONT_SIZE_SM}px; font-weight: bold; color: {GAME_TEXT_SECONDARY}; letter-spacing: 1px; }}
+QLabel#gameFpsLabel {{ font-size: {FONT_SIZE_SM}px; color: {GAME_TEXT_SECONDARY}; }}
+QFrame#gameInfoBar {{ background-color: {GAME_BG_PANEL_ALT}; border: 1px solid {GAME_CARD_BORDER}; border-radius: {BORDER_RAD}px; }}
+QLabel#gamePlaySongLabel {{ font-size: {FONT_SIZE_SM}px; font-weight: bold; color: {GAME_TEXT_PRIMARY}; }}
+QLabel#gameResultTitle {{ font-size: {FONT_SIZE_MD}px; font-weight: bold; color: {GAME_ACCENT_RED}; }}
+QLabel#gameResultTitleWin {{ font-size: {FONT_SIZE_MD}px; font-weight: bold; color: {GAME_ACCENT}; }}
+QPushButton#gameEndBtn {{ background-color: transparent; color: {GAME_ACCENT_RED}; border: 1px solid {GAME_ACCENT_RED}; border-radius: {BORDER_RAD}px; padding: 8px 10px; font-size: {FONT_SIZE_SM}px; font-family: {FONT_FAMILY}; }}
+QPushButton#gameEndBtn:hover {{ background-color: {GAME_ACCENT_RED}; color: white; }}
+QPushButton#gamePauseBtn {{ background-color: {GAME_BG_PANEL_ALT}; color: {GAME_TEXT_PRIMARY}; border: 1px solid {GAME_CARD_BORDER}; border-radius: {BORDER_RAD}px; padding: 10px; font-size: {FONT_SIZE_SM}px; font-family: {FONT_FAMILY}; }}
+QPushButton#gamePauseBtn:checked {{ background-color: {GAME_ACCENT}; color: {GAME_TEXT_LIGHT}; border-color: {GAME_ACCENT}; }}
+QPushButton#gameDiffBtn_easy, QPushButton#gameDiffBtn_medium, QPushButton#gameDiffBtn_hard {{ background-color: {GAME_BG_PANEL_ALT}; color: {GAME_TEXT_PRIMARY}; border: 1px solid {GAME_CARD_BORDER}; border-radius: {BORDER_RAD}px; padding: 6px 4px; font-size: {FONT_SIZE_SM}px; font-family: {FONT_FAMILY}; }}
+QPushButton#gameDiffBtn_easy:checked, QPushButton#gameDiffBtn_medium:checked, QPushButton#gameDiffBtn_hard:checked {{ background-color: {GAME_DIFF_SELECTED}; color: #0F1A14; border-color: {GAME_DIFF_SELECTED}; font-weight: bold; }}
+QPushButton#gameDiffBtn_easy:hover, QPushButton#gameDiffBtn_medium:hover, QPushButton#gameDiffBtn_hard:hover {{ border-color: {GAME_ACCENT}; }}
+QPushButton#gameStartBtn {{ background-color: {GAME_ACCENT}; color: {GAME_TEXT_LIGHT}; border: none; border-radius: {BORDER_RAD}px; padding: 10px; font-size: {FONT_SIZE_MD}px; font-weight: bold; font-family: {FONT_FAMILY}; }}
+QPushButton#gameStartBtn:hover {{ background-color: #8B74A8; }}
+"""
 
-        overlay = pygame.Surface((w, h), pygame.SRCALPHA)
-        overlay.fill((0, 0, 0, 160))
-        surface.blit(overlay, (0, 0))
 
-        cx = w // 2
-        cy = h // 2
+# ---------------------------------------------------------------------------
+# Main Window
+# ---------------------------------------------------------------------------
 
-        # line 1 – "GAME OVER"
-        go_surf = big_font.render("GAME OVER", True, (255, 70, 70))
-        surface.blit(go_surf, (cx - go_surf.get_width() // 2, cy - 80))
+class GeniusWindow(QMainWindow):
+    def __init__(
+        self,
+        chosen_instrument=None,
+        resolution_profile=None,
+        show_trackers: bool = False,
+        drum_model: str = "default",
+        drums_elements=None,
+        hand_model_complexity: int = 1,
+        difficulty: str = "easy",
+    ):
+        super().__init__()
+        self.setWindowTitle("Talking Hands — Genius Drums")
+        self.setStyleSheet(_build_game_qss())
 
-        # line 2 – score
-        if is_new_best:
-            score_line = f"NEW BEST!   {game.score} pts"
-            score_col  = (255, 230, 60)
+        self._chosen_instrument = chosen_instrument
+        self._drum_model        = str(drum_model).strip().lower()
+        self._drums_elements    = drums_elements
+        self._is_paused         = False
+
+        apply_drum_note_profile(chosen_instrument)
+        self._replace_base  = False
+        self._base_elements = drums_elements
+        if not self._replace_base and self._base_elements is None:
+            if chosen_instrument in DRUMS_INSTRUMENT_ELEMENT_PRESETS:
+                preset = DRUMS_INSTRUMENT_ELEMENT_PRESETS[chosen_instrument]
+                self._base_elements = [e for e in preset if e in DRUM_ELEMENT_LIBRARY]
+                if chosen_instrument in DRUMS_INSTRUMENT_REPLACE_BASE:
+                    self._replace_base = True
+
+        self._current_difficulty = difficulty if difficulty in ("easy","medium","hard") else "easy"
+        self._drum_kit, self._unique_avail = self._build_kit(self._current_difficulty)
+
+        self._game = GeniusGame()
+
+        self._audio_queue: queue.Queue = queue.Queue()
+        self._fs = None
+        self._init_audio()
+
+        if resolution_profile:
+            dw = int(resolution_profile["display_width"]); dh = int(resolution_profile["display_height"])
+            self._target_fps = int(resolution_profile["fps"])
         else:
-            score_line = f"Score: {game.score}     Best: {game.best_score}"
-            score_col  = (220, 220, 220)
-        sc_surf = font.render(score_line, True, score_col)
-        surface.blit(sc_surf, (cx - sc_surf.get_width() // 2, cy - 20))
+            dw, dh = 1920, 1080; self._target_fps = 30
+        dw, dh, _, _, _ = fit_resolution_to_screen(dw, dh)
+        self._logical_w, self._logical_h = dw, dh
 
-        # line 3 – difficulty options
-        diff_line = f"1: EASY     2: MEDIUM     3: HARD     |     SPACE to replay [{diff_lbl}]"
-        dl_surf = font.render(diff_line, True, diff_col)
-        surface.blit(dl_surf, (cx - dl_surf.get_width() // 2, cy + 40))
+        self._cap = setup_video_capture(width=self._logical_w, height=self._logical_h, fps=self._target_fps)
+        self._cam_thread = CameraThread(self._cap)
+        hc = max(0, min(1, int(hand_model_complexity)))
+        self._hands_thread = MediaPipeHandsThread(
+            mp.solutions.hands.Hands(max_num_hands=2, model_complexity=hc,
+                min_detection_confidence=0.3, min_tracking_confidence=0.3))
 
-        # line 4 – ESC hint
-        esc_surf = font.render("ESC — leave game", True, (160, 160, 160))
-        surface.blit(esc_surf, (cx - esc_surf.get_width() // 2, cy + 75))
+        self._hands_state = {
+            lbl: {"prev_y": 0.5, "can_hit": True, "last_hit_pos": None, "last_hit_drum": -1}
+            for lbl in ("Left", "Right")
+        }
+
+        self._build_ui(show_trackers)
+
+        self._fps_counter = 0; self._fps_last_time = time.time()
+        self._audio_thread = threading.Thread(target=self._audio_loop, daemon=True)
+        self._audio_thread.start()
+        self._frame_timer = QTimer(self)
+        self._frame_timer.timeout.connect(self._on_frame_tick)
+        self._frame_timer.start(1)
+
+    def _build_kit(self, difficulty: str):
+        merged = _merge_elements_for_difficulty(self._base_elements, difficulty)
+        kit = build_drum_kit(drum_model=self._drum_model, elements=merged,
+                             instrument_name=self._chosen_instrument)
+        avail: list = []; seen: set = set()
+        for d in kit:
+            k = d.get("element_key", "")
+            if not d.get("foot_only", False) and k not in seen:
+                avail.append(k); seen.add(k)
+        return kit, avail
+
+    def _init_audio(self):
+        self._fs, _ = init_fluidsynth(driver="dsound")
+        if self._fs is None:
+            print("[!] Falha ao inicializar FluidSynth"); return
+        drum_sfid = load_single_soundfont(self._fs, "drums", FIXED_SF2_PATH)
+        if drum_sfid != -1:
+            for i in range(POLYPHONY_CHANNELS):
+                self._fs.program_select(i, drum_sfid, 128, 0)
+        if self._chosen_instrument and drum_sfid != -1:
+            if self._chosen_instrument in settings.INSTRUMENTS:
+                _, bank, preset = settings.INSTRUMENTS[self._chosen_instrument]
+                for i in range(POLYPHONY_CHANNELS):
+                    self._fs.program_select(i, drum_sfid, bank, preset)
+                print(f">>> Kit: {self._chosen_instrument}")
+
+    def _audio_loop(self):
+        ch_idx = 0
+        while True:
+            item = self._audio_queue.get()
+            if item is None:
+                break
+            if self._fs:
+                self._fs.noteon(ch_idx % POLYPHONY_CHANNELS, item[0], item[1])
+                ch_idx += 1
+
+    def _build_ui(self, show_trackers: bool) -> None:
+        central = QWidget(); self.setCentralWidget(central)
+        main_layout = QHBoxLayout(central)
+        main_layout.setContentsMargins(0,0,0,0); main_layout.setSpacing(0)
+
+        self._panel = GeniusGamePanel()
+        self._panel.restart_clicked.connect(self._on_restart)
+        self._panel.end_clicked.connect(self._on_end)
+        self._panel.difficulty_changed.connect(self._on_difficulty_changed)
+        self._panel.set_game_for_dots(self._game)
+        self._panel.switch_to_idle()
+        main_layout.addWidget(self._panel, 30)
+
+        self._camera_widget = DrumGameOverlayWidget()
+        self._camera_widget.set_drum_kit(self._drum_kit)
+        self._camera_widget.set_game(self._game)
+        self._camera_widget.set_show_trackers(show_trackers)
+        main_layout.addWidget(self._camera_widget, 70)
+
+    def _start_game(self) -> None:
+        self._is_paused = False
+        self._panel.reset_pause()
+        self._panel.switch_to_playing()
+        self._panel.set_game_for_dots(self._game)
+        self._camera_widget.set_game(self._game)
+        for s in self._hands_state.values():
+            s.update({"prev_y": 0.5, "can_hit": True, "last_hit_pos": None, "last_hit_drum": -1})
+        self._game.start(self._unique_avail, difficulty=self._current_difficulty)
+        print(f">>> Genius Drums [{self._current_difficulty.upper()}] — {len(self._unique_avail)} elementos")
+
+    @Slot()
+    def _on_frame_tick(self):
+        frame, _ = self._cam_thread.get_latest()
+        if frame is None:
+            return
+
+        frame     = cv2.resize(frame, (self._logical_w, self._logical_h))
+        frame     = cv2.flip(frame, 1)
+        frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+
+        cam_w = self._camera_widget.width(); cam_h = self._camera_widget.height()
+        if cam_w > 0 and cam_h > 0:
+            fh, fw = frame_rgb.shape[:2]; wa = cam_w / cam_h; fa = fw / fh
+            if fa > wa:
+                nfw = int(fh * wa); xoff = (fw - nfw)//2
+                frame_rgb = frame_rgb[:, xoff:xoff + nfw]
+            elif fa < wa:
+                nfh = int(fw / wa); yoff = (fh - nfh)//2
+                frame_rgb = frame_rgb[yoff:yoff + nfh, :]
+
+        crh, crw = frame_rgb.shape[:2]
+        frame_mp = prepare_mediapipe_frame(frame_rgb, crw, crh, 480)
+        self._hands_thread.submit_frame(frame_mp)
+        results = self._hands_thread.get_latest_result()
+        now = time.time()
+
+        if not self._is_paused:
+            self._game.update(self._drum_kit, now=now)
+            if self._game.pending_play_note is not None:
+                self._audio_queue.put(self._game.pending_play_note)
+            if results.multi_hand_landmarks and results.multi_handedness:
+                for idx, lm in enumerate(results.multi_hand_landmarks):
+                    label = results.multi_handedness[idx].classification[0].label
+                    self._process_hand(label, lm.landmark, crw, crh, now)
+            self._panel.update_game_state(self._game)
+            if self._game.state == GeniusGame.STATE_GAME_OVER:
+                self._panel.switch_to_gameover(self._game)
+
+        self._camera_widget.set_frame(frame_rgb)
+        self._camera_widget.set_results(results)
+        self._camera_widget.update()
+
+        self._fps_counter += 1
+        elapsed = now - self._fps_last_time
+        if elapsed >= 1.0:
+            self._panel.update_fps(self._fps_counter / elapsed)
+            self._fps_counter = 0; self._fps_last_time = now
+
+    def _process_hand(self, label: str, landmarks, frame_w: int, frame_h: int, now: float) -> None:
+        ref   = landmarks[4]
+        ref_x, ref_y = ref.x, ref.y
+        state   = self._hands_state[label]
+        prev_y  = state["prev_y"]
+        can_hit = state["can_hit"]
+        dy = ref_y - prev_y
+
+        hit_drum = None
+        for drum in self._drum_kit:
+            if drum.get("foot_only", False): continue
+            if check_collision(ref_x, ref_y, drum): hit_drum = drum; break
+
+        drum_center_y = hit_drum["pos"][1] if hit_drum else 0.0
+        if hit_drum is None or dy < -VELOCITY_THRESHOLD:
+            can_hit = True
+        elif ref_y < drum_center_y and dy < -VELOCITY_THRESHOLD:
+            can_hit = True
+
+        if hit_drum is not None and can_hit:
+            cursor_pos   = (int(ref_x * frame_w), int(ref_y * frame_h))
+            moved_enough = True
+            if state["last_hit_pos"] is not None and state["last_hit_drum"] == hit_drum["id"]:
+                lx, ly = state["last_hit_pos"]
+                moved_enough = ((cursor_pos[0]-lx)**2 + (cursor_pos[1]-ly)**2 >= MIN_REHIT_PIXELS**2)
+
+            if (dy > VELOCITY_THRESHOLD and moved_enough and
+                    (now - float(hit_drum.get("last_hit", 0))) >= DRUM_MIN_HIT_INTERVAL):
+                velocity = int(min(max((dy - TOUCH_VELOCITY)*10000, DRUM_MIN_VELOCITY), 127))
+                elem_key = hit_drum.get("element_key", "")
+                result   = self._game.player_hit(elem_key, now=now)
+                if result in ("correct", "wrong"):
+                    self._audio_queue.put((hit_drum["note"], velocity))
+                    hit_drum["last_hit"] = now; can_hit = False
+                    self._camera_widget.record_feedback(elem_key, result)
+                state["last_hit_pos"]  = cursor_pos
+                state["last_hit_drum"] = hit_drum["id"]
+
+        state["prev_y"] = ref_y; state["can_hit"] = can_hit
+
+    @Slot()
+    def _on_restart(self) -> None: self._start_game()
+
+    @Slot()
+    def _on_end(self) -> None: self.close()
+
+    @Slot(str)
+    def _on_difficulty_changed(self, diff: str) -> None:
+        self._current_difficulty = diff
+        self._drum_kit, self._unique_avail = self._build_kit(diff)
+        self._camera_widget.set_drum_kit(self._drum_kit)
+        if self._game.state not in (GeniusGame.STATE_IDLE, GeniusGame.STATE_GAME_OVER):
+            self._start_game()
+
+    def keyPressEvent(self, event):
+        key = event.key()
+        if key == Qt.Key_Escape:
+            self.close()
+        elif key == Qt.Key_Space:
+            if self._game.state in (GeniusGame.STATE_IDLE, GeniusGame.STATE_GAME_OVER):
+                self._start_game()
+        elif key in (Qt.Key_1, Qt.Key_2, Qt.Key_3):
+            if self._game.state in (GeniusGame.STATE_IDLE, GeniusGame.STATE_GAME_OVER):
+                self._panel._on_difficulty({Qt.Key_1:"easy", Qt.Key_2:"medium", Qt.Key_3:"hard"}[key])
+        else:
+            super().keyPressEvent(event)
+
+    def closeEvent(self, event):
+        self._frame_timer.stop()
+        self._hands_thread.close(); self._cam_thread.stop()
+        self._cap.release(); self._audio_queue.put(None)
+        event.accept()
 
 
-def _draw_center_banner(surface, w, h, big_font, font,
-                         title, subtitle,
-                         title_color, sub_color) -> None:
-    """Full-screen semi-transparent overlay with centered text."""
-    overlay = pygame.Surface((w, h), pygame.SRCALPHA)
-    overlay.fill((0, 0, 0, 160))
-    surface.blit(overlay, (0, 0))
-
-    t_surf = big_font.render(title, True, title_color)
-    s_surf = font.render(subtitle, True, sub_color)
-    cx = w // 2
-    cy = h // 2
-    surface.blit(t_surf, (cx - t_surf.get_width() // 2, cy - 50))
-    surface.blit(s_surf, (cx - s_surf.get_width() // 2, cy + 20))
-
-
-def _draw_small_banner(surface, w, y, font, text, bg_color, text_color) -> None:
-    """Small semi-transparent pill banner centred horizontally at y."""
-    surf = font.render(text, True, text_color)
-    pad  = 14
-    bw   = surf.get_width()  + pad * 2
-    bh   = surf.get_height() + pad
-    bx   = w // 2 - bw // 2
-    btn  = pygame.Surface((bw, bh), pygame.SRCALPHA)
-    btn.fill(bg_color)
-    surface.blit(btn, (bx, y))
-    surface.blit(surf, (bx + pad, y + pad // 2))
-
-
-# ── main entry point ──────────────────────────────────────────────────────
+# ---------------------------------------------------------------------------
+# Entry point  (same signature as original)
+# ---------------------------------------------------------------------------
 
 def start_drums_game(
     chosen_instrument=None,
@@ -522,215 +962,19 @@ def start_drums_game(
     hand_model_complexity: int = 1,
     difficulty: str = "easy",
 ):
-    """
-    Start the Genius-style drum game.
-
-    difficulty  – "easy" | "medium" | "hard"
-                  Controls demo speed, player timeout and number of extra
-                  drum elements added to the kit.  Can also be changed
-                  in-game with keys 1 / 2 / 3 from the IDLE or GAME_OVER screen.
-    """
+    """Launch the Genius Drums PySide6 window."""
     print(f">>> INICIANDO GENIUS DRUMS GAME [{difficulty.upper()}]")
-
-    # ── apply instrument profile ─────────────────────────────────────────
-    apply_drum_note_profile(chosen_instrument)
-
-    normalized_model = str(drum_model).strip().lower()
-    replace_base     = False
-    base_elements    = drums_elements   # elements explicitly requested by user (may be None)
-
-    if not replace_base and base_elements is None and chosen_instrument in DRUMS_INSTRUMENT_ELEMENT_PRESETS:
-        preset_elements = DRUMS_INSTRUMENT_ELEMENT_PRESETS.get(chosen_instrument, [])
-        base_elements   = [e for e in preset_elements if e in DRUM_ELEMENT_LIBRARY]
-        if chosen_instrument in DRUMS_INSTRUMENT_REPLACE_BASE:
-            replace_base = True
-
-    def _apply_kit(diff: str) -> tuple:
-        """(Re)configure DRUM_KIT for the given difficulty. Returns (unique_avail, indexed_elements)."""
-        merged = _merge_elements_for_difficulty(base_elements, diff)
-        configure_drum_kit(
-            normalized_model,
-            drums_elements=merged,
-            replace_base=replace_base,
-            instrument_name=chosen_instrument,
-        )
-        avail: list = []
-        seen_k: set = set()
-        for d in _kit():
-            k = d.get("element_key", "")
-            if not d.get("foot_only", False) and k not in seen_k:
-                avail.append(k)
-                seen_k.add(k)
-        indexed = list(enumerate(avail))
-        return avail, indexed
-
-    # Initial kit build
-    current_difficulty = difficulty if difficulty in ("easy", "medium", "hard") else "easy"
-    unique_avail, indexed_elements = _apply_kit(current_difficulty)
-
-    # ── audio setup ──────────────────────────────────────────────────────
-    FIXED_SF2_PATH = settings.SF2_PATHS["drums"]
-    fs_local, _ = init_fluidsynth(driver="dsound")
-    POLYPHONY_CHANNELS = 16
-    drum_sfid = -1
-    if fs_local is not None:
-        drum_sfid = load_single_soundfont(fs_local, "drums", FIXED_SF2_PATH)
-        if drum_sfid != -1:
-            for i in range(POLYPHONY_CHANNELS):
-                fs_local.program_select(i, drum_sfid, 128, 0)
-
-    if chosen_instrument and drum_sfid != -1:
-        if chosen_instrument in settings.INSTRUMENTS:
-            _, bank, preset = settings.INSTRUMENTS[chosen_instrument]
-            for i in range(POLYPHONY_CHANNELS):
-                fs_local.program_select(i, drum_sfid, bank, preset)
-            print(f">>> Kit: {chosen_instrument}")
-
-    # patch the module-level audio_queue consumer to use this fs instance
-    import numpy as np
-
-    def _audio_thread():
-        while True:
-            item = audio_queue.get()
-            if item is None:
-                break
-            note, velocity = item
-            ch = int(np.random.randint(0, POLYPHONY_CHANNELS))
-            fs_local.noteon(ch, note, velocity)
-
-    audio_t = threading.Thread(target=_audio_thread, daemon=True)
-    audio_t.start()
-
-    # ── resolution / pygame setup ─────────────────────────────────────────
-    if resolution_profile:
-        DISPLAY_W  = int(resolution_profile["display_width"])
-        DISPLAY_H  = int(resolution_profile["display_height"])
-        TARGET_FPS = int(resolution_profile["fps"])
-    else:
-        DISPLAY_W, DISPLAY_H, TARGET_FPS = 1280, 720, 60
-
-    DISPLAY_W, DISPLAY_H, adjusted, sw, sh = fit_resolution_to_screen(DISPLAY_W, DISPLAY_H)
-    if adjusted:
-        print(f">>> Resolução ajustada: {DISPLAY_W}x{DISPLAY_H}")
-
-    LOGICAL_W, LOGICAL_H = DISPLAY_W, DISPLAY_H
-
-    cap = setup_video_capture(width=LOGICAL_W, height=LOGICAL_H, fps=TARGET_FPS)
-    cam_thread = CameraThread(cap)
-    window_display, main_surface, font = setup_pygame_with_scaling(
-        logical_width=LOGICAL_W, logical_height=LOGICAL_H,
-        display_width=DISPLAY_W, display_height=DISPLAY_H,
-        title="Talking Hands — Genius Drums",
+    app = QApplication.instance() or QApplication(sys.argv)
+    load_custom_font()
+    win = GeniusWindow(
+        chosen_instrument=chosen_instrument,
+        resolution_profile=resolution_profile,
+        show_trackers=show_trackers,
+        drum_model=drum_model,
+        drums_elements=drums_elements,
+        hand_model_complexity=hand_model_complexity,
+        difficulty=difficulty,
     )
-    big_font   = pygame.font.SysFont("Arial", 42, bold=True)
-    names_font = pygame.font.SysFont("Arial", 12, bold=False)
-
-    # ── game state ────────────────────────────────────────────────────────
-    game = GeniusGame()
-
-    fps_tracker = FPSTracker(update_interval=10)
-
-    # ── MediaPipe setup ───────────────────────────────────────────────────
-    hand_complexity = max(0, min(1, int(hand_model_complexity)))
-    hands = MediaPipeHandsThread(
-        mp.solutions.hands.Hands(
-            max_num_hands=2,
-            model_complexity=hand_complexity,
-            min_detection_confidence=0.3,
-            min_tracking_confidence=0.3,
-        )
-    )
-
-    reset_hands_state()
-    running = True
-
-    try:
-        while running:
-            # ── pygame events ─────────────────────────────────────────────
-            for event in pygame.event.get():
-                if event.type == pygame.QUIT:
-                    running = False
-
-                elif event.type == pygame.KEYDOWN:
-                    if event.key == pygame.K_ESCAPE:
-                        running = False
-                    elif event.key == pygame.K_SPACE:
-                        if game.state in (game.STATE_IDLE, game.STATE_GAME_OVER):
-                            game.start(unique_avail, difficulty=current_difficulty)
-
-                    # ── difficulty selection (IDLE or GAME_OVER only) ───────
-                    elif event.key in (pygame.K_1, pygame.K_2, pygame.K_3):
-                        if game.state in (game.STATE_IDLE, game.STATE_GAME_OVER):
-                            new_diff = {pygame.K_1: "easy",
-                                        pygame.K_2: "medium",
-                                        pygame.K_3: "hard"}[event.key]
-                            if new_diff != current_difficulty:
-                                current_difficulty          = new_diff
-                                unique_avail, indexed_elements = _apply_kit(current_difficulty)
-                                print(f">>> Dificuldade: {current_difficulty.upper()}  "
-                                      f"({len(unique_avail)} elementos)")
-
-            # ── grab frame ────────────────────────────────────────────────
-            frame, grab_ts = cam_thread.get_latest()
-            if frame is None:
-                time.sleep(0.001)
-                continue
-
-            fps_tracker.update()
-
-            frame = cv2.resize(frame, (LOGICAL_W, LOGICAL_H))
-            frame = cv2.flip(frame, 1)
-            frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-
-            frame_surface = pygame.image.frombuffer(
-                frame_rgb.tobytes(), (LOGICAL_W, LOGICAL_H), "RGB"
-            )
-            main_surface.blit(frame_surface, (0, 0))
-
-            # ── game tick ─────────────────────────────────────────────────
-            game.update(_kit())
-
-            # play demo note if one was queued by the state machine
-            if game.pending_play_note is not None:
-                audio_queue.put(game.pending_play_note)
-
-            # ── draw drums ────────────────────────────────────────────────
-            _draw_game_drums(main_surface, LOGICAL_W, LOGICAL_H,
-                             names_font, game, indexed_elements)
-
-            # ── hand tracking (only process input during player turn / feedback) ──
-            frame_mp = prepare_mediapipe_frame(frame_rgb, LOGICAL_W, LOGICAL_H)
-            hands.submit_frame(frame_mp)
-            results = hands.get_latest_result()
-            if results.multi_hand_landmarks:
-                for idx, landmarks in enumerate(results.multi_hand_landmarks):
-                    lbl = results.multi_handedness[idx].classification[0].label
-                    _process_hand_game(
-                        lbl, landmarks.landmark,
-                        LOGICAL_W, LOGICAL_H,
-                        main_surface, game,
-                        show_trackers=show_trackers,
-                    )
-
-            # ── HUD overlay ───────────────────────────────────────────────
-            _draw_game_hud(main_surface, LOGICAL_W, LOGICAL_H,
-                           font, big_font, game, indexed_elements,
-                           difficulty=current_difficulty)
-
-            window_display.blit(main_surface, (0, 0))
-            pygame.display.flip()
-
-    except Exception as exc:
-        print(f"Erro Runtime (game): {exc}")
-        import traceback
-        traceback.print_exc()
-    finally:
-        try:
-            hands.close()
-        except Exception:
-            pass
-        cam_thread.stop()
-        cap.release()
-        pygame.quit()
-        audio_queue.put(None)
-        print(">>> Genius Drums Encerrado.")
+    win.showFullScreen()
+    app.exec()
+    print(">>> Genius Drums encerrado.")

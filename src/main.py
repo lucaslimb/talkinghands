@@ -489,11 +489,7 @@ def parse_args():
     parser = create_argparse()
     args = parser.parse_args()
     
-    # Validate that instrument is provided (unless help or test-cam was requested)
-    if not args.instrument and not args.help and not args.test_cam:
-        parser.print_help()
-        print("\nERROR: --instrument is required")
-        sys.exit(1)
+    # No instrument given — caller will open the graphical menu with the rest of the args intact
     
     # Handle help flag
     if args.help:
@@ -814,8 +810,17 @@ def main():
         #     sys.exit(1)
         
         args = parse_args()
-        
-        # Handle --test-cam early and exit
+
+        # No instrument given → open graphical menu
+        if not args.instrument and not args.help and not args.test_cam:
+            effective_res, rtcfg = resolve_execution_runtime(args)
+            from src.menu import start_menu
+            start_menu(
+                resolution_profile=effective_res,
+                show_trackers=args.trackers,
+                hand_model_complexity=rtcfg["hand_model_complexity"],
+            )
+            return
         if args.test_cam:
             print("\n>>> Running camera + model complexity test...\n")
             # Load test-fps.py module by spec (handles hyphen in filename)
