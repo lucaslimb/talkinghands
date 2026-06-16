@@ -1292,7 +1292,7 @@ def start_piano_ui(chosen_instrument="Piano", user_sustain=None,
         touch_tolerance=touch_tolerance,
     )
     win.showFullScreen()
-
+    print(">>> MODO PRONTO")
     app.exec()
     print(">>> Piano UI encerrado.")
 

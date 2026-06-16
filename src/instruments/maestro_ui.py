@@ -1246,7 +1246,7 @@ def start_maestro_ui(resolution_profile=None, show_trackers=False,
         rec_options=rec_options,
     )
     win.showFullScreen()
-
+    print(">>> MODO PRONTO")
     app.exec()
     print(">>> Maestro UI encerrado.")
 

@@ -1590,6 +1590,7 @@ def start_piano_tiles_ui(
         song=song,
     )
     win.showFullScreen()
+    print(">>> MODO PRONTO")
     app.exec()
     print(">>> Piano Tiles UI encerrado.")
 

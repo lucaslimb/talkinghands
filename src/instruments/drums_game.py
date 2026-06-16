@@ -976,5 +976,6 @@ def start_drums_game(
         difficulty=difficulty,
     )
     win.showFullScreen()
+    print(">>> MODO PRONTO")
     app.exec()
     print(">>> Genius Drums encerrado.")

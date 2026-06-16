@@ -1685,6 +1685,7 @@ def start_drums_ui(chosen_instrument="Classic", user_tolerance=None,
         rec_options=rec_options,
     )
     win.showFullScreen()
+    print(">>> MODO PRONTO")
     app.exec()
     print(">>> Bateria UI encerrada.")
 

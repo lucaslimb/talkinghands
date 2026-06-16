@@ -15,9 +15,9 @@ from pathlib import Path
 
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QHBoxLayout, QVBoxLayout, QLabel,
-    QPushButton, QFrame, QSizePolicy, QStackedWidget, QScrollArea, QGridLayout,
+    QPushButton, QFrame, QSizePolicy, QStackedWidget, QScrollArea, QGridLayout, QProgressBar
 )
-from PySide6.QtCore import Qt, Signal, Slot
+from PySide6.QtCore import Qt, Signal, Slot, QEventLoop
 from PySide6.QtGui import QCursor, QFontDatabase, QFont
 
 FILE_PATH    = Path(__file__).resolve()
@@ -95,17 +95,17 @@ PIANO_TILES_SONGS = [
 
 PRACTICE_INSTRUMENTS = [
     {
-        "id": "piano",   "label": "Piano",   "icon": "Piano",
+        "id": "piano",   "label": "Piano",   "icon": "🎹",
         "type": "keyboard",  "subtitle": "Toque notas com os dedos",
         "variants": PIANO_VARIANTS,
     },
     {
-        "id": "bateria", "label": "Bateria", "icon": "Bateria",
+        "id": "bateria", "label": "Bateria", "icon": "🥁",
         "type": "drums",     "subtitle": "Percussao com as maos",
         "variants": DRUMS_VARIANTS,
     },
     {
-        "id": "maestro", "label": "Maestro", "icon": "Maestro",
+        "id": "maestro", "label": "Maestro", "icon": "🪄",
         "type": "maestro",   "subtitle": "Instrumento gestual expressivo",
         "variants": [],
     },
@@ -113,12 +113,12 @@ PRACTICE_INSTRUMENTS = [
 
 GAME_INSTRUMENTS = [
     {
-        "id": "piano_tiles",  "label": "Piano Tiles",  "icon": "Tiles",
+        "id": "piano_tiles",  "label": "Piano Tiles",  "icon": "⬛",
         "type": "keyboard_game", "subtitle": "Toque as notas na hora certa",
         "variants": PIANO_VARIANTS, "songs": PIANO_TILES_SONGS,
     },
     {
-        "id": "genius_drums", "label": "Genius Drums", "icon": "Genius",
+        "id": "genius_drums", "label": "Genius Drums", "icon": "🧠",
         "type": "drums_game",    "subtitle": "Repita a sequencia da bateria",
         "variants": DRUMS_VARIANTS, "songs": [],
     },
@@ -161,20 +161,22 @@ class InstrumentCard(ClickableFrame):
         vl.setSpacing(5)
         vl.setAlignment(Qt.AlignCenter)
 
-        # Icon label - no custom font so system handles it
+        # Icon label - applying emoji font and removing rogue borders
         self._ico = QLabel(icon)
         self._ico.setAlignment(Qt.AlignCenter)
-        self._ico.setStyleSheet("background: transparent; font-size: 14px; font-weight: bold;")
+        self._ico.setStyleSheet(f"background: transparent; {EMOJI_FONT_CSS} font-size: 32px; border: none;")
         vl.addWidget(self._ico)
 
         self._lbl = QLabel(label)
         self._lbl.setAlignment(Qt.AlignCenter)
+        self._lbl.setStyleSheet("background: transparent; border: none;")
         vl.addWidget(self._lbl)
 
         if subtitle:
             self._sub = QLabel(subtitle)
             self._sub.setAlignment(Qt.AlignCenter)
             self._sub.setWordWrap(True)
+            self._sub.setStyleSheet("background: transparent; border: none;")
             vl.addWidget(self._sub)
         else:
             self._sub = None
@@ -187,25 +189,25 @@ class InstrumentCard(ClickableFrame):
                 f"QFrame#instrCard {{ background-color: {MENU_CARD_DARK};"
                 f" border: 1px solid {MENU_CARD_DARK}; border-radius: 10px; }}"
             )
-            self._ico.setStyleSheet(f"background: transparent; font-size: 14px; font-weight: bold; color: {MENU_CARD_DARK_TEXT};")
+            self._ico.setStyleSheet(f"background: transparent; {EMOJI_FONT_CSS} font-size: 32px; color: {MENU_CARD_DARK_TEXT}; border: none;")
             self._lbl.setStyleSheet(
-                f"color: {MENU_CARD_DARK_TEXT}; background: transparent;"
-                f" font-size: {FONT_SIZE_MD}px; font-weight: bold; font-family: {FONT_FAMILY};"
+                f"color: {MENU_CARD_DARK_TEXT}; background: transparent; border: none;"
+                f" font-size: 18px; font-weight: bold; font-family: {FONT_FAMILY};"
             )
             if self._sub:
-                self._sub.setStyleSheet("color: rgba(255,255,255,0.65); background: transparent; font-size: 11px;")
+                self._sub.setStyleSheet("color: rgba(255,255,255,0.65); background: transparent; border: none; font-size: 13px;")
         else:
             self.setStyleSheet(
                 f"QFrame#instrCard {{ background-color: {MENU_CARD_BG};"
                 f" border: 1px solid {MENU_CARD_BORDER}; border-radius: 10px; }}"
             )
-            self._ico.setStyleSheet(f"background: transparent; font-size: 14px; font-weight: bold; color: {MENU_TEXT_MAIN};")
+            self._ico.setStyleSheet(f"background: transparent; {EMOJI_FONT_CSS} font-size: 32px; color: {MENU_TEXT_MAIN}; border: none;")
             self._lbl.setStyleSheet(
-                f"color: {MENU_TEXT_MAIN}; background: transparent;"
-                f" font-size: {FONT_SIZE_MD}px; font-weight: bold; font-family: {FONT_FAMILY};"
+                f"color: {MENU_TEXT_MAIN}; background: transparent; border: none;"
+                f" font-size: 18px; font-weight: bold; font-family: {FONT_FAMILY};"
             )
             if self._sub:
-                self._sub.setStyleSheet(f"color: {MENU_TEXT_SUB}; background: transparent; font-size: 11px;")
+                self._sub.setStyleSheet(f"color: {MENU_TEXT_SUB}; background: transparent; border: none; font-size: 13px;")
 
     def set_selected(self, v: bool) -> None:
         self._selected = v
@@ -278,7 +280,7 @@ class ModeCard(ClickableFrame):
 
         header = QHBoxLayout()
         em = QLabel(icon)
-        em.setStyleSheet("background: transparent; font-size: 18px; font-weight: bold;")
+        em.setStyleSheet(f"background: transparent; {EMOJI_FONT_CSS} font-size: 20px;")
         header.addWidget(em)
         header.addStretch()
         arrow = QLabel("->")
@@ -310,7 +312,7 @@ class StatCard(QFrame):
         hl.setSpacing(12)
 
         ic = QLabel(icon)
-        ic.setStyleSheet("background: transparent; font-size: 16px;")
+        ic.setStyleSheet(f"background: transparent; {EMOJI_FONT_CSS} font-size: 20px;")
         hl.addWidget(ic)
 
         vl2 = QVBoxLayout()
@@ -340,9 +342,8 @@ class SidebarButton(ClickableFrame):
         hl.setContentsMargins(10, 0, 10, 0)
         hl.setSpacing(8)
 
-        # Icon: use default system font so symbols render
         self._ico = QLabel(icon)
-        self._ico.setFixedWidth(20)
+        self._ico.setFixedWidth(24) # Increased slightly to fit emojis cleanly
         self._ico.setAlignment(Qt.AlignCenter)
         hl.addWidget(self._ico)
 
@@ -361,12 +362,12 @@ class SidebarButton(ClickableFrame):
     def _apply(self, v: bool) -> None:
         if v:
             self.setStyleSheet(f"QFrame {{ background-color: {MENU_CARD_BG}; border-radius: 6px; border: none; }}")
-            self._ico.setStyleSheet(f"background: transparent; font-size: 14px; color: {MENU_TEXT_MAIN};")
+            self._ico.setStyleSheet(f"background: transparent; {EMOJI_FONT_CSS} font-size: 16px; color: {MENU_TEXT_MAIN};")
             self._txt.setStyleSheet(f"background: transparent; font-size: {FONT_SIZE_SM}px; font-weight: bold; color: {MENU_TEXT_MAIN}; font-family: {FONT_FAMILY};")
         else:
-            self.setStyleSheet(f"QFrame {{ background-color: transparent; border-radius: 6px; border: none; }} QFrame:hover {{ background-color: {MENU_CARD_HOVER}; }}")
-            self._ico.setStyleSheet(f"background: transparent; font-size: 14px; color: {MENU_TEXT_MAIN};")
-            self._txt.setStyleSheet(f"background: transparent; font-size: {FONT_SIZE_SM}px; color: {MENU_TEXT_MAIN}; font-family: {FONT_FAMILY};")
+           self.setStyleSheet(f"QFrame {{ background-color: transparent; border-radius: 6px; border: none; }} QFrame:hover {{ background-color: {MENU_CARD_HOVER}; }}")
+           self._ico.setStyleSheet(f"background: transparent; {EMOJI_FONT_CSS} font-size: 16px; color: {MENU_TEXT_MAIN};")
+           self._txt.setStyleSheet(f"background: transparent; font-size: {FONT_SIZE_SM}px; color: {MENU_TEXT_MAIN}; font-family: {FONT_FAMILY};")
 
 
 class Sidebar(QWidget):
@@ -425,11 +426,11 @@ class Sidebar(QWidget):
             self._buttons[page_id] = b
 
         _section("MODOS")
-        _btn("home",      "[~]", "Home")
-        _btn("pratica",   "[P]", "Pratica")
-        _btn("jogo",      "[J]", "Jogo")
+        _btn("home",      "🏠", "Home")
+        _btn("pratica",   "🎹", "Pratica")
+        _btn("jogo",      "🎮", "Jogo")
         _section("SISTEMA")
-        _btn("gravacoes", "[R]", "Gravacoes")
+        _btn("gravacoes", "⏺️", "Gravacoes")
 
         nav_vl.addStretch()
         vl.addWidget(nav_w, 1)
@@ -488,17 +489,17 @@ class HomePage(QWidget):
             c.clicked.connect(lambda pid=page_id: self.mode_selected.emit(pid))
             cards_row.addWidget(c)
 
-        _card("[P]", "Pratica",    "Toque livremente",     "pratica",   dark=True)
-        _card("[J]", "Jogo",       "Desafios ritmicos",    "jogo")
-        _card("[R]", "Gravacoes",  "Ouca suas sessoes",    "gravacoes")
+        _card("🎹", "Pratica",    "Toque livremente",     "pratica",   dark=True)
+        _card("🎮", "Jogo",       "Desafios ritmicos",    "jogo")
+        _card("⏺️", "Gravacoes",  "Ouca suas sessoes",    "gravacoes")
         outer.addLayout(cards_row)
         outer.addSpacing(24)
 
         stats_row = QHBoxLayout()
         stats_row.setSpacing(12)
-        stats_row.addWidget(StatCard("[t]", "TEMPO HOJE",      "--"))
-        stats_row.addWidget(StatCard("[%]", "PRECISAO MEDIA",  "--"))
-        stats_row.addWidget(StatCard("[s]", "SEQUENCIA",       "--"))
+        stats_row.addWidget(StatCard("⏱️", "TEMPO HOJE",      "--"))
+        stats_row.addWidget(StatCard("🎯", "PRECISAO MEDIA",  "--"))
+        stats_row.addWidget(StatCard("🔥", "SEQUENCIA",       "--"))
         outer.addLayout(stats_row)
         outer.addStretch()
 
@@ -686,17 +687,47 @@ class PraticaPage(QWidget):
         main_row.addWidget(self._variant_panel)
         outer.addLayout(main_row, 1)
 
-        btn_row = QHBoxLayout()
-        btn_row.addStretch()
+        # DELETE the old btn_row and self._progress code, replace with this:
+        self._action_stack = QStackedWidget()
+        self._action_stack.setFixedHeight(50) # Prevents layout jumping
+        
+        btn_page = QWidget()
+        btn_layout = QHBoxLayout(btn_page)
+        btn_layout.setContentsMargins(0, 0, 0, 0)
+        btn_layout.addStretch()
         self._start_btn = QPushButton(">  Iniciar Pratica")
         self._start_btn.setObjectName("menuStartBtn")
         self._start_btn.setFixedHeight(BTN_HEIGHT + 6)
         self._start_btn.setMinimumWidth(200)
         self._start_btn.clicked.connect(self._on_start)
-        btn_row.addWidget(self._start_btn)
-        outer.addLayout(btn_row)
+        btn_layout.addWidget(self._start_btn)
+        self._action_stack.addWidget(btn_page)
+
+        prog_page = QWidget()
+        prog_layout = QVBoxLayout(prog_page)
+        prog_layout.setContentsMargins(0, 0, 0, 0)
+        prog_layout.setAlignment(Qt.AlignBottom)
+        self._progress = QProgressBar()
+        self._progress.setTextVisible(False)
+        self._progress.setFixedHeight(24)
+        self._progress.setStyleSheet(
+            f"QProgressBar {{ background-color: {MENU_CARD_BORDER}; border-radius: 12px; border: none; }}"
+            f"QProgressBar::chunk {{ background-color: {MENU_CARD_DARK}; border-radius: 12px; }}"
+        )
+        prog_layout.addWidget(self._progress)
+        self._action_stack.addWidget(prog_page)
+
+        outer.addWidget(self._action_stack)
 
         self._on_instrument_changed(PRACTICE_INSTRUMENTS[0]["id"])
+
+    def set_loading_state(self, is_loading: bool):
+        self._action_stack.setCurrentIndex(1 if is_loading else 0)
+        if is_loading:
+            self._progress.setValue(0)
+
+    def update_progress(self, val: int):
+        self._progress.setValue(val)
 
     def _get_info(self, id_: str) -> dict:
         return next((i for i in PRACTICE_INSTRUMENTS if i["id"] == id_), {})
@@ -821,18 +852,48 @@ class JogoPage(QWidget):
         self._song_frame.setSizePolicy(_sp3)
         outer.addWidget(self._song_frame)
 
-        btn_row = QHBoxLayout()
-        btn_row.addStretch()
+        # DELETE the old btn_row and self._progress code, replace with this:
+        self._action_stack = QStackedWidget()
+        self._action_stack.setFixedHeight(50)
+        
+        btn_page = QWidget()
+        btn_layout = QHBoxLayout(btn_page)
+        btn_layout.setContentsMargins(0, 0, 0, 0)
+        btn_layout.addStretch()
         self._start_btn = QPushButton(">  Iniciar Jogo")
         self._start_btn.setObjectName("menuStartBtn")
         self._start_btn.setFixedHeight(BTN_HEIGHT + 6)
         self._start_btn.setMinimumWidth(200)
         self._start_btn.clicked.connect(self._on_start)
-        btn_row.addWidget(self._start_btn)
-        outer.addLayout(btn_row)
+        btn_layout.addWidget(self._start_btn)
+        self._action_stack.addWidget(btn_page)
+
+        prog_page = QWidget()
+        prog_layout = QVBoxLayout(prog_page)
+        prog_layout.setContentsMargins(0, 0, 0, 0)
+        prog_layout.setAlignment(Qt.AlignBottom)
+        self._progress = QProgressBar()
+        self._progress.setTextVisible(False)
+        self._progress.setFixedHeight(24)
+        self._progress.setStyleSheet(
+            f"QProgressBar {{ background-color: {MENU_CARD_BORDER}; border-radius: 12px; border: none; }}"
+            f"QProgressBar::chunk {{ background-color: {MENU_CARD_DARK}; border-radius: 12px; }}"
+        )
+        prog_layout.addWidget(self._progress)
+        self._action_stack.addWidget(prog_page)
+
+        outer.addWidget(self._action_stack)
 
         self._on_game_changed(GAME_INSTRUMENTS[0]["id"])
         self._apply_diff_styles()
+
+    # Update this method:
+    def set_loading_state(self, is_loading: bool):
+        self._action_stack.setCurrentIndex(1 if is_loading else 0)
+        if is_loading:
+            self._progress.setValue(0)
+    def update_progress(self, val: int):
+        self._progress.setValue(val)
 
     def _get_info(self, id_: str) -> dict:
         return next((i for i in GAME_INSTRUMENTS if i["id"] == id_), {})
@@ -960,8 +1021,8 @@ class RecordingsPage(QWidget):
             hl.setContentsMargins(16, 0, 16, 0)
             hl.setSpacing(12)
 
-            ic = QLabel("[*]")
-            ic.setStyleSheet("background: transparent; font-size: 14px;")
+            ic = QLabel("🎵")
+            ic.setStyleSheet(f"background: transparent; {EMOJI_FONT_CSS} font-size: 16px;")
             hl.addWidget(ic)
 
             col = QVBoxLayout()
@@ -1026,7 +1087,8 @@ QPushButton#menuStartBtn:hover {{
 
 class MainMenuWindow(QMainWindow):
     launch_triggered = Signal(dict)
-
+    closed_by_user = Signal()
+    
     def __init__(
         self,
         resolution_profile=None,
@@ -1072,6 +1134,28 @@ class MainMenuWindow(QMainWindow):
         self._jogo.nav_requested.connect(self._show_page)
         self._pratica.launch_requested.connect(self.launch_triggered)
         self._jogo.launch_requested.connect(self.launch_triggered)
+
+    def closeEvent(self, event):
+        """Intercepts the native window close to exit the local event loop safely."""
+        self.closed_by_user.emit()
+        super().closeEvent(event)
+
+    def set_loading_state(self, is_loading: bool):
+        # Guarantee EVERY page gets reset
+        for i in range(self._stack.count()):
+            page = self._stack.widget(i)
+            if hasattr(page, "set_loading_state"):
+                page.set_loading_state(is_loading)
+                
+        # Force the sidebar to update its visuals immediately
+        self._sidebar.setDisabled(is_loading)
+        self._sidebar.repaint()
+
+    def update_progress(self, val: int):
+        idx = self._stack.currentIndex()
+        page = self._stack.widget(idx)
+        if hasattr(page, "update_progress"):
+            page.update_progress(val)
 
     @Slot(str)
     def _show_page(self, page_id: str) -> None:
@@ -1150,58 +1234,122 @@ def _execute_launch(
 # Entry point
 # ---------------------------------------------------------------------------
 
+class LoadingStream:
+    """Intercepts stdout/stderr to forward lines to a callback for progress tracking."""
+    def __init__(self, original_stream, callback):
+        self.original_stream = original_stream
+        self.callback = callback
+
+    def write(self, text):
+        self.original_stream.write(text)
+        self.callback(text)
+
+    def flush(self):
+        self.original_stream.flush()
+
+
 def start_menu(
     resolution_profile=None,
     show_trackers: bool = False,
     hand_model_complexity: int = 1,
 ) -> None:
-    """
-    Main menu loop.
-
-    Architecture: single QApplication, no nested event loops.
-    - Menu shows with quitOnLastWindowClosed=False
-    - User clicks Start -> store config, hide menu, call app.quit()
-    - Outer app.exec() returns
-    - _execute_launch() runs (instruments call app.exec() themselves;
-      quitOnLastWindowClosed=True so closing the instrument window exits
-      their app.exec())
-    - Loop continues, menu shows again
-    """
     app = QApplication.instance() or QApplication(sys.argv)
     load_custom_font()
+    app.setQuitOnLastWindowClosed(False)
 
+    # Create ONE window and reuse it across sessions — avoids the two-window flash.
     win = MainMenuWindow(resolution_profile, show_trackers, hand_model_complexity)
-    _state: dict = {"pending": None}
-
-    def on_launch(config: dict) -> None:
-        _state["pending"] = config
-        win.hide()
-        app.quit()
-
-    win.launch_triggered.connect(on_launch)
 
     while True:
-        _state["pending"] = None
-        app.setQuitOnLastWindowClosed(False)   # closing menu should not quit
-        win.showMaximized()
-        app.exec()                             # runs until on_launch calls app.quit()
+        # 1. RESET WINDOW TO CLEAN STATE and show it
+        win.set_loading_state(False)
+        _state: dict = {"pending": None, "closed": False}
+        menu_loop = QEventLoop()
 
-        if _state["pending"] is None:
-            # User closed the window without launching
+        def on_launch(config: dict) -> None:
+            _state["pending"] = config
+            # Show loading bar immediately so the user gets feedback
+            win.set_loading_state(True)
+            app.processEvents()
+            menu_loop.quit()
+
+        def on_closed() -> None:
+            _state["closed"] = True
+            menu_loop.quit()
+
+        win.launch_triggered.connect(on_launch)
+        win.closed_by_user.connect(on_closed)
+
+        # 2. SHOW AND WAIT
+        win.showMaximized()
+        menu_loop.exec()  # Blocks until user clicks start or closes window
+
+        win.launch_triggered.disconnect(on_launch)
+        win.closed_by_user.disconnect(on_closed)
+
+        # 3. EXIT CONDITION
+        if _state["closed"] or _state["pending"] is None:
             break
 
-        # Instrument window closing should exit its own event loop
+        # 4. INTERCEPT STDOUT/STDERR to drive the progress bar
+        original_stdout = sys.stdout
+        original_stderr = sys.stderr
+        current_progress = [0]
+
+        def handle_log(text: str) -> None:
+            text_lower = text.lower()
+            prev = current_progress[0]
+
+            # Order matches the real startup log sequence:
+            # pygame → playback → fluidsynth → bancos de som → carregado (soundfont)
+            # → xnnpack/tensorflow → som: → MODO PRONTO
+            if   "pygame"             in text_lower and prev < 15:  current_progress[0] = 15
+            elif "playback carregado" in text_lower and prev < 30:  current_progress[0] = 30
+            elif "fluidsynth"         in text_lower and prev < 40:  current_progress[0] = 40
+            elif "bancos de som"      in text_lower and prev < 55:  current_progress[0] = 55
+            elif "carregado:"         in text_lower and prev < 65:  current_progress[0] = 65
+            elif ("tensorflow" in text_lower or "xnnpack" in text_lower) and prev < 80:
+                current_progress[0] = 80
+            elif "som:"               in text_lower and prev < 90:  current_progress[0] = 90
+            elif "modo pronto"        in text_lower and prev < 100: current_progress[0] = 100
+
+            if current_progress[0] != prev:
+                win.update_progress(current_progress[0])
+                app.processEvents()
+
+            # Once fully loaded, hide the menu so the instrument window takes focus
+            if current_progress[0] == 100 and win.isVisible():
+                win.hide()
+                app.processEvents()
+
+        sys.stdout = LoadingStream(original_stdout, handle_log)
+        sys.stderr = LoadingStream(original_stderr, handle_log)
+
+        # 5. LAUNCH — blocks here while the instrument event loop runs.
+        # quitOnLastWindowClosed must be True so that app.exec() inside each
+        # start_* function actually returns when the instrument window is closed.
         app.setQuitOnLastWindowClosed(True)
-        _execute_launch(
-            _state["pending"],
-            resolution_profile,
-            show_trackers,
-            hand_model_complexity,
-        )
-        # _execute_launch returned -> instrument was closed -> loop back to show menu
+        try:
+            _execute_launch(
+                _state["pending"],
+                resolution_profile,
+                show_trackers,
+                hand_model_complexity,
+            )
+        finally:
+            # 6. RESTORE streams; keep quitOnLast=False for the menu loop
+            app.setQuitOnLastWindowClosed(False)
+            sys.stdout = original_stdout
+            sys.stderr = original_stderr
+            win.hide()
+            app.processEvents()
 
+    win.hide()
+    win.close()
+    win.deleteLater()
+    app.processEvents()
     print(">>> Menu encerrado.")
-
+    app.quit()
 
 if __name__ == "__main__":
     start_menu()
