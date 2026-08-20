@@ -271,6 +271,7 @@ class DrumGameOverlayWidget(QWidget):
         self._hit_feedback: dict = {}
         self._show_trackers = False
         self._detecting     = False
+        self._countdown_num = 0
 
     def set_frame(self, frame_rgb) -> None:       self._frame_rgb = frame_rgb
     def set_results(self, results) -> None:
@@ -279,6 +280,7 @@ class DrumGameOverlayWidget(QWidget):
     def set_drum_kit(self, kit: list) -> None:    self._drum_kit = kit
     def set_game(self, game) -> None:             self._game = game
     def set_show_trackers(self, v: bool) -> None: self._show_trackers = v
+    def set_countdown(self, n: int) -> None:      self._countdown_num = n
 
     def record_feedback(self, element_key: str, result: str) -> None:
         self._hit_feedback[element_key] = {"result": result, "ts": time.time()}
@@ -308,6 +310,8 @@ class DrumGameOverlayWidget(QWidget):
 
         self._draw_detecting_badge(painter)
         self._draw_state_banner(painter, w, h)
+        if self._countdown_num > 0:
+            self._draw_countdown(painter, w, h)
         painter.end()
 
     def _draw_drum_pads(self, painter, w, h):
@@ -406,7 +410,7 @@ class DrumGameOverlayWidget(QWidget):
             painter.fillRect(0, 0, w, h, QColor(0, 0, 0, 155))
             if state == GeniusGame.STATE_IDLE:
                 self._center_banner(painter, w, h, "GENIUS DRUMS",
-                    "Selecione a dificuldade e clique em Iniciar",
+                    "Prepare-se para tocar",
                     QColor(255,220,60), QColor(180,180,255))
             else:
                 is_new = self._game.score == self._game.best_score and self._game.score > 0
@@ -425,6 +429,16 @@ class DrumGameOverlayWidget(QWidget):
         painter.setFont(f_sm); fm2 = painter.fontMetrics()
         painter.setPen(sc)
         painter.drawText(cx - fm2.horizontalAdvance(subtitle)//2, cy + 30, subtitle)
+
+    def _draw_countdown(self, painter, w, h):
+        text = str(self._countdown_num)
+        font = QFont(FONT_FAMILY, min(w, h) // 4)
+        font.setBold(True)
+        painter.setFont(font)
+        metrics = painter.fontMetrics()
+        painter.setPen(QColor(255, 255, 255))
+        painter.drawText((w - metrics.horizontalAdvance(text)) // 2,
+                         (h + metrics.height()) // 2, text)
 
     def _small_banner(self, painter, w, y, text, bg, tc):
         f = QFont(FONT_FAMILY, FONT_SIZE_MD); f.setBold(True)
@@ -461,7 +475,6 @@ class ScalingLabel(QLabel):
 class GeniusGamePanel(QWidget):
     restart_clicked    = Signal()
     end_clicked        = Signal()
-    difficulty_changed = Signal(str)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -563,17 +576,6 @@ class GeniusGamePanel(QWidget):
         div.setStyleSheet(f"background-color: {GAME_BORDER_LIGHT};"); outer.addWidget(div)
 
         ng = QWidget(); ngl = QVBoxLayout(ng); ngl.setContentsMargins(8,6,8,6); ngl.setSpacing(5)
-        nl = QLabel("NOVA PARTIDA"); nl.setObjectName("gameStatSectionLabel")
-        nl.setAlignment(Qt.AlignCenter); ngl.addWidget(nl)
-
-        diff_row = QHBoxLayout(); diff_row.setSpacing(5); self._diff_btns = {}
-        for diff, lbl_text in _DIFF_LABELS_DISPLAY.items():
-            btn = QPushButton(lbl_text); btn.setObjectName(f"gameDiffBtn_{diff}")
-            btn.setCheckable(True); btn.setChecked(diff == self._current_difficulty)
-            btn.clicked.connect(lambda _c, d=diff: self._on_difficulty(d))
-            diff_row.addWidget(btn); self._diff_btns[diff] = btn
-        ngl.addLayout(diff_row)
-
         self._start_btn = QPushButton("▶  Jogar Novamente"); self._start_btn.setObjectName("gameStartBtn")
         self._start_btn.setFixedHeight(BTN_HEIGHT + 2); self._start_btn.clicked.connect(self.restart_clicked.emit)
         ngl.addWidget(self._start_btn, 1)
@@ -583,18 +585,6 @@ class GeniusGamePanel(QWidget):
         return page
 
     # ── public API ────────────────────────────────────────────────────────
-
-    def switch_to_idle(self) -> None:
-        """Show the gameover/start page in its initial (pre-game) state."""
-        self._result_title.setText("GENIUS DRUMS")
-        self._result_title.setObjectName("gameResultTitle")
-        self._result_title.style().unpolish(self._result_title)
-        self._result_title.style().polish(self._result_title)
-        self._result_score_label.setText("—")
-        self._result_round_label.setText("—")
-        self._result_best_label.setText("—")
-        self._start_btn.setText("▶  Iniciar")
-        self._stack.setCurrentIndex(1)
 
     def switch_to_playing(self) -> None:
         self._update_diff_badge(self._current_difficulty)
@@ -628,21 +618,15 @@ class GeniusGamePanel(QWidget):
     def reset_pause(self) -> None:
         self._pause_btn.setChecked(False); self._pause_btn.setText("⏸  Pausar")
 
-    def get_difficulty(self) -> str:
-        return self._current_difficulty
-
     def set_game_for_dots(self, game) -> None:
         self._seq_dots.set_game(game)
 
+    def set_difficulty(self, diff: str) -> None:
+        self._current_difficulty = diff
+        self._update_diff_badge(diff)
+
     def _on_pause_click(self, checked: bool) -> None:
         self._pause_btn.setText("▶  Retomar" if checked else "⏸  Pausar")
-
-    def _on_difficulty(self, diff: str) -> None:
-        self._current_difficulty = diff
-        for d, btn in self._diff_btns.items():
-            btn.setChecked(d == diff)
-        self._update_diff_badge(diff)
-        self.difficulty_changed.emit(diff)
 
     def _update_diff_badge(self, diff: str) -> None:
         col = _DIFFICULTY_COLOR_QSS.get(diff, GAME_ACCENT)
@@ -725,6 +709,8 @@ class GeniusWindow(QMainWindow):
 
         self._current_difficulty = difficulty if difficulty in ("easy","medium","hard") else "easy"
         self._drum_kit, self._unique_avail = self._build_kit(self._current_difficulty)
+        self._countdown_val = 0
+        self._countdown_timer = None
 
         self._game = GeniusGame()
 
@@ -760,6 +746,7 @@ class GeniusWindow(QMainWindow):
         self._frame_timer = QTimer(self)
         self._frame_timer.timeout.connect(self._on_frame_tick)
         self._frame_timer.start(1)
+        QTimer.singleShot(400, self._start_game)
 
     def _build_kit(self, difficulty: str):
         merged = _merge_elements_for_difficulty(self._base_elements, difficulty)
@@ -805,9 +792,8 @@ class GeniusWindow(QMainWindow):
         self._panel = GeniusGamePanel()
         self._panel.restart_clicked.connect(self._on_restart)
         self._panel.end_clicked.connect(self._on_end)
-        self._panel.difficulty_changed.connect(self._on_difficulty_changed)
+        self._panel.set_difficulty(self._current_difficulty)
         self._panel.set_game_for_dots(self._game)
-        self._panel.switch_to_idle()
         main_layout.addWidget(self._panel, 30)
 
         self._camera_widget = DrumGameOverlayWidget()
@@ -817,6 +803,8 @@ class GeniusWindow(QMainWindow):
         main_layout.addWidget(self._camera_widget, 70)
 
     def _start_game(self) -> None:
+        if self._countdown_timer is not None and self._countdown_timer.isActive():
+            return
         self._is_paused = False
         self._panel.reset_pause()
         self._panel.switch_to_playing()
@@ -824,6 +812,20 @@ class GeniusWindow(QMainWindow):
         self._camera_widget.set_game(self._game)
         for s in self._hands_state.values():
             s.update({"prev_y": 0.5, "can_hit": True, "last_hit_pos": None, "last_hit_drum": -1})
+        self._game.state = GeniusGame.STATE_IDLE
+        self._countdown_val = 3
+        self._camera_widget.set_countdown(self._countdown_val)
+        self._countdown_timer = QTimer(self)
+        self._countdown_timer.timeout.connect(self._on_countdown_tick)
+        self._countdown_timer.start(1000)
+
+    def _on_countdown_tick(self) -> None:
+        self._countdown_val -= 1
+        if self._countdown_val > 0:
+            self._camera_widget.set_countdown(self._countdown_val)
+            return
+        self._countdown_timer.stop()
+        self._camera_widget.set_countdown(0)
         self._game.start(self._unique_avail, difficulty=self._current_difficulty)
         print(f">>> Genius Drums [{self._current_difficulty.upper()}] — {len(self._unique_avail)} elementos")
 
@@ -921,14 +923,6 @@ class GeniusWindow(QMainWindow):
     @Slot()
     def _on_end(self) -> None: self.close()
 
-    @Slot(str)
-    def _on_difficulty_changed(self, diff: str) -> None:
-        self._current_difficulty = diff
-        self._drum_kit, self._unique_avail = self._build_kit(diff)
-        self._camera_widget.set_drum_kit(self._drum_kit)
-        if self._game.state not in (GeniusGame.STATE_IDLE, GeniusGame.STATE_GAME_OVER):
-            self._start_game()
-
     def keyPressEvent(self, event):
         key = event.key()
         if key == Qt.Key_Escape:
@@ -936,9 +930,6 @@ class GeniusWindow(QMainWindow):
         elif key == Qt.Key_Space:
             if self._game.state in (GeniusGame.STATE_IDLE, GeniusGame.STATE_GAME_OVER):
                 self._start_game()
-        elif key in (Qt.Key_1, Qt.Key_2, Qt.Key_3):
-            if self._game.state in (GeniusGame.STATE_IDLE, GeniusGame.STATE_GAME_OVER):
-                self._panel._on_difficulty({Qt.Key_1:"easy", Qt.Key_2:"medium", Qt.Key_3:"hard"}[key])
         else:
             super().keyPressEvent(event)
 

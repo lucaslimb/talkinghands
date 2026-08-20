@@ -664,9 +664,6 @@ class GamePanel(QWidget):
     restart_clicked    = Signal()
     end_clicked        = Signal()
     pause_toggled      = Signal(bool)
-    difficulty_changed = Signal(str)
-    song_prev          = Signal()
-    song_next          = Signal()
 
     def __init__(self, song_names, parent=None):
         super().__init__(parent)
@@ -872,48 +869,11 @@ class GamePanel(QWidget):
         div.setStyleSheet(f"background-color: {GAME_BORDER_LIGHT};")
         outer.addWidget(div)
 
-        # ── Bottom half: new game options ─────────────────────────────────
+        # ── Bottom half: replay with the configuration selected in the menu ─
         newgame_w = QWidget()
         newgame_l = QVBoxLayout(newgame_w)
         newgame_l.setContentsMargins(8, 6, 8, 6)
         newgame_l.setSpacing(5)
-
-        new_lbl = QLabel("NOVA PARTIDA")
-        new_lbl.setObjectName("gameStatSectionLabel")
-        new_lbl.setAlignment(Qt.AlignCenter)
-        newgame_l.addWidget(new_lbl)
-
-        song_row = QHBoxLayout()
-        song_row.setSpacing(5)
-        prev_btn = QPushButton("<")
-        prev_btn.setObjectName("gameNavBtn")
-        prev_btn.setFixedWidth(34)
-        prev_btn.clicked.connect(self.song_prev.emit)
-        song_row.addWidget(prev_btn)
-        self._song_label = QLabel(self._song_names[0] if self._song_names else "-")
-        self._song_label.setObjectName("gameSongLabel")
-        self._song_label.setAlignment(Qt.AlignCenter)
-        self._song_label.setWordWrap(True)
-        song_row.addWidget(self._song_label, 1)
-        next_btn = QPushButton(">")
-        next_btn.setObjectName("gameNavBtn")
-        next_btn.setFixedWidth(34)
-        next_btn.clicked.connect(self.song_next.emit)
-        song_row.addWidget(next_btn)
-        newgame_l.addLayout(song_row)
-
-        diff_row = QHBoxLayout()
-        diff_row.setSpacing(5)
-        self._diff_btns = {}
-        for diff, lbl in _DIFF_LABELS.items():
-            btn = QPushButton(lbl)
-            btn.setObjectName(f"gameDiffBtn_{diff}")
-            btn.setCheckable(True)
-            btn.setChecked(diff == self._current_difficulty)
-            btn.clicked.connect(lambda _checked, d=diff: self._on_difficulty(d))
-            diff_row.addWidget(btn)
-            self._diff_btns[diff] = btn
-        newgame_l.addLayout(diff_row)
 
         start_btn = QPushButton("▶  Jogar Novamente")
         start_btn.setObjectName("gameStartBtn")
@@ -974,9 +934,12 @@ class GamePanel(QWidget):
     def update_song(self, idx: int) -> None:
         if 0 <= idx < len(self._song_names):
             name = self._song_names[idx]
-            self._song_label.setText(name)
             self._play_song_label.setText(name)
         self._current_song_idx = idx
+
+    def set_difficulty(self, diff: str) -> None:
+        self._current_difficulty = diff
+        self._update_diff_badge_color(diff)
 
     def update_fps(self, fps: float) -> None:
         txt = f"FPS: {fps:.0f}"
@@ -1000,13 +963,6 @@ class GamePanel(QWidget):
         lbl = QLabel(text)
         lbl.setObjectName("gameSectionTitle")
         layout.addWidget(lbl)
-
-    def _on_difficulty(self, diff: str) -> None:
-        self._current_difficulty = diff
-        for d, btn in self._diff_btns.items():
-            btn.setChecked(d == diff)
-        self._update_diff_badge_color(diff)
-        self.difficulty_changed.emit(diff)
 
     def _update_diff_badge_color(self, diff: str) -> None:
         color_map = {
@@ -1354,9 +1310,6 @@ class PianoTilesWindow(QMainWindow):
         self._panel.restart_clicked.connect(self._on_restart)
         self._panel.end_clicked.connect(self._on_end)
         self._panel.pause_toggled.connect(self._on_pause_toggled)
-        self._panel.difficulty_changed.connect(self._on_difficulty_changed)
-        self._panel.song_prev.connect(lambda: self._on_song_changed(-1))
-        self._panel.song_next.connect(lambda: self._on_song_changed(+1))
 
         self._camera_widget = GameCameraOverlayWidget()
         self._camera_widget.set_piano_keys(self._piano_keys)
@@ -1366,9 +1319,12 @@ class PianoTilesWindow(QMainWindow):
         main_layout.addWidget(self._panel,         18)
         main_layout.addWidget(self._camera_widget, 82)
 
+        self._panel.set_difficulty(self._current_difficulty)
         self._panel.update_song(self._current_song_idx)
 
     def _start_game(self):
+        if self._countdown_timer is not None and self._countdown_timer.isActive():
+            return
         self._finger_prev_y.clear()
         self._active_held_notes.clear()
         self._pending_note_offs.clear()
@@ -1511,22 +1467,6 @@ class PianoTilesWindow(QMainWindow):
     @Slot()
     def _on_end(self):
         self.close()
-
-    @Slot(str)
-    def _on_difficulty_changed(self, diff):
-        self._current_difficulty = diff
-        if self._game.state == TilesGame.STATE_PLAYING:
-            if self._countdown_timer:
-                self._countdown_timer.stop()
-            self._start_game()
-
-    def _on_song_changed(self, delta):
-        self._current_song_idx = (self._current_song_idx + delta) % len(SONG_NAMES)
-        self._panel.update_song(self._current_song_idx)
-        if self._game.state == TilesGame.STATE_PLAYING:
-            if self._countdown_timer:
-                self._countdown_timer.stop()
-            self._start_game()
 
     @Slot(bool)
     def _on_pause_toggled(self, paused):
