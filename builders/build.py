@@ -151,8 +151,8 @@ def main():
         print("[+] Build Successful!")
         print("="*60 + "\n")
         
-        exe_path = project_root / "dist" / "THEngine.exe"
-        
+        exe_path = project_root / "dist" / "THEngine" / "THEngine.exe"
+
         if exe_path.exists():
             size_mb = exe_path.stat().st_size / (1024 * 1024)
             print(f"Executable: {exe_path}")

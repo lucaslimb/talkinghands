@@ -12,6 +12,12 @@ from importlib import import_module
 import importlib.util
 from pathlib import Path
 
+# Console codepages (e.g. Windows cp1252) can't encode the arrows/accents used
+# in the CLI help text below; force UTF-8 so --help doesn't crash on launch.
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+
 # Setup imports - handle both normal and PyInstaller bundled environments
 if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
     # Running as PyInstaller bundle
