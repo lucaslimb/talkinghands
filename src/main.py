@@ -270,9 +270,9 @@ GAME MODE:
                                           medium  → medium demo (0.36 s/hit), 8 s timeout, +3 extra pads, +15 pts/hit
                                           hard    → fast demo (0.20 s/hit),  4.5 s timeout, +6 extra pads, +25 pts/hit
                                         Controls in game mode:
-                                          SPACE → start / restart game
-                                          1 / 2 / 3 → switch difficulty from IDLE or GAME OVER screen
+                                          SPACE → restart with the same configuration
                                           ESC   → exit
+                                        When launched from the menu, nickname, difficulty and song are selected there.
 
 DRUMS OPTIONS:
     --drm-model {default,complete,override} Drum layout model (string values: default|complete|override, default: default)
@@ -449,6 +449,13 @@ def create_argparse():
             "Drum songs: 'Basic Beat', 'Rock Pattern', 'Tom Run', 'Groove', 'Ballad', 'Random' "
             "(default: 'Twinkle Twinkle')."
         ),
+    )
+
+    parser.add_argument(
+        "--nickname",
+        default="",
+        metavar="NOME",
+        help="Nickname used to save a completed game score in the local ranking.",
     )
 
     # Drums arguments
@@ -672,6 +679,7 @@ def start_drums(args, rec_opts, resolution_profile, runtime_config):
             drums_elements=args.drm_elems,
             hand_model_complexity=runtime_config["hand_model_complexity"],
             difficulty=args.difficulty,
+            nickname=getattr(args, "nickname", ""),
         )
         return
 
@@ -739,6 +747,7 @@ def start_keyboard(args, rec_opts, resolution_profile, runtime_config):
             hand_model_complexity=runtime_config["hand_model_complexity"],
             difficulty=args.difficulty,
             song=song,
+            nickname=getattr(args, "nickname", ""),
         )
         return
 

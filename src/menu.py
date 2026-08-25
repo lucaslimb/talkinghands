@@ -28,6 +28,8 @@ PROJECT_ROOT = FILE_PATH.parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.config import settings
+from src.engines.scores import get_ranking
+from src.instruments.game_score_guide import get_score_guide
 from src.instruments.ui_shared import (
     load_custom_font, FONT_FAMILY,
     FONT_SIZE_SM as BASE_FONT_SIZE_SM, FONT_SIZE_MD as BASE_FONT_SIZE_MD,
@@ -575,7 +577,8 @@ class InstrumentSelectorPanel(QWidget):
     instrument_changed = Signal(str)
     instrument_double_clicked = Signal(str)
 
-    def __init__(self, instruments: list, stacked: bool = False, allow_double_click: bool = True, section_title: str = "INSTRUMENTO", parent=None):
+    def __init__(self, instruments: list, stacked: bool = False, allow_double_click: bool = True,
+                 section_title: str = "INSTRUMENTO", header_action: QWidget | None = None, parent=None):
         super().__init__(parent)
         self.setStyleSheet("background: transparent;")
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
@@ -591,9 +594,16 @@ class InstrumentSelectorPanel(QWidget):
         vl.setContentsMargins(0, 0, 0, 0)
         vl.setSpacing(10)
 
+        header_row = QHBoxLayout()
+        header_row.setContentsMargins(0, 0, 0, 0)
+        header_row.setSpacing(6)
         lbl = QLabel(section_title)
         lbl.setStyleSheet(f"background: transparent; border: none; font-size: {SECTION_FONT_SIZE}px; font-weight: bold; color: {MENU_TEXT_SUB}; letter-spacing: 2px; font-family: {FONT_FAMILY};")
-        vl.addWidget(lbl)
+        header_row.addWidget(lbl)
+        if header_action is not None:
+            header_row.addWidget(header_action)
+        header_row.addStretch(1)
+        vl.addLayout(header_row)
 
         grid = QGridLayout()
         self._grid = grid
@@ -985,7 +995,7 @@ class JogoPage(QWidget):
         super().__init__(parent)
         self.setStyleSheet(f"background-color: {MENU_BG};")
         self._current_diff  = "easy"
-        self._selected_song = PIANO_TILES_SONGS[0]
+        self._selected_song: str | None = None
 
         outer = QVBoxLayout(self)
         outer.setContentsMargins(28, 24, 28, 24)
@@ -999,12 +1009,23 @@ class JogoPage(QWidget):
         instr_vl = QVBoxLayout(instr_frame)
         instr_vl.setContentsMargins(20, 16, 20, 20)
         instr_vl.setSpacing(12)
-        self._instr_sel = InstrumentSelectorPanel(GAME_INSTRUMENTS, stacked=False, allow_double_click=False, section_title="MODO JOGO")
+        self._guide_toggle_btn = QPushButton("?")
+        self._guide_toggle_btn.setObjectName("menuGameGuideBtn")
+        self._guide_toggle_btn.setFixedSize(26, 26)
+        self._guide_toggle_btn.setToolTip("Como jogar e pontuar")
+        self._guide_toggle_btn.clicked.connect(self._toggle_game_guide)
+        self._instr_sel = InstrumentSelectorPanel(
+            GAME_INSTRUMENTS, stacked=False, allow_double_click=False,
+            section_title="MODO JOGO", header_action=self._guide_toggle_btn,
+        )
         self._instr_sel.instrument_changed.connect(self._on_game_changed)
         instr_vl.addWidget(self._instr_sel)
         outer.addWidget(instr_frame, 7)
 
-        controls_row = QHBoxLayout()
+        self._options_stack = QStackedWidget()
+        options_page = QWidget()
+        controls_row = QHBoxLayout(options_page)
+        controls_row.setContentsMargins(0, 0, 0, 0)
         controls_row.setSpacing(14)
 
         diff_frame = QFrame()
@@ -1058,13 +1079,91 @@ class JogoPage(QWidget):
         self._song_frame.setSizePolicy(_sp3)
         controls_row.addWidget(self._song_frame, 1)
 
+        start_column = QWidget()
+        start_column.setStyleSheet("background: transparent; border: none;")
+        start_layout = QVBoxLayout(start_column)
+        start_layout.setContentsMargins(0, 0, 0, 0)
+        start_layout.setSpacing(8)
+
+        self._nickname_input = QLineEdit()
+        self._nickname_input.setPlaceholderText("Seu apelido")
+        self._nickname_input.setMaxLength(24)
+        self._nickname_input.setClearButtonEnabled(True)
+        self._nickname_input.setStyleSheet(
+            f"QLineEdit {{ background-color: {MENU_CARD_BG}; color: {MENU_TEXT_MAIN}; "
+            f"border: 1px solid {MENU_CARD_BORDER}; border-radius: 8px; "
+            f"padding: 8px 12px; font-size: {FONT_SIZE_SM}px; font-family: {FONT_FAMILY}; }}"
+            f"QLineEdit:focus {{ border-color: #B0ADA8; }}"
+        )
+        self._nickname_input.textChanged.connect(self._update_start_state)
+        start_layout.addWidget(self._nickname_input)
+
         self._start_btn = QPushButton(">  Iniciar Jogo")
         self._start_btn.setObjectName("menuGameStartBtn")
         self._start_btn.setMinimumSize(0, 0)
         self._start_btn.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self._start_btn.setStyleSheet(
+            f"QPushButton:enabled {{ background-color: {MENU_CARD_DARK}; color: {MENU_CARD_DARK_TEXT}; "
+            f"border: 2px solid #080807; border-radius: {BORDER_RAD}px; "
+            f"font-size: {FONT_SIZE_MD}px; font-weight: bold; padding: 0 20px; font-family: {FONT_FAMILY}; }}"
+            f"QPushButton:enabled:hover {{ background-color: #3A3A35; border-color: #080807; }}"
+            f"QPushButton:disabled {{ background-color: #E1DED8; color: #8A8780; "
+            f"border: 2px solid #C8C4BD; border-radius: {BORDER_RAD}px; "
+            f"font-size: {FONT_SIZE_MD}px; font-weight: bold; padding: 0 20px; font-family: {FONT_FAMILY}; }}"
+        )
         self._start_btn.clicked.connect(self._on_start)
-        controls_row.addWidget(self._start_btn, 1)
-        outer.addLayout(controls_row, 3)
+        start_layout.addWidget(self._start_btn, 1)
+        controls_row.addWidget(start_column, 1)
+        self._options_stack.addWidget(options_page)
+
+        guide_page = QFrame()
+        guide_page.setObjectName("gameGuidePage")
+        guide_page.setStyleSheet(
+            f"QFrame#gameGuidePage {{ background-color: {MENU_CARD_BG}; border: 1px solid {MENU_CARD_BORDER}; "
+            f"border-radius: 12px; }}"
+        )
+        guide_layout = QVBoxLayout(guide_page)
+        guide_layout.setContentsMargins(28, 20, 28, 20)
+        guide_layout.setSpacing(10)
+        self._guide_title = QLabel()
+        self._guide_title.setStyleSheet(
+            f"background: transparent; border: none; color: {MENU_TEXT_MAIN}; font-size: {FONT_SIZE_LG}px; "
+            f"font-weight: bold; font-family: {FONT_FAMILY};"
+        )
+        guide_layout.addWidget(self._guide_title)
+        guide_cards = QHBoxLayout()
+        guide_cards.setSpacing(14)
+        self._guide_cards: list[tuple[QLabel, QLabel]] = []
+        for _ in range(3):
+            card = QFrame()
+            card.setObjectName("gameGuideCard")
+            card.setStyleSheet(
+                f"QFrame#gameGuideCard {{ background-color: {MENU_CARD_BG}; border: none; "
+                f"border-radius: {BORDER_RAD}px; }}"
+            )
+            card_layout = QVBoxLayout(card)
+            card_layout.setContentsMargins(18, 14, 18, 14)
+            card_layout.setSpacing(8)
+            card_title = QLabel()
+            card_title.setStyleSheet(
+                f"background: transparent; border: none; color: {MENU_TEXT_MAIN}; "
+                f"font-size: 18px; font-weight: bold; font-family: {FONT_FAMILY};"
+            )
+            card_body = QLabel()
+            card_body.setTextFormat(Qt.RichText)
+            card_body.setWordWrap(True)
+            card_body.setAlignment(Qt.AlignTop)
+            card_body.setStyleSheet(
+                f"background: transparent; border: none; color: {MENU_TEXT_SUB}; "
+                f"font-size: 13px; font-family: {FONT_FAMILY};"
+            )
+            card_layout.addWidget(card_title)
+            card_layout.addWidget(card_body, 1)
+            guide_cards.addWidget(card, 1)
+            self._guide_cards.append((card_title, card_body))
+        guide_layout.addLayout(guide_cards, 1)
+        self._options_stack.addWidget(guide_page)
+        outer.addWidget(self._options_stack, 3)
 
         # Loading feedback remains at the bottom while the start action lives in the header.
         self._action_stack = QStackedWidget()
@@ -1100,6 +1199,8 @@ class JogoPage(QWidget):
         if is_loading:
             self._progress.setValue(0)
             self._loading_label.setText("Preparando...")
+        else:
+            self._update_start_state()
     def update_progress(self, val: int):
         self._progress.setValue(val)
 
@@ -1114,15 +1215,20 @@ class JogoPage(QWidget):
         self._current_game_id = id_
         info = self._get_info(id_)
         self._song_frame.setVisible(bool(info.get("songs")))
-        self._start_btn.setVisible(True)
+        self._update_start_state()
+        if self._options_stack.currentIndex() == 1:
+            self._refresh_game_guide()
 
     def _reset_game_flow(self) -> None:
         self._current_game_id = GAME_INSTRUMENTS[0]["id"]
         self._current_diff = "easy"
         for btn in self._diff_btns.values():
             btn.setChecked(btn.objectName() == "diffBtn_easy")
+        self._selected_song = None
+        for item in self._song_items.values():
+            item.set_selected(False)
         self._song_frame.setVisible(True)
-        self._start_btn.setVisible(True)
+        self._update_start_state()
 
     def _on_diff(self, key: str) -> None:
         _ui_log("difficulty-selected", difficulty=key)
@@ -1132,7 +1238,7 @@ class JogoPage(QWidget):
         self._apply_diff_styles()
         info = self._get_info(self._current_game_id)
         self._song_frame.setVisible(bool(info.get("songs")))
-        self._start_btn.setVisible(True)
+        self._update_start_state()
 
     def _apply_diff_styles(self) -> None:
         colors = {"easy": "#4E7C5E", "medium": "#7A6830", "hard": "#8A3A50"}
@@ -1161,16 +1267,52 @@ class JogoPage(QWidget):
         self._selected_song = song
         for s, si in self._song_items.items():
             si.set_selected(s == song)
-        self._start_btn.setVisible(True)
+        self._update_start_state()
+
+    def _update_start_state(self) -> None:
+        info = self._get_info(getattr(self, "_current_game_id", GAME_INSTRUMENTS[0]["id"]))
+        has_nickname = bool(" ".join(self._nickname_input.text().split()))
+        needs_song = bool(info.get("songs"))
+        has_song = bool(self._selected_song)
+        ready = has_nickname and (has_song or not needs_song)
+        self._start_btn.setEnabled(ready)
+        if not has_nickname:
+            self._start_btn.setToolTip("Informe um apelido para registrar sua pontuação.")
+        elif needs_song and not has_song:
+            self._start_btn.setToolTip("Selecione uma música para começar.")
+        else:
+            self._start_btn.setToolTip("")
+
+    def _toggle_game_guide(self) -> None:
+        if self._options_stack.currentIndex() == 1:
+            self._options_stack.setCurrentIndex(0)
+            return
+
+        self._refresh_game_guide()
+        self._options_stack.setCurrentIndex(1)
+
+    def _refresh_game_guide(self) -> None:
+        info = self._get_info(self._instr_sel.get_selected_id())
+        game_key = "piano_tiles" if info.get("type") == "keyboard_game" else "genius_drums"
+        title, cards = get_score_guide(game_key)
+        self._guide_title.setText(title)
+        for (card_title, card_body), (heading, body) in zip(self._guide_cards, cards):
+            card_title.setText(heading)
+            card_body.setText(body)
 
     def _on_start(self) -> None:
         sel_id  = self._instr_sel.get_selected_id()
         info    = self._get_info(sel_id)
+        nickname = " ".join(self._nickname_input.text().split())
+        if not nickname or (info.get("songs") and not self._selected_song):
+            self._update_start_state()
+            return
         config = {
             "type":       info.get("type", "drums_game"),
             "instrument": info.get("default_instrument", "Piano"),
             "difficulty": self._current_diff,
             "song":       self._selected_song,
+            "nickname":   nickname,
         }
         _ui_log("game-start-clicked", config=config)
         self.launch_requested.emit(config)
@@ -1189,7 +1331,7 @@ class StatisticsPage(QWidget):
         outer.setContentsMargins(28, 24, 28, 24)
         outer.setSpacing(18)
 
-        section = QLabel("ESTATÍSTICAS")
+        section = QLabel("RANKING")
         section.setAlignment(Qt.AlignHCenter)
         section.setStyleSheet(
             f"background: transparent; border: none; font-size: {SECTION_FONT_SIZE}px; "
@@ -1197,19 +1339,133 @@ class StatisticsPage(QWidget):
         )
         outer.addWidget(section)
 
-        subtitle = QLabel("Acompanhe sua evolução musical")
-        subtitle.setAlignment(Qt.AlignHCenter)
-        subtitle.setStyleSheet(f"background: transparent; font-size: {FONT_SIZE_SM}px; color: {MENU_TEXT_SUB}; font-family: {FONT_FAMILY};")
-        outer.addWidget(subtitle)
-        outer.addSpacing(12)
+        rankings_row = QHBoxLayout()
+        rankings_row.setSpacing(14)
+        self._piano_ranking = self._build_ranking_panel("PIANO TILES", include_song_filter=True)
+        self._drums_ranking = self._build_ranking_panel("GENIUS DRUMS")
+        rankings_row.addWidget(self._piano_ranking[0], 1)
+        rankings_row.addWidget(self._drums_ranking[0], 1)
+        outer.addLayout(rankings_row, 1)
+        self.refresh()
 
-        stats_row = QHBoxLayout()
-        stats_row.setSpacing(14)
-        stats_row.addWidget(StatCard("⏱️", "TEMPO HOJE", "--"))
-        stats_row.addWidget(StatCard("🎯", "PRECISÃO MÉDIA", "--"))
-        stats_row.addWidget(StatCard("🔥", "SEQUÊNCIA", "--"))
-        outer.addLayout(stats_row)
-        outer.addStretch()
+    def _build_ranking_panel(
+        self,
+        title: str,
+        include_song_filter: bool = False,
+    ) -> tuple[QFrame, QVBoxLayout, QComboBox, QComboBox | None]:
+        panel = QFrame()
+        panel.setStyleSheet(
+            f"QFrame {{ background-color: {MENU_CARD_BG}; border: 1px solid {MENU_CARD_BORDER}; "
+            "border-radius: 12px; }}"
+        )
+        layout = QVBoxLayout(panel)
+        layout.setContentsMargins(18, 14, 18, 14)
+        layout.setSpacing(6)
+
+        heading = QLabel(title)
+        heading.setStyleSheet(
+            f"background: transparent; border: none; font-size: {SECTION_FONT_SIZE}px; "
+            f"font-weight: bold; letter-spacing: 1px; color: {MENU_TEXT_SUB}; font-family: {FONT_FAMILY};"
+        )
+        layout.addWidget(heading)
+
+        filters = QHBoxLayout()
+        filters.setSpacing(8)
+        difficulty_filter = QComboBox()
+        difficulty_filter.addItem("Todas as dificuldades", None)
+        for key, label in DIFFICULTIES:
+            difficulty_filter.addItem(label, key)
+        filters.addWidget(difficulty_filter, 1)
+
+        song_filter = None
+        if include_song_filter:
+            song_filter = QComboBox()
+            song_filter.addItem("Todas as músicas", None)
+            for song in PIANO_TILES_SONGS:
+                song_filter.addItem(song, song)
+            filters.addWidget(song_filter, 1)
+
+        for combo in (difficulty_filter, song_filter):
+            if combo is None:
+                continue
+            combo.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+            combo.setStyleSheet(
+                f"QComboBox {{ background-color: {MENU_CARD_HOVER}; color: {MENU_TEXT_MAIN}; "
+                f"border: 1px solid {MENU_CARD_BORDER}; border-radius: 8px; padding: 7px 12px; "
+                f"font-size: {FONT_SIZE_SM}px; font-family: {FONT_FAMILY}; }}"
+                f"QComboBox::drop-down {{ border: none; width: 24px; }}"
+                f"QComboBox QAbstractItemView {{ background-color: {MENU_CARD_BG}; color: {MENU_TEXT_MAIN}; "
+                f"selection-background-color: {MENU_CARD_HOVER}; }}"
+            )
+            combo.currentIndexChanged.connect(self.refresh)
+        layout.addLayout(filters)
+
+        content = QVBoxLayout()
+        content.setSpacing(6)
+        content.addStretch()
+        layout.addLayout(content, 1)
+        return panel, content, difficulty_filter, song_filter
+
+    def _fill_ranking(
+        self,
+        layout: QVBoxLayout,
+        game_key: str,
+        difficulty: str | None,
+        song: str | None = None,
+    ) -> None:
+        while layout.count() > 1:
+            item = layout.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+
+        rows = get_ranking(game_key, difficulty=difficulty, song=song)
+        if not rows:
+            empty = QLabel("Ainda não há pontuações.")
+            empty.setStyleSheet(
+                f"background: transparent; border: none; font-size: {FONT_SIZE_SM}px; "
+                f"color: {MENU_TEXT_SUB}; font-family: {FONT_FAMILY};"
+            )
+            empty.setAlignment(Qt.AlignCenter)
+            layout.insertWidget(0, empty)
+            return
+
+        difficulty_labels = dict(DIFFICULTIES)
+        for position, (nickname, score, row_difficulty, row_song, precision) in reversed(list(enumerate(rows, start=1))):
+            row = QWidget()
+            row.setStyleSheet("background: transparent; border: none;")
+            row_layout = QHBoxLayout(row)
+            row_layout.setContentsMargins(0, 4, 0, 4)
+            row_layout.setSpacing(8)
+            rank = QLabel(f"{position}.")
+            rank.setFixedWidth(28)
+            rank.setStyleSheet(f"background: transparent; border: none; color: {MENU_TEXT_SUB}; font-size: {FONT_SIZE_SM}px; font-family: {FONT_FAMILY};")
+            details = difficulty_labels.get(row_difficulty, row_difficulty.title())
+            if game_key == "piano_tiles":
+                details += f" · {row_song or 'Sem música'} · Precisão: {precision if precision is not None else '—'}%"
+            name = QLabel(nickname)
+            name.setStyleSheet(f"background: transparent; border: none; color: {MENU_TEXT_MAIN}; font-size: {FONT_SIZE_SM}px; font-family: {FONT_FAMILY};")
+            meta = QLabel(details)
+            meta.setStyleSheet(f"background: transparent; border: none; color: {MENU_TEXT_SUB}; font-size: {FONT_SIZE_SM - 1}px; font-family: {FONT_FAMILY};")
+            points = QLabel(f"{score} pts")
+            points.setStyleSheet(f"background: transparent; border: none; color: {MENU_TEXT_MAIN}; font-size: {FONT_SIZE_SM}px; font-weight: bold; font-family: {FONT_FAMILY};")
+            row_layout.addWidget(rank)
+            player = QVBoxLayout()
+            player.setSpacing(1)
+            player.addWidget(name)
+            player.addWidget(meta)
+            row_layout.addLayout(player, 1)
+            row_layout.addWidget(points)
+            layout.insertWidget(0, row)
+
+    def refresh(self) -> None:
+        self._fill_ranking(
+            self._piano_ranking[1], "piano_tiles",
+            self._piano_ranking[2].currentData(), self._piano_ranking[3].currentData(),
+        )
+        self._fill_ranking(
+            self._drums_ranking[1], "genius_drums",
+            self._drums_ranking[2].currentData(),
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -1407,9 +1663,9 @@ QPushButton#menuStartBtn:hover {{
     border-color: #4E9D71;
 }}
 QPushButton#menuGameStartBtn {{
-    background-color: {MENU_CARD_BG};
-    color: {MENU_TEXT_MAIN};
-    border: 1px solid {MENU_SEPARATOR};
+    background-color: {MENU_CARD_DARK};
+    color: {MENU_CARD_DARK_TEXT};
+    border: 1px solid {MENU_CARD_DARK};
     border-radius: {BORDER_RAD}px;
     font-size: {FONT_SIZE_MD}px;
     font-weight: bold;
@@ -1417,8 +1673,32 @@ QPushButton#menuGameStartBtn {{
     font-family: {FONT_FAMILY};
 }}
 QPushButton#menuGameStartBtn:hover {{
+    background-color: #3A3A35;
+    border-color: #3A3A35;
+}}
+QPushButton#menuGameStartBtn:disabled {{
+    background-color: {MENU_CARD_DARK};
+    color: #BDBAB4;
+    border: 1px solid #4B4A45;
+}}
+QPushButton#menuGameGuideBtn {{
+    background-color: {MENU_CARD_BG};
+    color: {MENU_TEXT_MAIN};
+    border: 1px solid {MENU_SEPARATOR};
+    border-radius: 13px;
+    font-size: {FONT_SIZE_SM}px;
+    font-weight: bold;
+    padding: 0;
+    font-family: {FONT_FAMILY};
+}}
+QPushButton#menuGameGuideBtn:hover {{
     background-color: {MENU_CARD_HOVER};
     border-color: #B0ADA8;
+}}
+QFrame#gameGuideCard {{
+    background-color: {MENU_CARD_BG};
+    border: 1px solid {MENU_CARD_BORDER};
+    border-radius: {BORDER_RAD}px;
 }}
 QPushButton#menuNavArrow {{
     background-color: transparent;
@@ -1626,6 +1906,8 @@ class MainMenuWindow(QMainWindow):
         idx = self._page_index.get(page_id, 0)
         _ui_log("page-change", page=page_id, index=idx, previous_index=self._stack.currentIndex())
         self._stack.setCurrentIndex(idx)
+        if idx == self._page_index["estatisticas"]:
+            self._estatisticas.refresh()
 
     def _cycle_page(self, direction: int) -> None:
         count = self._stack.count()
@@ -1642,6 +1924,8 @@ class MainMenuWindow(QMainWindow):
         height = self._stack.height()
         if current_page is None or target_page is None or width <= 0 or height <= 0:
             self._stack.setCurrentIndex(target_index)
+            if target_index == self._page_index["estatisticas"]:
+                self._estatisticas.refresh()
             return
 
         offset = width if direction > 0 else -width
@@ -1670,6 +1954,8 @@ class MainMenuWindow(QMainWindow):
 
         def _finish() -> None:
             self._stack.setCurrentIndex(target_index)
+            if target_index == self._page_index["estatisticas"]:
+                self._estatisticas.refresh()
             current_page.hide()
             target_page.move(0, 0)
             self._carousel_anim = None
@@ -1695,6 +1981,7 @@ def _execute_launch(
     instrument = config.get("instrument", "Piano")
     difficulty = config.get("difficulty", "easy")
     song       = config.get("song", "Twinkle Twinkle")
+    nickname   = config.get("nickname", "")
 
     try:
         if t == "keyboard":
@@ -1729,6 +2016,7 @@ def _execute_launch(
                 hand_model_complexity=hand_model_complexity,
                 difficulty=difficulty,
                 song=song,
+                nickname=nickname,
             )
         elif t == "drums_game":
             from src.instruments.drums_game import start_drums_game
@@ -1738,6 +2026,7 @@ def _execute_launch(
                 show_trackers=show_trackers,
                 hand_model_complexity=hand_model_complexity,
                 difficulty=difficulty,
+                nickname=nickname,
             )
         else:
             print(f"[menu] Unknown type: {t!r}")

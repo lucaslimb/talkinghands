@@ -101,29 +101,23 @@ class TilesGame:
         "easy": {
             "bpm":             60,
             "fall_duration":   2.5,     # seconds a tile takes from top → hit-line
-            "max_mistakes":    10,
             "hit_window":      0.45,    # ±s around arrive_time counts as hit
             "perfect_window":  0.15,
-            "perfect_pts":     100,
-            "good_pts":        50,
+            "score_multiplier": 1.0,
         },
         "medium": {
             "bpm":             90,
             "fall_duration":   1.8,
-            "max_mistakes":    6,
             "hit_window":      0.35,
             "perfect_window":  0.10,
-            "perfect_pts":     150,
-            "good_pts":        75,
+            "score_multiplier": 1.25,
         },
         "hard": {
             "bpm":             130,
             "fall_duration":   1.2,
-            "max_mistakes":    4,
             "hit_window":      0.22,
             "perfect_window":  0.07,
-            "perfect_pts":     200,
-            "good_pts":        100,
+            "score_multiplier": 1.5,
         },
     }
 
@@ -154,11 +148,14 @@ class TilesGame:
         self.difficulty     = "easy"
         self.BPM            = 60
         self.FALL_DURATION  = 2.5
-        self.MAX_MISTAKES   = 5
         self.HIT_WINDOW     = 0.45
         self.PERFECT_WINDOW = 0.15
         self.PERFECT_PTS    = 100
-        self.GOOD_PTS       = 50
+        self.GOOD_PTS       = 60
+        self.SCORE_MULTIPLIER = 1.0
+        self.correct_hits    = 0
+        self.total_hits      = 0
+        self.precision_bonus = 0
 
         # note → (x_start_norm, x_end_norm) cache
         self._note_to_x: dict[int, tuple[float, float]] = {}
@@ -169,11 +166,9 @@ class TilesGame:
         p = self.DIFFICULTY_PROFILES.get(difficulty, self.DIFFICULTY_PROFILES["easy"])
         self.BPM            = p["bpm"]
         self.FALL_DURATION  = p["fall_duration"]
-        self.MAX_MISTAKES   = p["max_mistakes"]
         self.HIT_WINDOW     = p["hit_window"]
         self.PERFECT_WINDOW = p["perfect_window"]
-        self.PERFECT_PTS    = p["perfect_pts"]
-        self.GOOD_PTS       = p["good_pts"]
+        self.SCORE_MULTIPLIER = p["score_multiplier"]
         self.difficulty     = difficulty
 
     def set_key_layout(self, piano_keys: list) -> None:
@@ -194,6 +189,9 @@ class TilesGame:
         self.score      = 0
         self.mistakes   = 0
         self.combo      = 0
+        self.correct_hits = 0
+        self.total_hits = 0
+        self.precision_bonus = 0
         self.tiles      = []
         self._seq_index = 0
         self._song_name = song
@@ -265,6 +263,8 @@ class TilesGame:
             if tile.state == "active" and now > tile.arrive_time + self.HIT_WINDOW:
                 tile.state          = "miss"
                 self.mistakes      += 1
+                self.total_hits    += 1
+                self.score          = max(0, self.score - 20)
                 self.combo          = 0
                 self.last_result    = "miss"
                 self.last_result_ts = now
@@ -276,15 +276,15 @@ class TilesGame:
         ]
 
         # ── check end conditions ──────────────────────────────────────────
-        if self.mistakes >= self.MAX_MISTAKES:
-            self._end_game()
-            return
-
         if (self._seq_index >= len(self._sequence)
                 and not any(t.state == "active" for t in self.tiles)):
             self._end_game()
 
     def _end_game(self) -> None:
+        if self.state == self.STATE_GAME_OVER:
+            return
+        self.precision_bonus = self._precision_bonus()
+        self.score += self.precision_bonus
         self.state = self.STATE_GAME_OVER
         if self.score > self.best_score:
             self.best_score = self.score
@@ -343,13 +343,16 @@ class TilesGame:
             # tile exists but timing is outside the hit window — counts as a miss
             self.combo          = 0
             self.mistakes      += 1
+            self.total_hits    += 1
+            self.score          = max(0, self.score - 20)
             self.last_result    = "miss"
             self.last_result_ts = now
             return "ignored"
 
         self.combo += 1
-        if self.combo >= 5:
-            pts = int(pts * 1.5)
+        self.correct_hits += 1
+        self.total_hits += 1
+        pts = round(pts * self._combo_multiplier() * self.SCORE_MULTIPLIER)
 
         best_tile.state        = "hit"
         best_tile.score_earned = pts
@@ -357,6 +360,29 @@ class TilesGame:
         self.last_result       = result
         self.last_result_ts    = now
         return result
+
+    def _combo_multiplier(self) -> float:
+        if self.combo >= 50:
+            return 2.0
+        if self.combo >= 25:
+            return 1.5
+        if self.combo >= 10:
+            return 1.25
+        return 1.0
+
+    def _precision_bonus(self) -> int:
+        precision = self.precision
+        if precision >= 100:
+            base_bonus = 1_000
+        elif precision >= 95:
+            base_bonus = 750
+        elif precision >= 90:
+            base_bonus = 500
+        elif precision >= 80:
+            base_bonus = 250
+        else:
+            base_bonus = 0
+        return round(base_bonus * self.SCORE_MULTIPLIER)
 
     # ── display helpers ───────────────────────────────────────────────────
 
@@ -384,5 +410,5 @@ class TilesGame:
         return min(1.0, self._seq_index / total) if total else 1.0
 
     @property
-    def lives_remaining(self) -> int:
-        return max(0, self.MAX_MISTAKES - self.mistakes)
+    def precision(self) -> int:
+        return round(self.correct_hits / max(1, self.total_hits) * 100)

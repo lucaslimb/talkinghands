@@ -38,31 +38,28 @@ class GeniusGame:
     FEEDBACK_DURATION = 0.20
 
     # ── difficulty profiles ────────────────────────────────────────────────
-    # Keys: demo_hit, demo_pause, demo_velocity, timeout, hit_points, time_bonus_max
+    # Keys: demo_hit, demo_pause, demo_velocity, timeout, hit_points
     DIFFICULTY_PROFILES: dict[str, dict] = {
         "easy": {
             "demo_hit":       0.55,
             "demo_pause":     0.18,
             "demo_velocity":  100,
             "timeout":        12.0,
-            "hit_points":     10,
-            "time_bonus_max": 3_000,
+            "hit_points":     100,
         },
         "medium": {
             "demo_hit":       0.36,
             "demo_pause":     0.11,
             "demo_velocity":  112,
             "timeout":         8.0,
-            "hit_points":     15,
-            "time_bonus_max": 5_000,
+            "hit_points":     125,
         },
         "hard": {
             "demo_hit":       0.20,
             "demo_pause":     0.06,
             "demo_velocity":  127,
             "timeout":         4.5,
-            "hit_points":     25,
-            "time_bonus_max": 8_000,
+            "hit_points":     150,
         },
     }
 
@@ -83,8 +80,9 @@ class GeniusGame:
         self.DEMO_PAUSE         = 0.18
         self.DEMO_VELOCITY      = 100
         self.PLAYER_TIMEOUT     = 12.0
-        self.HIT_POINTS         = 10
-        self.TIME_BONUS_MAX     = 3_000
+        self.HIT_POINTS         = 100
+        self.last_round_bonus   = 0
+        self.last_speed_bonus   = 0
 
         # element_key that should be highlighted this frame (DEMO only)
         self.highlighted_element: str | None = None
@@ -115,7 +113,6 @@ class GeniusGame:
         self.DEMO_VELOCITY      = profile["demo_velocity"]
         self.PLAYER_TIMEOUT     = profile["timeout"]
         self.HIT_POINTS         = profile["hit_points"]
-        self.TIME_BONUS_MAX     = profile["time_bonus_max"]
 
     def start(self, available_keys: list[str], difficulty: str = "easy") -> None:
         """Begin a brand-new game with the supplied drum element keys."""
@@ -127,6 +124,8 @@ class GeniusGame:
         self.score          = 0
         self.round          = 1
         self.player_index   = 0
+        self.last_round_bonus = 0
+        self.last_speed_bonus = 0
         self._start_demo()
 
     def restart(self, difficulty: str | None = None) -> None:
@@ -189,9 +188,9 @@ class GeniusGame:
                     self.player_index += 1
                     if self.player_index >= len(self.sequence):
                         # ── full sequence matched ──────────────────────────
-                        elapsed_ms = (now - self._turn_start) * 1000
-                        time_bonus = max(0, int(self.TIME_BONUS_MAX - elapsed_ms))
-                        self.score += time_bonus
+                        self.last_round_bonus = self._round_bonus()
+                        self.last_speed_bonus = self._speed_bonus(now, self.last_round_bonus)
+                        self.score += self.last_round_bonus + self.last_speed_bonus
                         # extend sequence
                         self.sequence.append(random.choice(self._available))
                         self.round += 1
@@ -201,6 +200,17 @@ class GeniusGame:
                         self.state = self.STATE_WAIT_INPUT
                 else:
                     self._trigger_game_over()
+
+    def _round_bonus(self) -> int:
+        if self.round <= 4:
+            return 100 * self.round
+        if self.round <= 9:
+            return 150 * self.round
+        return 200 * self.round
+
+    def _speed_bonus(self, now: float, round_bonus: int) -> int:
+        remaining_fraction = max(0.0, 1.0 - (now - self._turn_start) / self.PLAYER_TIMEOUT)
+        return round(round_bonus * 0.25 * remaining_fraction)
 
     # ── helpers ───────────────────────────────────────────────────────────
 

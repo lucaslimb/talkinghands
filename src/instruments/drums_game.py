@@ -58,6 +58,7 @@ _setup_fluidsynth_path()
 
 from src.config import settings
 from src.engines.game_genius import GeniusGame
+from src.engines.scores import save_game_score
 from src.instruments.common import (
     init_fluidsynth, load_single_soundfont,
     setup_video_capture, fit_resolution_to_screen,
@@ -687,6 +688,7 @@ class GeniusWindow(QMainWindow):
         drums_elements=None,
         hand_model_complexity: int = 1,
         difficulty: str = "easy",
+        nickname: str = "",
     ):
         super().__init__()
         self.setWindowTitle("Talking Hands — Genius Drums")
@@ -708,6 +710,8 @@ class GeniusWindow(QMainWindow):
                     self._replace_base = True
 
         self._current_difficulty = difficulty if difficulty in ("easy","medium","hard") else "easy"
+        self._nickname = " ".join(str(nickname).split())[:24]
+        self._score_saved = False
         self._drum_kit, self._unique_avail = self._build_kit(self._current_difficulty)
         self._countdown_val = 0
         self._countdown_timer = None
@@ -805,6 +809,7 @@ class GeniusWindow(QMainWindow):
     def _start_game(self) -> None:
         if self._countdown_timer is not None and self._countdown_timer.isActive():
             return
+        self._score_saved = False
         self._is_paused = False
         self._panel.reset_pause()
         self._panel.switch_to_playing()
@@ -866,6 +871,12 @@ class GeniusWindow(QMainWindow):
             self._panel.update_game_state(self._game)
             if self._game.state == GeniusGame.STATE_GAME_OVER:
                 self._panel.switch_to_gameover(self._game)
+                if not self._score_saved:
+                    self._score_saved = True
+                    save_game_score(
+                        "genius_drums", self._nickname, self._game.score,
+                        self._current_difficulty,
+                    )
 
         self._camera_widget.set_frame(frame_rgb)
         self._camera_widget.set_results(results)
@@ -952,6 +963,7 @@ def start_drums_game(
     drums_elements=None,
     hand_model_complexity: int = 1,
     difficulty: str = "easy",
+    nickname: str = "",
 ):
     """Launch the Genius Drums PySide6 window."""
     print(f">>> INICIANDO GENIUS DRUMS GAME [{difficulty.upper()}]")
@@ -965,6 +977,7 @@ def start_drums_game(
         drums_elements=drums_elements,
         hand_model_complexity=hand_model_complexity,
         difficulty=difficulty,
+        nickname=nickname,
     )
     win.showFullScreen()
     print(">>> MODO PRONTO")

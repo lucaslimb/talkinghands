@@ -26,7 +26,7 @@ Em todas as interfaces, `Esc` encerra a sessão. Os controles de gravação fica
 
 ## Modo jogo
 
-As escolhas feitas no menu são mantidas durante a partida e ao reiniciar; para trocar dificuldade ou música, feche a sessão e volte ao menu.
+Informe um apelido antes de iniciar: cada tentativa concluída é salva localmente e o Ranking mostra o melhor resultado de cada pessoa, separado por jogo. As escolhas feitas no menu são mantidas durante a partida e ao reiniciar; para trocar dificuldade ou música, feche a sessão e volte ao menu.
 
 - **Piano Tiles:** escolha **Fácil**, **Médio** ou **Difícil** e uma música. Depois da contagem regressiva, toque as notas quando elas chegarem à linha de toque. Ao terminar, reinicie com a mesma música/dificuldade ou encerre.
 - **Genius Drums:** escolha a dificuldade e inicie. Após a contagem regressiva, observe a sequência de elementos da bateria e repita-a. Ao falhar, reinicie com a mesma dificuldade ou encerre.
@@ -36,7 +36,7 @@ As escolhas feitas no menu são mantidas durante a partida e ao reiniciar; para 
 - **Gravações:** lista as sessões salvas e permite atualizar a lista ou abrir sua pasta.
 - **Estatísticas:** tela de acompanhamento de tempo, precisão e sequência; é a base visual para os indicadores de evolução do projeto.
 
-No Windows, as gravações são armazenadas em `recordings\mids` e `recordings\wav` dentro da pasta do projeto ou do pacote.
+Durante o desenvolvimento no Windows, as gravações ficam em `recordings\mids` e `recordings\wav` na pasta do projeto. No executável distribuído, elas ficam na pasta de dados do usuário.
 
 ## Tecnologias
 
@@ -98,6 +98,14 @@ O build é `--onedir`: o executável depende dos arquivos ao redor dele. **Não 
 3. No destino, abra a pasta copiada e execute `THEngine.exe`.
 
 Python, pip e FluidSynth não precisam ser instalados separadamente: o pacote gerado já inclui o runtime, dependências, assets, SoundFonts e DLLs necessários.
+
+No executável Windows, os dados do usuário não ficam dentro da pasta do pacote. As gravações e o ranking local são salvos em:
+
+```text
+%LOCALAPPDATA%\\Talking Hands
+```
+
+O arquivo de ranking é `scores.sqlite3`; ele é criado automaticamente na primeira partida.
 
 ## Créditos de bancos de som
 

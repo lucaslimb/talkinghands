@@ -16,9 +16,15 @@ else:
 ASSETS_DIR = BASE_DIR / "assets"
 SOUNDFONTS_DIR = ASSETS_DIR / "soundfonts"
 
-# Recordings directory: use ~/Documents on Linux, project folder on Windows
+# User-generated data must stay outside a packaged application directory:
+# PyInstaller bundles can be read-only on another machine.
 if sys.platform.startswith('linux'):
     RECORDINGS_ROOT = Path.home() / "Documents" / "TalkingHands Recordings"
+elif getattr(sys, 'frozen', False):
+    local_app_data = Path(os.environ.get(
+        "LOCALAPPDATA", str(Path.home() / "AppData" / "Local")
+    ))
+    RECORDINGS_ROOT = local_app_data / "Talking Hands"
 else:
     RECORDINGS_ROOT = BASE_DIR / "recordings"
 

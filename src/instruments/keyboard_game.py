@@ -58,6 +58,7 @@ _setup_fluidsynth_path()
 from src.config import settings
 from src.engines.game_tiles import TilesGame, SONG_NAMES
 from src.engines.recorder import MidiRecorder
+from src.engines.scores import save_game_score
 from src.instruments.common import (
     init_fluidsynth, load_all_soundfonts, select_instrument,
     setup_video_capture, fit_resolution_to_screen,
@@ -764,20 +765,6 @@ class GamePanel(QWidget):
         card, self._combo_label = self._make_stat_card("gameComboValue", "COMBO")
         layout.addWidget(card, 1)
 
-        lives_card = QFrame()
-        lives_card.setObjectName("gameStatCard")
-        lives_card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        lives_vl = QVBoxLayout(lives_card)
-        lives_vl.setContentsMargins(8, 6, 8, 6)
-        lives_vl.setSpacing(4)
-        self._lives_widget = LivesWidget()
-        lives_vl.addWidget(self._lives_widget, 1, Qt.AlignHCenter | Qt.AlignVCenter)
-        lives_sub = QLabel("VIDAS")
-        lives_sub.setObjectName("gameStatCardSub")
-        lives_sub.setAlignment(Qt.AlignCenter)
-        lives_vl.addWidget(lives_sub)
-        layout.addWidget(lives_card, 1)
-
         card, self._precision_label = self._make_stat_card("gamePrecisionValue", "PRECISÃO")
         layout.addWidget(card, 1)
 
@@ -847,20 +834,6 @@ class GamePanel(QWidget):
         side_row.addWidget(pcard)
         results_l.addLayout(side_row, 1)
 
-        res_lives_card = QFrame()
-        res_lives_card.setObjectName("gameStatCard")
-        res_lives_card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        res_lives_vl = QVBoxLayout(res_lives_card)
-        res_lives_vl.setContentsMargins(8, 6, 8, 6)
-        res_lives_vl.setSpacing(4)
-        self._result_lives_widget = LivesWidget()
-        res_lives_vl.addWidget(self._result_lives_widget, 1, Qt.AlignHCenter | Qt.AlignVCenter)
-        res_lives_sub = QLabel("VIDAS RESTANTES")
-        res_lives_sub.setObjectName("gameStatCardSub")
-        res_lives_sub.setAlignment(Qt.AlignCenter)
-        res_lives_vl.addWidget(res_lives_sub)
-        results_l.addWidget(res_lives_card, 1)
-
         outer.addWidget(results_w, 1)
 
         # ── Divider ───────────────────────────────────────────────────────
@@ -912,14 +885,11 @@ class GamePanel(QWidget):
         self._result_combo_label.setText(f"×{game.combo}")
         precision = int(self._prec_hits / max(1, self._prec_total) * 100)
         self._result_prec_label.setText(f"{precision}%")
-        self._result_lives_widget.set_lives(game.lives_remaining, game.MAX_MISTAKES)
         self._stack.setCurrentIndex(1)
 
     def update_game_state(self, game) -> None:
         self._score_label.setText(_fmt_score(game.score))
         self._combo_label.setText(f"×{game.combo}")
-        self._lives_widget.set_lives(game.lives_remaining, game.MAX_MISTAKES)
-
         if game.last_result_ts != self._last_seen_result_ts and game.last_result:
             self._last_seen_result_ts = game.last_result_ts
             if game.last_result in ("perfect", "good"):
@@ -1208,6 +1178,7 @@ class PianoTilesWindow(QMainWindow):
         hand_model_complexity=1,
         difficulty="easy",
         song="Twinkle Twinkle",
+        nickname="",
     ):
         super().__init__()
         self.setWindowTitle("Talking Hands - Piano Tiles")
@@ -1227,6 +1198,8 @@ class PianoTilesWindow(QMainWindow):
         self._game.set_key_layout(self._piano_keys)
         self._current_difficulty = difficulty if difficulty in ("easy", "medium", "hard") else "easy"
         self._current_song_idx   = SONG_NAMES.index(song) if song in SONG_NAMES else 0
+        self._nickname           = " ".join(str(nickname).split())[:24]
+        self._score_saved        = False
         self._is_paused          = False
         self._table_y            = DEFAULT_TABLE_Y
 
@@ -1325,6 +1298,7 @@ class PianoTilesWindow(QMainWindow):
     def _start_game(self):
         if self._countdown_timer is not None and self._countdown_timer.isActive():
             return
+        self._score_saved = False
         self._finger_prev_y.clear()
         self._active_held_notes.clear()
         self._pending_note_offs.clear()
@@ -1413,10 +1387,17 @@ class PianoTilesWindow(QMainWindow):
 
             if self._game.state == TilesGame.STATE_GAME_OVER:
                 self._panel.update_game_state(self._game)
-                won   = self._game.mistakes < self._game.MAX_MISTAKES
+                won   = True
                 state = "gameover_win" if won else "gameover_lose"
                 self._camera_widget.set_state_overlay(state, self._game.score)
                 self._panel.switch_to_gameover(self._game, won)
+                if not self._score_saved:
+                    self._score_saved = True
+                    save_game_score(
+                        "piano_tiles", self._nickname, self._game.score,
+                        self._current_difficulty, SONG_NAMES[self._current_song_idx],
+                        precision=self._game.precision,
+                    )
 
         self._camera_widget.set_frame(frame_rgb)
         self._camera_widget.set_results(results)
@@ -1515,6 +1496,7 @@ def start_piano_tiles_ui(
     hand_model_complexity=1,
     difficulty="easy",
     song="Twinkle Twinkle",
+    nickname="",
 ):
     """Launch the PySide6 Piano Tiles game. Drop-in for the old pygame version."""
     print(f">>> INICIANDO PIANO TILES UI [{difficulty.upper()}] - {song}")
@@ -1528,6 +1510,7 @@ def start_piano_tiles_ui(
         hand_model_complexity=hand_model_complexity,
         difficulty=difficulty,
         song=song,
+        nickname=nickname,
     )
     win.showFullScreen()
     print(">>> MODO PRONTO")
