@@ -2069,6 +2069,7 @@ def _execute_launch(
                 difficulty=difficulty,
                 song=song,
                 nickname=nickname,
+                lighting_service=lighting_service,
             )
         elif t == "drums_game":
             from src.instruments.drums_game import start_drums_game
@@ -2079,6 +2080,7 @@ def _execute_launch(
                 hand_model_complexity=hand_model_complexity,
                 difficulty=difficulty,
                 nickname=nickname,
+                lighting_service=lighting_service,
             )
         else:
             print(f"[menu] Unknown type: {t!r}")

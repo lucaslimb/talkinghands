@@ -57,6 +57,7 @@ _setup_fluidsynth_path()
 
 from src.config import settings
 from src.engines.game_tiles import TilesGame, SONG_NAMES
+from src.engines.lighting_controller import IdleLightingService
 from src.engines.recorder import MidiRecorder
 from src.engines.scores import save_game_score
 from src.instruments.common import (
@@ -1179,12 +1180,14 @@ class PianoTilesWindow(QMainWindow):
         difficulty="easy",
         song="Twinkle Twinkle",
         nickname="",
+        lighting_service: IdleLightingService | None = None,
     ):
         super().__init__()
         self.setWindowTitle("Talking Hands - Piano Tiles")
         self.setStyleSheet(_build_game_qss())
 
         self._instrument_name = instrument_name
+        self._lighting_service = lighting_service
 
         self._audio_queue  = queue.Queue()
         self._fs           = None
@@ -1430,6 +1433,7 @@ class PianoTilesWindow(QMainWindow):
                 note = int(self._piano_keys[ki]["note"])
                 result = self._game.player_hit(note, now=now)
                 if result in ("perfect", "good"):
+                    self._flash_tile_hit(self._game.last_hit_duration)
                     if fkey in self._active_held_notes:
                         old = self._active_held_notes.pop(fkey)
                         self._audio_queue.put(("off", old))
@@ -1440,6 +1444,18 @@ class PianoTilesWindow(QMainWindow):
                     self._active_held_notes[fkey] = note
                     self._pending_note_offs.append((note, now + 4.0))
                     self._piano_keys[ki]["last_hit"] = now
+
+    def _flash_tile_hit(self, duration: float) -> None:
+        """Acende a fita em roxo pela duração visual da nota acertada."""
+        if self._lighting_service is None:
+            return
+        try:
+            self._lighting_service.controller.flash(
+                190, 0, 255,
+                duration_ms=max(120, min(3000, int(duration * 1000)))
+            )
+        except Exception as exc:
+            print(f"[lighting] piano tiles hit failed: {exc}")
 
     @Slot()
     def _on_restart(self):
@@ -1497,6 +1513,7 @@ def start_piano_tiles_ui(
     difficulty="easy",
     song="Twinkle Twinkle",
     nickname="",
+    lighting_service: IdleLightingService | None = None,
 ):
     """Launch the PySide6 Piano Tiles game. Drop-in for the old pygame version."""
     print(f">>> INICIANDO PIANO TILES UI [{difficulty.upper()}] - {song}")
@@ -1511,6 +1528,7 @@ def start_piano_tiles_ui(
         difficulty=difficulty,
         song=song,
         nickname=nickname,
+        lighting_service=lighting_service,
     )
     win.showFullScreen()
     print(">>> MODO PRONTO")

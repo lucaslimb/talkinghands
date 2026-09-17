@@ -58,6 +58,7 @@ _setup_fluidsynth_path()
 
 from src.config import settings
 from src.engines.game_genius import GeniusGame
+from src.engines.lighting_controller import IdleLightingService
 from src.engines.scores import save_game_score
 from src.instruments.common import (
     init_fluidsynth, load_single_soundfont,
@@ -686,9 +687,10 @@ class GeniusWindow(QMainWindow):
         show_trackers: bool = False,
         drum_model: str = "default",
         drums_elements=None,
-        hand_model_complexity: int = 1,
-        difficulty: str = "easy",
-        nickname: str = "",
+                 hand_model_complexity: int = 1,
+                 difficulty: str = "easy",
+                 nickname: str = "",
+                 lighting_service: IdleLightingService | None = None,
     ):
         super().__init__()
         self.setWindowTitle("Talking Hands — Genius Drums")
@@ -698,6 +700,8 @@ class GeniusWindow(QMainWindow):
         self._drum_model        = str(drum_model).strip().lower()
         self._drums_elements    = drums_elements
         self._is_paused         = False
+        self._lighting_service = lighting_service
+        self._last_lighting_element = None
 
         apply_drum_note_profile(chosen_instrument)
         self._replace_base  = False
@@ -862,6 +866,7 @@ class GeniusWindow(QMainWindow):
 
         if not self._is_paused:
             self._game.update(self._drum_kit, now=now)
+            self._update_demo_lighting()
             if self._game.pending_play_note is not None:
                 self._audio_queue.put(self._game.pending_play_note)
             if results.multi_hand_landmarks and results.multi_handedness:
@@ -920,6 +925,7 @@ class GeniusWindow(QMainWindow):
                 elem_key = hit_drum.get("element_key", "")
                 result   = self._game.player_hit(elem_key, now=now)
                 if result in ("correct", "wrong"):
+                    self._flash_game_feedback(elem_key)
                     self._audio_queue.put((hit_drum["note"], velocity))
                     hit_drum["last_hit"] = now; can_hit = False
                     self._camera_widget.record_feedback(elem_key, result)
@@ -927,6 +933,32 @@ class GeniusWindow(QMainWindow):
                 state["last_hit_drum"] = hit_drum["id"]
 
         state["prev_y"] = ref_y; state["can_hit"] = can_hit
+
+    def _update_demo_lighting(self) -> None:
+        """Pisca com a mesma cor do elemento destacado na demonstração."""
+        element = self._game.highlighted_element
+        if element == self._last_lighting_element:
+            return
+        self._last_lighting_element = element
+        if element is None or self._lighting_service is None:
+            return
+        try:
+            color = _element_color(element)
+            duration_ms = max(1, int(self._game.DEMO_HIT_DURATION * 1000))
+            self._lighting_service.controller.flash(*color, duration_ms=duration_ms)
+        except Exception as exc:
+            print(f"[lighting] genius demo failed: {exc}")
+
+    def _flash_game_feedback(self, element: str) -> None:
+        if self._lighting_service is None:
+            return
+        try:
+            # A resposta usa a cor do elemento atingido, igual à demonstração.
+            color = _element_color(element)
+            duration_ms = max(1, int(self._game.FEEDBACK_DURATION * 1000))
+            self._lighting_service.controller.flash(*color, duration_ms=duration_ms)
+        except Exception as exc:
+            print(f"[lighting] genius feedback failed: {exc}")
 
     @Slot()
     def _on_restart(self) -> None: self._start_game()
@@ -964,6 +996,7 @@ def start_drums_game(
     hand_model_complexity: int = 1,
     difficulty: str = "easy",
     nickname: str = "",
+    lighting_service: IdleLightingService | None = None,
 ):
     """Launch the Genius Drums PySide6 window."""
     print(f">>> INICIANDO GENIUS DRUMS GAME [{difficulty.upper()}]")
@@ -978,6 +1011,7 @@ def start_drums_game(
         hand_model_complexity=hand_model_complexity,
         difficulty=difficulty,
         nickname=nickname,
+        lighting_service=lighting_service,
     )
     win.showFullScreen()
     print(">>> MODO PRONTO")

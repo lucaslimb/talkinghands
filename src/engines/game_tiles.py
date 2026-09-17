@@ -141,6 +141,7 @@ class TilesGame:
 
         self.last_result:    Optional[str]   = None   # "perfect"|"good"|"miss"
         self.last_result_ts: float           = 0.0
+        self.last_hit_duration: float       = 0.35
         self.pending_play_note: Optional[int] = None  # engine → audio bridge
         self._paused_at: float               = 0.0   # wall-clock time when paused
 
@@ -196,6 +197,7 @@ class TilesGame:
         self._seq_index = 0
         self._song_name = song
         self.last_result       = None
+        self.last_hit_duration = 0.35
         self.pending_play_note = None
         self._paused_at        = 0.0
 
@@ -356,6 +358,7 @@ class TilesGame:
 
         best_tile.state        = "hit"
         best_tile.score_earned = pts
+        self.last_hit_duration = best_tile.duration
         self.score            += pts
         self.last_result       = result
         self.last_result_ts    = now
