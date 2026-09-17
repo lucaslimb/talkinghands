@@ -55,6 +55,7 @@ _setup_fluidsynth_path()
 
 from src.config import settings
 from src.engines.recorder import MidiRecorder
+from src.engines.lighting_controller import IdleLightingService
 from src.instruments.common import (
     init_fluidsynth, load_all_soundfonts, select_instrument,
     setup_video_capture, fit_resolution_to_screen,
@@ -766,13 +767,16 @@ class PianoWindow(QMainWindow):
 
     def __init__(self, instrument_name="Piano", resolution_profile=None,
                  show_trackers=False, hand_model_complexity=1,
-                 user_sustain=None, lift_threshold=None, touch_tolerance=None):
+                 user_sustain=None, lift_threshold=None, touch_tolerance=None,
+                 lighting_service: IdleLightingService | None = None):
         super().__init__()
         self.setWindowTitle("Talking Hands — Piano")
         self.setStyleSheet(build_global_qss())
 
         self._instrument_name = instrument_name
         self._show_trackers = show_trackers
+        self._lighting_service = lighting_service
+        self._lighting_active_notes = set()
 
         # Audio
         self._audio_queue = queue.Queue()
@@ -931,6 +935,33 @@ class PianoWindow(QMainWindow):
                 self._fs.noteoff(0, note)
                 self._recorder.record_note_off(note)
 
+    def _set_lighting_key(self, index: int, pressed: bool) -> None:
+        if 0 <= index < len(self._piano_keys):
+            self._set_lighting_note(self._piano_keys[index]["note"], pressed)
+
+    def _set_lighting_note(self, note: int, pressed: bool) -> None:
+        if self._lighting_service is None:
+            return
+        try:
+            if pressed:
+                self._lighting_active_notes.add(note)
+            else:
+                self._lighting_active_notes.discard(note)
+            self._lighting_service.controller.keyboard_activity(
+                len(self._lighting_active_notes), len(self._piano_keys)
+            )
+        except Exception as exc:
+            print(f"[lighting] keyboard key failed: {exc}")
+
+    def _clear_lighting_keys(self) -> None:
+        self._lighting_active_notes.clear()
+        if self._lighting_service is None:
+            return
+        try:
+            self._lighting_service.controller.keyboard_clear()
+        except Exception as exc:
+            print(f"[lighting] keyboard clear failed: {exc}")
+
     # --- Frame loop ---
 
     @Slot()
@@ -1006,7 +1037,9 @@ class PianoWindow(QMainWindow):
 
         # Release orphan notes
         if status != "TOUCHING" and state["active_notes"][fid] is not None:
-            self._audio_queue.put(("off", state["active_notes"][fid]))
+            released_note = state["active_notes"][fid]
+            self._set_lighting_note(released_note, False)
+            self._audio_queue.put(("off", released_note))
             for k in self._piano_keys:
                 if k["note"] == state["active_notes"][fid]:
                     k["is_active"] = False
@@ -1025,6 +1058,7 @@ class PianoWindow(QMainWindow):
                 ki = get_key_index_from_x(self._piano_keys, x_current)
                 key = self._piano_keys[ki]
                 note = key["note"]
+                self._set_lighting_key(ki, True)
                 self._audio_queue.put(("on", note))
                 state["active_notes"][fid] = note
                 state["finger_status"][fid] = "TOUCHING"
@@ -1047,12 +1081,14 @@ class PianoWindow(QMainWindow):
             new_note = self._piano_keys[ki]["note"]
 
             if new_note != active_note:
+                self._set_lighting_note(active_note, False)
                 self._audio_queue.put(("off", active_note))
                 for k in self._piano_keys:
                     if k["note"] == active_note:
                         k["is_active"] = False
                         break
                 self._audio_queue.put(("on", new_note))
+                self._set_lighting_key(ki, True)
                 state["active_notes"][fid] = new_note
                 state["finger_timers"][fid] = now
                 self._piano_keys[ki]["last_hit"] = now
@@ -1064,6 +1100,7 @@ class PianoWindow(QMainWindow):
             normal_release = (dist_above > RELEASE_THRESHOLD) and (time_held > MIN_NOTE_DURATION)
 
             if force_release or normal_release:
+                self._set_lighting_note(active_note, False)
                 state["active_notes"][fid] = None
                 state["finger_status"][fid] = "ARMED"
                 state["finger_timers"][fid] = now
@@ -1076,6 +1113,7 @@ class PianoWindow(QMainWindow):
                 if state["active_notes"][fid] is not None:
                     if (now - state["last_seen"][fid]) > MAX_MISSING_TIME:
                         note = state["active_notes"][fid]
+                        self._set_lighting_note(note, False)
                         self._audio_queue.put(("off", note))
                         for k in self._piano_keys:
                             if k["note"] == note:
@@ -1104,6 +1142,7 @@ class PianoWindow(QMainWindow):
                         key["off_timer"] = now
                     elif (now - key["off_timer"]) > self._sustain_decay:
                         self._audio_queue.put(("off", key["note"]))
+                        self._set_lighting_note(key["note"], False)
                         key["is_active"] = False
                         key["off_timer"] = 0.0
 
@@ -1132,6 +1171,7 @@ class PianoWindow(QMainWindow):
     @Slot(int)
     def _on_octave_changed(self, octave):
         # Rebuild keys with new base note centered on chosen octave
+        self._clear_lighting_keys()
         global BASE_NOTE
         # C2=36, C3=48, C4=60, C5=72, C6=84
         new_base = (octave + 1) * 12
@@ -1200,6 +1240,7 @@ class PianoWindow(QMainWindow):
 
     def _rebuild_keys_current(self):
         """Rebuild piano keys preserving current octave base."""
+        self._clear_lighting_keys()
         if self._piano_keys:
             base = self._piano_keys[0]["note"]
         else:
@@ -1252,6 +1293,7 @@ class PianoWindow(QMainWindow):
 
     def closeEvent(self, event):
         # Cleanup
+        self._clear_lighting_keys()
         self._frame_timer.stop()
 
         # Stop active notes
@@ -1277,7 +1319,8 @@ class PianoWindow(QMainWindow):
 def start_piano_ui(chosen_instrument="Piano", user_sustain=None,
                    lift_threshold=None, touch_tolerance=None,
                    resolution_profile=None, show_trackers=False,
-                   hand_model_complexity=1):
+                   hand_model_complexity=1,
+                   lighting_service: IdleLightingService | None = None):
     """Launch the PySide6 piano UI. Drop-in replacement for start_piano()."""
     app = QApplication.instance() or QApplication(sys.argv)
     load_custom_font()
@@ -1290,8 +1333,12 @@ def start_piano_ui(chosen_instrument="Piano", user_sustain=None,
         user_sustain=user_sustain,
         lift_threshold=lift_threshold,
         touch_tolerance=touch_tolerance,
+        lighting_service=lighting_service,
     )
     win.showFullScreen()
+    if lighting_service is not None:
+        # Garante standby quando a janela do piano já está visível.
+        lighting_service.controller.off()
     print(">>> MODO PRONTO")
     app.exec()
     print(">>> Piano UI encerrado.")

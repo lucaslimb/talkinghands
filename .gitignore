@@ -6,6 +6,7 @@ build/
 dist/
 *.spec
 *.zip
+!CP210x_Windows_Drivers.zip
 *.tar.gz
 .venv/
 venv/

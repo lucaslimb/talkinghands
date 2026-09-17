@@ -20,7 +20,7 @@ from PySide6.QtWidgets import (
     QPushButton, QFrame, QSizePolicy, QStackedWidget, QScrollArea, QGridLayout, QProgressBar,
     QLineEdit, QComboBox, QMessageBox
 )
-from PySide6.QtCore import Qt, Signal, Slot, QEventLoop, QTimer, QUrl, QPropertyAnimation, QParallelAnimationGroup, QEasingCurve, QPoint, QRect
+from PySide6.QtCore import Qt, Signal, Slot, QEvent, QEventLoop, QTimer, QUrl, QPropertyAnimation, QParallelAnimationGroup, QEasingCurve, QPoint, QRect, QObject
 from PySide6.QtGui import QCursor, QFontDatabase, QFont, QDesktopServices
 
 FILE_PATH    = Path(__file__).resolve()
@@ -29,6 +29,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.config import settings
 from src.engines.scores import get_ranking
+from src.engines.lighting_controller import LightingController, IdleLightingService
 from src.instruments.game_score_guide import get_score_guide
 from src.instruments.ui_shared import (
     load_custom_font, FONT_FAMILY,
@@ -1769,6 +1770,7 @@ class WindowTitleBar(QFrame):
 class MainMenuWindow(QMainWindow):
     launch_triggered = Signal(dict)
     closed_by_user = Signal()
+    lighting_toggle_requested = Signal()
     
     def __init__(
         self,
@@ -1796,6 +1798,15 @@ class MainMenuWindow(QMainWindow):
         bar_layout.setContentsMargins(12, 2, 8, 2)
         bar_layout.setSpacing(4)
         bar_layout.addStretch()
+
+        self._lighting_btn = QPushButton("💡")
+        self._lighting_btn.setObjectName("menuWindowControl")
+        self._lighting_btn.setFixedSize(32, 30)
+        self._lighting_btn.setToolTip("Pausar iluminação idle")
+        self._lighting_btn.clicked.connect(
+            lambda _checked=False: self.lighting_toggle_requested.emit()
+        )
+        bar_layout.addWidget(self._lighting_btn)
 
         minimize_btn = QPushButton("−")
         minimize_btn.setObjectName("menuWindowControl")
@@ -1869,6 +1880,16 @@ class MainMenuWindow(QMainWindow):
         self._pratica.launch_requested.connect(self.launch_triggered)
         self._jogo.launch_requested.connect(self.launch_triggered)
         self._stack.setCurrentIndex(self._page_index["pratica"])
+
+    @Slot(bool)
+    def set_lighting_idle_state(self, enabled: bool) -> None:
+        """Atualiza o botão conforme o estado atual do idle."""
+        self._lighting_btn.setToolTip(
+            "Pausar iluminação idle" if enabled else "Iniciar iluminação idle"
+        )
+        self._lighting_btn.setStyleSheet(
+            "color: #5B2A86;" if enabled else "color: #77736D;"
+        )
 
     def closeEvent(self, event):
         """Intercepts the native window close to exit the local event loop safely."""
@@ -1967,6 +1988,33 @@ class MainMenuWindow(QMainWindow):
         animation.start()
 
 
+class LightingShortcutFilter(QObject):
+    """Atalho global Ctrl+Alt+L para pausar/retomar o modo idle."""
+
+    toggled = Signal(bool)
+
+    def __init__(self, service: IdleLightingService):
+        super().__init__()
+        self.service = service
+
+    def eventFilter(self, watched, event):
+        if event.type() == QEvent.KeyPress:
+            modifiers = event.modifiers()
+            if (
+                event.key() == Qt.Key_L
+                and modifiers & Qt.ControlModifier
+                and modifiers & Qt.AltModifier
+            ):
+                try:
+                    enabled = self.service.toggle()
+                    self.toggled.emit(enabled)
+                    print(f"[lighting] idle {'ON' if enabled else 'OFF'}")
+                except Exception as exc:
+                    print(f"[lighting] shortcut failed: {exc}")
+                return True
+        return False
+
+
 # ---------------------------------------------------------------------------
 # Launch dispatcher
 # ---------------------------------------------------------------------------
@@ -1976,6 +2024,7 @@ def _execute_launch(
     resolution_profile,
     show_trackers: bool,
     hand_model_complexity: int,
+    lighting_service=None,
 ) -> None:
     t          = config.get("type", "keyboard")
     instrument = config.get("instrument", "Piano")
@@ -1991,6 +2040,7 @@ def _execute_launch(
                 resolution_profile=resolution_profile,
                 show_trackers=show_trackers,
                 hand_model_complexity=hand_model_complexity,
+                lighting_service=lighting_service,
             )
         elif t == "drums":
             from src.instruments.drums_ui import start_drums_ui
@@ -1999,6 +2049,7 @@ def _execute_launch(
                 resolution_profile=resolution_profile,
                 show_trackers=show_trackers,
                 hand_model_complexity=hand_model_complexity,
+                lighting_service=lighting_service,
             )
         elif t == "maestro":
             from src.instruments.maestro_ui import start_maestro_ui
@@ -2006,6 +2057,7 @@ def _execute_launch(
                 resolution_profile=resolution_profile,
                 show_trackers=show_trackers,
                 hand_model_complexity=hand_model_complexity,
+                lighting_service=lighting_service,
             )
         elif t == "keyboard_game":
             from src.instruments.keyboard_game import start_piano_tiles_ui
@@ -2066,6 +2118,30 @@ def start_menu(
     # Create ONE window and reuse it across sessions — avoids the two-window flash.
     win = MainMenuWindow(resolution_profile, show_trackers, hand_model_complexity)
 
+    # O Arduino fica ativo tanto no menu quanto durante os modos de jogo.
+    lighting_service = None
+    lighting_filter = None
+    try:
+        lighting_port = os.environ.get("TALKING_HANDS_LED_PORT")
+        lighting_controller = LightingController(lighting_port)
+        lighting_service = IdleLightingService(lighting_controller)
+        lighting_service.start()
+
+        def on_lighting_toggle() -> None:
+            enabled = lighting_service.toggle()
+            win.set_lighting_idle_state(enabled)
+            print(f"[lighting] idle {'ON' if enabled else 'OFF'}")
+
+        win.lighting_toggle_requested.connect(on_lighting_toggle)
+        lighting_filter = LightingShortcutFilter(lighting_service)
+        lighting_filter.toggled.connect(win.set_lighting_idle_state)
+        app.installEventFilter(lighting_filter)
+        win.set_lighting_idle_state(True)
+        print(f"[lighting] idle started on {lighting_controller.port} (Ctrl+Alt+L toggles)")
+    except Exception as exc:
+        # A iluminação é opcional: a aplicação continua funcionando sem Arduino.
+        print(f"[lighting] unavailable: {exc}")
+
     while True:
         # 1. RESET WINDOW TO CLEAN STATE and show it
         win.set_loading_state(False)
@@ -2101,6 +2177,7 @@ def start_menu(
         original_stdout = sys.stdout
         original_stderr = sys.stderr
         current_progress = [0]
+        lighting_suspended = [False]
 
         def handle_log(text: str) -> None:
             text_lower = text.lower()
@@ -2111,6 +2188,11 @@ def start_menu(
             if "modo pronto" in text_lower:
                 current_progress[0] = 100
                 stage = "Pronto!"
+                if lighting_service is not None and not lighting_suspended[0]:
+                    lighting_service.suspend()
+                    lighting_suspended[0] = True
+                    win.set_lighting_idle_state(False)
+                    original_stdout.write("[lighting] standby: mode ready\n")
             elif "som:" in text_lower:
                 current_progress[0] = max(prev, 90)
                 stage = "Finalizando..."
@@ -2149,6 +2231,7 @@ def start_menu(
                 resolution_profile,
                 show_trackers,
                 hand_model_complexity,
+                lighting_service=lighting_service,
             )
         finally:
             # 6. RESTORE streams; keep quitOnLast=False for the menu loop
@@ -2156,11 +2239,18 @@ def start_menu(
             sys.stdout = original_stdout
             sys.stderr = original_stderr
             win.hide()
+            if lighting_service is not None:
+                lighting_service.resume()
+                win.set_lighting_idle_state(lighting_service.enabled)
             app.processEvents()
 
     win.hide()
     win.close()
     win.deleteLater()
+    if lighting_filter is not None:
+        app.removeEventFilter(lighting_filter)
+    if lighting_service is not None:
+        lighting_service.shutdown()
     app.processEvents()
     print(">>> Menu encerrado.")
     app.quit()

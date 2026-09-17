@@ -63,6 +63,7 @@ _setup_fluidsynth_path()
 
 from src.config import settings
 from src.engines.recorder import MidiRecorder
+from src.engines.lighting_controller import IdleLightingService
 from src.instruments.common import (
     init_fluidsynth, load_all_soundfonts, select_instrument,
     setup_video_capture, fit_resolution_to_screen,
@@ -112,6 +113,9 @@ from src.expressions.maestro import (
 # ---------------------------------------------------------------------------
 EMOTION_INTERVAL = 0.05   # ~20 fps face submissions
 EVENT_FADE_SECS  = 1.8    # how long event flashes stay visible
+# Iluminação: agora usa a mão direita. Zonas maiores tornam extremos mais fáceis.
+LIGHTING_Y_MAX = 0.20     # acima desta altura: brilho máximo
+LIGHTING_Y_MIN = 0.80     # abaixo desta altura: brilho mínimo
 
 # ---------------------------------------------------------------------------
 # Camera + Overlay Widget
@@ -645,13 +649,16 @@ class MaestroWindow(QMainWindow):
     """Fullscreen Maestro window: camera on the left, controls on the right."""
 
     def __init__(self, resolution_profile=None, show_trackers=False,
-                 hand_model_complexity=1, rec_options=None):
+                 hand_model_complexity=1, rec_options=None,
+                 lighting_service: IdleLightingService | None = None):
         super().__init__()
         self.setWindowTitle("Talking Hands — Maestro")
         self.setStyleSheet(build_global_qss())
 
         # ── Config ──────────────────────────────────────────────────────────
         self._show_trackers = show_trackers
+        self._lighting_service = lighting_service
+        self._last_lighting_state = None
         self._rec_options = rec_options or {"save_mid": True, "save_wav": True}
 
         if resolution_profile:
@@ -867,6 +874,23 @@ class MaestroWindow(QMainWindow):
         main_layout.addWidget(self._splitter)
 
     # ── Frame tick — all gesture processing happens here ─────────────────────
+
+    def _update_lighting(self, brightness: int) -> None:
+        if self._lighting_service is None:
+            return
+        emotion_color = EMOTION_COLORS.get(self._current_emotion, (180, 180, 180))
+        state = (*emotion_color, int(brightness))
+        previous = self._last_lighting_state
+        if previous is not None:
+            color_changed = state[:3] != previous[:3]
+            brightness_changed = abs(state[3] - previous[3]) >= 2
+            if not color_changed and not brightness_changed:
+                return
+        try:
+            self._lighting_service.controller.maestro_state(*state)
+            self._last_lighting_state = state
+        except Exception as exc:
+            print(f"[lighting] maestro update failed: {exc}")
 
     @Slot()
     def _on_frame_tick(self):
@@ -1130,6 +1154,16 @@ class MaestroWindow(QMainWindow):
             self._snare_origin_t = None
             self._left_vel.reset()
 
+        # A altura da mão direita controla a intensidade: mais alta = mais brilho.
+        # As zonas de máximo/mínimo são deliberadamente amplas para facilitar o uso.
+        if right_lm is not None and right_lm[0].x < RIGHT_HAND_X_MAX:
+            right_y = right_lm[0].y
+            lighting_level = (LIGHTING_Y_MIN - right_y) / (LIGHTING_Y_MIN - LIGHTING_Y_MAX)
+            maestro_brightness = int(max(0.0, min(1.0, lighting_level)) * 255.0)
+        else:
+            maestro_brightness = 0
+        self._update_lighting(maestro_brightness)
+
         # ── Update camera widget ─────────────────────────────────────────────
         self._camera_widget.set_frame(frame_rgb)
         self._camera_widget.set_results(results)
@@ -1234,7 +1268,8 @@ class MaestroWindow(QMainWindow):
 # ---------------------------------------------------------------------------
 
 def start_maestro_ui(resolution_profile=None, show_trackers=False,
-                     hand_model_complexity=1, rec_options=None):
+                     hand_model_complexity=1, rec_options=None,
+                     lighting_service: IdleLightingService | None = None):
     """Launch the PySide6 Maestro UI."""
     app = QApplication.instance() or QApplication(sys.argv)
     load_custom_font()
@@ -1244,6 +1279,7 @@ def start_maestro_ui(resolution_profile=None, show_trackers=False,
         show_trackers=show_trackers,
         hand_model_complexity=hand_model_complexity,
         rec_options=rec_options,
+        lighting_service=lighting_service,
     )
     win.showFullScreen()
     print(">>> MODO PRONTO")

@@ -57,6 +57,7 @@ _setup_fluidsynth_path()
 
 from src.config import settings
 from src.engines.recorder import MidiRecorder
+from src.engines.lighting_controller import IdleLightingService
 from src.instruments.common import (
     init_fluidsynth, load_single_soundfont, select_instrument,
     setup_video_capture, fit_resolution_to_screen,
@@ -87,6 +88,11 @@ DRUM_MIN_VELOCITY      = int(getattr(settings, 'DRUMS_MIN_VELOCITY', 50))
 MIN_REHIT_PIXELS       = int(getattr(settings, 'DRUMS_MIN_REHIT_PIXELS', 32))
 FOOT_REHIT_PIXELS      = int(getattr(settings, 'DRUMS_FOOT_REHIT_PIXELS', 36))
 DRUM_MIN_HIT_INTERVAL  = float(getattr(settings, 'DRUMS_MIN_HIT_INTERVAL_SEC', 0.045))
+LIGHTING_FADEOUT_MS    = int(getattr(settings, 'DRUMS_LIGHTING_FADEOUT_MS', 220))
+CYMBAL_ELEMENTS = {
+    "crash", "crash2", "ride", "ride2", "splash", "china", "ride_bell",
+    "hihat", "open_hh", "hh_pedal",
+}
 DRUM_CUSTOM_RECT_THICK = float(getattr(settings, 'DRUMS_CUSTOM_RECT_THICKNESS', 1.20))
 DRUM_RESIZE_EDGE_TOL   = int(getattr(settings, 'DRUMS_RESIZE_EDGE_TOLERANCE_PX', 10))
 DRUM_MIN_HALF_W_NORM   = float(getattr(settings, 'DRUMS_MIN_HALF_WIDTH_NORM', 0.02))
@@ -1109,7 +1115,8 @@ class DrumsWindow(QMainWindow):
     def __init__(self, instrument_name="Classic", resolution_profile=None,
                  show_trackers=False, drum_model="default", drums_elements=None,
                  hand_model_complexity=1, pose_model_complexity=0,
-                 user_tolerance=None, touch_velocity=None, rec_options=None):
+                 user_tolerance=None, touch_velocity=None, rec_options=None,
+                 lighting_service: IdleLightingService | None = None):
         super().__init__()
         self.setWindowTitle("Talking Hands — Bateria")
         self.setStyleSheet(build_global_qss())
@@ -1118,6 +1125,7 @@ class DrumsWindow(QMainWindow):
         self._drum_model = (drum_model or "default").strip().lower()
         self._use_feet = self._drum_model == "complete"
         self._show_trackers = show_trackers
+        self._lighting_service = lighting_service
 
         # Audio
         self._audio_queue = queue.Queue()
@@ -1245,6 +1253,17 @@ class DrumsWindow(QMainWindow):
             ch = np.random.randint(0, POLYPHONY_CHANNELS)
             self._fs.noteon(ch, note, velocity)
             self._recorder.record_note_on(note, velocity=velocity)
+
+    def _trigger_lighting(self, target):
+        if self._lighting_service is None:
+            return
+        try:
+            self._lighting_service.controller.drum_hit(
+                target.get("element_key") in CYMBAL_ELEMENTS,
+                LIGHTING_FADEOUT_MS,
+            )
+        except Exception as exc:
+            print(f"[lighting] drum hit failed: {exc}")
 
     def _build_ui(self):
         central = QWidget()
@@ -1400,6 +1419,7 @@ class DrumsWindow(QMainWindow):
                     if (now - target["last_hit"]) >= DRUM_MIN_HIT_INTERVAL:
                         vel = int(min(max((dy - self._touch_velocity) * 10000,
                                          DRUM_MIN_VELOCITY), 127))
+                        self._trigger_lighting(target)
                         self._audio_queue.put((target["note"], vel))
                         target["last_hit"] = now
                         state["last_hit_pos"] = (rx, ry)
@@ -1438,6 +1458,7 @@ class DrumsWindow(QMainWindow):
                     if (now - target["last_hit"]) >= DRUM_MIN_HIT_INTERVAL:
                         vel = int(min(max((dy - self._touch_velocity) * 10000,
                                          DRUM_MIN_VELOCITY), 127))
+                        self._trigger_lighting(target)
                         self._audio_queue.put((target["note"], vel))
                         target["last_hit"] = now
                         state["last_hit_pos"] = (rx, ry)
@@ -1667,7 +1688,8 @@ def start_drums_ui(chosen_instrument="Classic", user_tolerance=None,
                    touch_velocity=None, rec_options=None,
                    resolution_profile=None, show_trackers=False,
                    drum_model="default", drums_elements=None,
-                   hand_model_complexity=1, pose_model_complexity=0):
+                   hand_model_complexity=1, pose_model_complexity=0,
+                   lighting_service: IdleLightingService | None = None):
     """Launch the PySide6 drums UI. Drop-in replacement for start_drums()."""
     app = QApplication.instance() or QApplication(sys.argv)
     load_custom_font()
@@ -1683,6 +1705,7 @@ def start_drums_ui(chosen_instrument="Classic", user_tolerance=None,
         user_tolerance=user_tolerance,
         touch_velocity=touch_velocity,
         rec_options=rec_options,
+        lighting_service=lighting_service,
     )
     win.showFullScreen()
     print(">>> MODO PRONTO")
