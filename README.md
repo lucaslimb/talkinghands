@@ -107,6 +107,12 @@ No executável Windows, os dados do usuário não ficam dentro da pasta do pacot
 
 O arquivo de ranking é `scores.sqlite3`; ele é criado automaticamente na primeira partida.
 
+Para integração com LEDs, a definição da porta é automatica. Em caso de erro, use (onde n é o número da porta):
+```powershell
+$env:TALKING_HANDS_LED_PORT="COMn"
+```
+
+
 ## Créditos de bancos de som
 
 O projeto inclui SoundFonts como ModuleMaster, The Definitive Perfect Drums e Chris Flutes and Harmonicas. Consulte as licenças e atribuições dos arquivos distribuídos em `assets/` antes de redistribuir o aplicativo.
