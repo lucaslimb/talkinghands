@@ -47,6 +47,29 @@ import fluidsynth
 
 _DPI_AWARENESS_SET = False
 
+# Device preferences selected from the Talking Hands menu. They apply whenever
+# the next instrument session creates its audio synth and camera capture.
+AUDIO_OUTPUT_DEVICE = None
+CAMERA_DEVICE_INDEX = 0
+
+
+def set_audio_output_device(device_name=None):
+    global AUDIO_OUTPUT_DEVICE
+    AUDIO_OUTPUT_DEVICE = device_name or None
+
+
+def set_camera_device(index=0):
+    global CAMERA_DEVICE_INDEX
+    CAMERA_DEVICE_INDEX = max(0, int(index))
+
+
+def get_audio_output_device():
+    return AUDIO_OUTPUT_DEVICE
+
+
+def get_camera_device():
+    return CAMERA_DEVICE_INDEX
+
 
 def _ensure_windows_dpi_awareness():
     """Set process DPI awareness on Windows so window/screen sizes are accurate."""
@@ -133,7 +156,11 @@ def init_fluidsynth(driver="dsound"):
         _setup_fluidsynth_path()
         
         fs = fluidsynth.Synth()
-        fs.start(driver=driver)
+        selected_device = get_audio_output_device()
+        if selected_device:
+            fs.start(driver=driver, device=selected_device)
+        else:
+            fs.start(driver=driver)
         return fs, {}
     except Exception as e:
         print(f"ERRO CRÍTICO DE AUDIO: {e}")
@@ -221,15 +248,17 @@ def select_instrument(fs, instrument_name, loaded_sfids, recorder, channel=0, is
 # VIDEO CAPTURE SETUP
 # ========================
 
-def setup_video_capture(width=1280, height=720, fps=60):
+def setup_video_capture(width=1280, height=720, fps=60, camera_index=None):
     """
     Initialize and configure video capture from webcam.
     
     Returns: cv2.VideoCapture object
     """
-    cap = cv2.VideoCapture(0, cv2.CAP_DSHOW)
+    if camera_index is None:
+        camera_index = get_camera_device()
+    cap = cv2.VideoCapture(int(camera_index), cv2.CAP_DSHOW)
     if not cap.isOpened():
-        cap = cv2.VideoCapture(0)
+        cap = cv2.VideoCapture(int(camera_index))
     
     cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
@@ -237,6 +266,23 @@ def setup_video_capture(width=1280, height=720, fps=60):
     cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
     
     return cap
+
+
+def discover_camera_indices(max_index=6):
+    """Probe camera indices without reading frames or retaining camera handles."""
+    available = []
+    for index in range(max(1, int(max_index))):
+        cap = None
+        try:
+            cap = cv2.VideoCapture(index, cv2.CAP_DSHOW)
+            if cap.isOpened():
+                available.append(index)
+        except Exception as exc:
+            print(f"[devices] camera probe failed for index {index}: {exc}")
+        finally:
+            if cap is not None:
+                cap.release()
+    return available
 
 
 class CameraThread:

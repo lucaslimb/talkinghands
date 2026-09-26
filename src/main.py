@@ -829,8 +829,8 @@ def main():
         # No instrument given → open graphical menu
         if not args.instrument and not args.help and not args.test_cam:
             effective_res, rtcfg = resolve_execution_runtime(args)
-            from src.menu import start_menu
-            start_menu(
+            menu = safe_import_module("src.menu")
+            menu.start_menu(
                 resolution_profile=effective_res,
                 show_trackers=args.trackers,
                 hand_model_complexity=rtcfg["hand_model_complexity"],

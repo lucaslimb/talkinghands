@@ -18,7 +18,7 @@ from pathlib import Path
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QHBoxLayout, QVBoxLayout, QLabel,
     QPushButton, QFrame, QSizePolicy, QStackedWidget, QScrollArea, QGridLayout, QProgressBar,
-    QLineEdit, QComboBox, QMessageBox
+    QLineEdit, QComboBox, QMessageBox, QMenu
 )
 from PySide6.QtCore import Qt, Signal, Slot, QEvent, QEventLoop, QTimer, QUrl, QPropertyAnimation, QParallelAnimationGroup, QEasingCurve, QPoint, QRect, QObject
 from PySide6.QtGui import QCursor, QFontDatabase, QFont, QDesktopServices
@@ -30,6 +30,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 from src.config import settings
 from src.engines.scores import get_ranking
 from src.engines.lighting_controller import LightingController, IdleLightingService
+from src.instruments import common as instrument_common
 from src.instruments.game_score_guide import get_score_guide
 from src.instruments.ui_shared import (
     load_custom_font, FONT_FAMILY,
@@ -1799,6 +1800,32 @@ class MainMenuWindow(QMainWindow):
         bar_layout.setSpacing(4)
         bar_layout.addStretch()
 
+        self._audio_device_btn = QPushButton()
+        self._audio_device_btn.setObjectName("menuWindowControl")
+        self._audio_device_btn.setFixedHeight(30)
+        self._set_audio_device_button_label()
+        self._audio_device_menu = QMenu(self)
+        self._audio_device_menu.aboutToShow.connect(self._refresh_audio_devices)
+        self._audio_device_btn.clicked.connect(
+            lambda _checked=False: self._audio_device_menu.popup(
+                self._audio_device_btn.mapToGlobal(self._audio_device_btn.rect().bottomLeft())
+            )
+        )
+        bar_layout.addWidget(self._audio_device_btn)
+
+        self._camera_device_btn = QPushButton()
+        self._camera_device_btn.setObjectName("menuWindowControl")
+        self._camera_device_btn.setFixedHeight(30)
+        self._set_camera_device_button_label()
+        self._camera_device_menu = QMenu(self)
+        self._camera_device_menu.aboutToShow.connect(self._refresh_camera_devices)
+        self._camera_device_btn.clicked.connect(
+            lambda _checked=False: self._camera_device_menu.popup(
+                self._camera_device_btn.mapToGlobal(self._camera_device_btn.rect().bottomLeft())
+            )
+        )
+        bar_layout.addWidget(self._camera_device_btn)
+
         self._lighting_btn = QPushButton("💡")
         self._lighting_btn.setObjectName("menuWindowControl")
         self._lighting_btn.setFixedSize(32, 30)
@@ -1880,6 +1907,128 @@ class MainMenuWindow(QMainWindow):
         self._pratica.launch_requested.connect(self.launch_triggered)
         self._jogo.launch_requested.connect(self.launch_triggered)
         self._stack.setCurrentIndex(self._page_index["pratica"])
+
+    def _refresh_audio_devices(self) -> None:
+        """Re-enumerate output devices every time the audio menu opens."""
+        self._audio_device_menu.clear()
+        selected = instrument_common.get_audio_output_device()
+        if selected is None:
+            self._set_audio_device_button_label()
+        default_action = self._audio_device_menu.addAction("Saída padrão do sistema")
+        default_action.setCheckable(True)
+        default_action.setChecked(selected is None)
+        default_action.triggered.connect(
+            lambda _checked=False: self._select_audio_device(None)
+        )
+        self._audio_device_menu.addSeparator()
+
+        try:
+            import sounddevice as sd
+            hostapis = sd.query_hostapis()
+            devices = sd.query_devices()
+            outputs = []
+            for device in devices:
+                if int(device.get("max_output_channels", 0)) <= 0:
+                    continue
+                hostapi_index = int(device.get("hostapi", -1))
+                hostapi_name = (
+                    str(hostapis[hostapi_index].get("name", ""))
+                    if 0 <= hostapi_index < len(hostapis) else ""
+                )
+                # Talking Hands currently opens FluidSynth through DirectSound;
+                # only show devices from that same Windows audio backend.
+                if "directsound" in hostapi_name.lower():
+                    outputs.append(device)
+        except Exception as exc:
+            action = self._audio_device_menu.addAction(f"Não foi possível listar saídas: {exc}")
+            action.setEnabled(False)
+            return
+
+        if not outputs:
+            action = self._audio_device_menu.addAction(
+                "Nenhuma saída DirectSound encontrada; use a saída padrão"
+            )
+            action.setEnabled(False)
+            return
+
+        name_counts: dict[str, int] = {}
+        for device in outputs:
+            name = str(device.get("name", "Saída de áudio"))
+            name_counts[name] = name_counts.get(name, 0) + 1
+        for device in outputs:
+            name = str(device.get("name", "Saída de áudio"))
+            hostapi_index = int(device.get("hostapi", -1))
+            hostapi = hostapis[hostapi_index].get("name", "") if 0 <= hostapi_index < len(hostapis) else ""
+            label = f"{name} ({hostapi})" if name_counts[name] > 1 and hostapi else name
+            action = self._audio_device_menu.addAction(label)
+            action.setCheckable(True)
+            action.setChecked(selected == name)
+            action.triggered.connect(
+                lambda _checked=False, device_name=name: self._select_audio_device(device_name)
+            )
+
+    def _select_audio_device(self, device_name) -> None:
+        instrument_common.set_audio_output_device(device_name)
+        self._set_audio_device_button_label()
+        print(f"[devices] audio output selected: {device_name or 'system default'}")
+
+    def _set_audio_device_button_label(self) -> None:
+        selected = instrument_common.get_audio_output_device()
+        label = selected
+        if selected is None:
+            label = "Saída padrão"
+            try:
+                import sounddevice as sd
+                default_output = sd.default.device[1]
+                if default_output is not None and int(default_output) >= 0:
+                    label = str(sd.query_devices(int(default_output)).get("name", label))
+            except Exception:
+                pass
+        label = str(label or "Saída padrão")
+        self._audio_device_btn.setText(label)
+        self._audio_device_btn.setToolTip(f"Saída de som atual: {label}; clique para trocar")
+        self._resize_device_button(self._audio_device_btn, label)
+
+    def _set_camera_device_button_label(self) -> None:
+        index = instrument_common.get_camera_device()
+        label = f"Câmera {index}"
+        self._camera_device_btn.setText(label)
+        self._camera_device_btn.setToolTip(f"Câmera atual: {label}; clique para trocar")
+        self._resize_device_button(self._camera_device_btn, label)
+
+    @staticmethod
+    def _resize_device_button(button: QPushButton, label: str) -> None:
+        width = button.fontMetrics().horizontalAdvance(label) + 24
+        button.setFixedWidth(max(88, min(width, 280)))
+
+    def _refresh_camera_devices(self) -> None:
+        """Probe camera indices each time the camera menu opens."""
+        self._camera_device_menu.clear()
+        try:
+            cameras = instrument_common.discover_camera_indices()
+        except Exception as exc:
+            action = self._camera_device_menu.addAction(f"Não foi possível listar câmeras: {exc}")
+            action.setEnabled(False)
+            return
+
+        if not cameras:
+            action = self._camera_device_menu.addAction("Nenhuma câmera encontrada")
+            action.setEnabled(False)
+            return
+
+        selected = instrument_common.get_camera_device()
+        for index in cameras:
+            action = self._camera_device_menu.addAction(f"Câmera {index}")
+            action.setCheckable(True)
+            action.setChecked(index == selected)
+            action.triggered.connect(
+                lambda _checked=False, camera_index=index: self._select_camera_device(camera_index)
+            )
+
+    def _select_camera_device(self, index: int) -> None:
+        instrument_common.set_camera_device(index)
+        self._set_camera_device_button_label()
+        print(f"[devices] camera selected: {index}")
 
     @Slot(bool)
     def set_lighting_idle_state(self, enabled: bool) -> None:

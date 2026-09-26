@@ -237,7 +237,7 @@ class CameraOverlayWidget(QWidget):
         self._piano_keys = []
         self._table_y = DEFAULT_TABLE_Y
         self._show_trackers = False
-        self._show_scifi = True
+        self._show_scifi = False
         self._recent_notes = []  # list of (note, timestamp)
         self._detecting = False
 
@@ -611,10 +611,10 @@ class ControlPanel(QWidget):
         layout.addWidget(self._tracker_btn)
 
         # Sci-fi filter toggle
-        self._scifi_btn = QPushButton("Filtro Sci-Fi: ON")
+        self._scifi_btn = QPushButton("Filtro Sci-Fi: OFF")
         self._scifi_btn.setObjectName("trackerBtn")
         self._scifi_btn.setCheckable(True)
-        self._scifi_btn.setChecked(True)
+        self._scifi_btn.setChecked(False)
         self._scifi_btn.setFixedHeight(BTN_HEIGHT)
         self._scifi_btn.clicked.connect(self._on_scifi_toggle)
         layout.addWidget(self._scifi_btn)
