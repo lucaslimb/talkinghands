@@ -108,6 +108,7 @@ def main():
             "--add-data", "assets/fluidsynth-v2.5.1:assets/fluidsynth-v2.5.1",
             "--add-binary", "assets/fluidsynth-v2.5.1/bin/*.dll:assets/fluidsynth-v2.5.1/bin",
             "--add-data", "assets/sounds:assets/sounds",
+            "--add-data", "src/menu.py:src",
             "--add-data", "src/config/:src/config",
             "--add-data", "src/instruments/:src/instruments",
             "--add-data", "src/engines/:src/engines",
@@ -138,6 +139,11 @@ def main():
             "--hidden-import=onnxruntime",
             "--hidden-import=hsemotion_onnx",
             "--hidden-import=opensimplex",
+            # GUI menu (src/menu.py is loaded dynamically, so PyInstaller
+            # can't see its imports on its own)
+            "--hidden-import=PySide6.QtWidgets",
+            "--hidden-import=PySide6.QtCore",
+            "--hidden-import=PySide6.QtGui",
             # MediaPipe submodules
             "--collect-submodules", "mediapipe",
             # hsemotion_onnx ships ONNX model files as package data
